@@ -3,12 +3,15 @@ import SwiftUI
 
 struct RoomView: View {
     let group: GroupSummary
+    let allGroups: [GroupSummary]
+    let engine: NMPEngine
     @State private var model: RoomTimelineModel
-    @State private var selectedPane = RoomPane.chat
 
-    init(group: GroupSummary, engine: NMPEngine) {
+    init(group: GroupSummary, allGroups: [GroupSummary], engine: NMPEngine) {
         self.group = group
-        _model = State(initialValue: RoomTimelineModel(engine: engine, groupID: group.id))
+        self.allGroups = allGroups
+        self.engine = engine
+        _model = State(initialValue: RoomTimelineModel(engine: engine, groupID: group.localID))
     }
 
     var body: some View {
@@ -28,36 +31,58 @@ struct RoomView: View {
         }
         .navigationTitle(group.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if !childGroups.isEmpty {
+                    NavigationLink {
+                        ChildChannelsView(
+                            parent: group,
+                            children: childGroups,
+                            allGroups: allGroups,
+                            engine: engine
+                        )
+                    } label: {
+                        Label("Subchannels", systemImage: "rectangle.stack")
+                    }
+                    .accessibilityIdentifier("room-subchannels-button")
+                }
+
+                NavigationLink {
+                    peopleView
+                } label: {
+                    Label("People", systemImage: "person.2")
+                }
+                .accessibilityIdentifier("room-people-button")
+            }
+        }
         .task {
             await model.observe()
         }
     }
 
-    @ViewBuilder
     private var roomContent: some View {
-        VStack(spacing: 0) {
-            RoomModePicker(selection: $selectedPane)
+        ChatTimelineView(
+            messages: model.messages,
+            hasReceivedSnapshot: model.hasReceivedMessages,
+            error: model.messageError
+        )
+    }
 
-            Group {
-                switch selectedPane {
-                case .chat:
-                    ChatTimelineView(
-                        messages: model.messages,
-                        hasReceivedSnapshot: model.hasReceivedMessages,
-                        error: model.messageError
-                    )
-                case .people:
-                    RoomPeopleView(
-                        people: model.people,
-                        hasReceivedMembership: model.hasReceivedMembership,
-                        hasMembershipMetadata: model.hasMembershipMetadata,
-                        membershipError: model.membershipError,
-                        hasReceivedActivities: model.hasReceivedActivities,
-                        activityError: model.activityError
-                    )
-                }
-            }
-        }
+    private var childGroups: [GroupSummary] {
+        GroupDirectoryProjection.directChildren(of: group, in: allGroups)
+    }
+
+    private var peopleView: some View {
+        RoomPeopleView(
+            people: model.people,
+            hasReceivedMembership: model.hasReceivedMembership,
+            hasMembershipMetadata: model.hasMembershipMetadata,
+            membershipError: model.membershipError,
+            hasReceivedActivities: model.hasReceivedActivities,
+            activityError: model.activityError
+        )
+        .navigationTitle("People")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

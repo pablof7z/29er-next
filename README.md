@@ -34,8 +34,10 @@ The preview bundle identifier is `io.f7z.app29er.next`, so it installs beside th
 
 - Persistent NMP cache in Application Support.
 - App-owned indexer and NIP-29 operator relay configuration.
-- Live room metadata query (`kind:39000`).
-- One scope-bound room query for chat (`kind:9`) and live agent activity (`kind:30315`), filtered by the selected group's `h` tag.
+- Live room metadata query (`kind:39000`) with group identity keyed by host relay plus local group id.
+- Read-only subgroup navigation from exactly one child-side `parent` tag in relay-authored metadata. Conflicting or incomplete edges are not inferred; the unlinked group remains visible at the root.
+- Independent scope-bound room queries for chat (`kind:9`), membership (`kind:39002`), and live agent activity (`kind:30315`), filtered by the selected group.
+- Native room toolbar navigation to direct subchannels and the People roster; Chat remains the primary room screen.
 - Kind:30315 replacement and NIP-40 expiry are applied by NMP; Swift only projects the current rows for display.
 - Explicit session key import through NMP's `addAccount` and `setActiveAccount` surface. The app retains only the returned public key.
 - Ending an identity session shuts down the credential-owning engine and creates a fresh read-only engine over the same event store.
