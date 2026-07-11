@@ -1,0 +1,3 @@
+[submodule "Dependencies/nmp"]
+	path = Dependencies/nmp
+	url = https://github.com/pablof7z/nmp.git

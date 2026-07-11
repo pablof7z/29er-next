@@ -1,0 +1,10 @@
+.DS_Store
+.build/
+.xcodebuildmcp/
+DerivedData/
+ios/DerivedData/
+ios/Generated-Info.plist
+ios/TwentyNinerNext.xcodeproj/
+*.xcresult
+*.xcuserstate
+xcuserdata/

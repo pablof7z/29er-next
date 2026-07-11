@@ -1,0 +1,66 @@
+import XCTest
+@testable import TwentyNinerNext
+
+final class NIP29ViewProjectionTests: XCTestCase {
+    func testGroupProjectionUsesNIP29MetadataTags() throws {
+        let group = try XCTUnwrap(
+            NIP29ViewProjection.group(
+                eventID: "event-1",
+                kind: 39_000,
+                tags: [
+                    ["d", "general"],
+                    ["name", "General"],
+                    ["about", "The main room"],
+                    ["picture", "https://example.com/room.png"],
+                    ["public"],
+                    ["open"],
+                ]
+            )
+        )
+
+        XCTAssertEqual(group.id, "general")
+        XCTAssertEqual(group.name, "General")
+        XCTAssertEqual(group.about, "The main room")
+        XCTAssertEqual(group.pictureURL?.absoluteString, "https://example.com/room.png")
+        XCTAssertTrue(group.isPublic)
+        XCTAssertTrue(group.isOpen)
+    }
+
+    func testGroupProjectionFallsBackToIdentifier() throws {
+        let group = try XCTUnwrap(
+            NIP29ViewProjection.group(
+                eventID: "event-2",
+                kind: 39_000,
+                tags: [["d", "ops"]]
+            )
+        )
+
+        XCTAssertEqual(group.name, "ops")
+        XCTAssertEqual(group.initials, "O")
+    }
+
+    func testNonMetadataEventIsNotAGroup() {
+        XCTAssertNil(
+            NIP29ViewProjection.group(
+                eventID: "event-3",
+                kind: 9,
+                tags: [["d", "general"]]
+            )
+        )
+    }
+
+    func testKindNineBecomesRoomMessage() throws {
+        let message = try XCTUnwrap(
+            NIP29ViewProjection.message(
+                eventID: "message-1",
+                pubkey: "0123456789abcdef0123456789abcdef",
+                createdAt: 1_700_000_000,
+                kind: 9,
+                content: "hello"
+            )
+        )
+
+        XCTAssertEqual(message.content, "hello")
+        XCTAssertEqual(message.authorLabel, "01234567…89abcdef")
+    }
+}
