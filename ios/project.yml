@@ -1,0 +1,66 @@
+name: TwentyNinerNext
+options:
+  bundleIdPrefix: io.f7z
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+packages:
+  NMP:
+    path: ../Dependencies/nmp/Packages/NMP
+targets:
+  TwentyNinerNext:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    dependencies:
+      - package: NMP
+        product: NMP
+    info:
+      path: Generated-Info.plist
+      properties:
+        UILaunchScreen: {}
+        CFBundleDisplayName: 29er Next
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        NMPIndexerRelays:
+          - wss://purplepag.es
+          - wss://relay.primal.net
+        NMPGroupRelay: wss://nip29.f7z.io
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.f7z.app29er.next
+        PRODUCT_MODULE_NAME: TwentyNinerNext
+        PRODUCT_NAME: TwentyNinerNext
+        DEVELOPMENT_TEAM: 456SHKPP26
+        TARGETED_DEVICE_FAMILY: "1"
+  TwentyNinerNextTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: TwentyNinerNext
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.f7z.app29er.next.tests
+        GENERATE_INFOPLIST_FILE: YES
+        DEVELOPMENT_TEAM: 456SHKPP26
+schemes:
+  TwentyNinerNext:
+    build:
+      targets:
+        TwentyNinerNext: all
+        TwentyNinerNextTests: [test]
+    test:
+      targets:
+        - TwentyNinerNextTests
