@@ -89,14 +89,6 @@ final class AppModel {
         }
     }
 
-    var relayCount: Int {
-        diagnostics.relays.count
-    }
-
-    var activeSubscriptionCount: UInt32 {
-        diagnostics.relays.reduce(0) { $0 + $1.wireSubCount }
-    }
-
     func signIn(secretKey: String) async {
         guard let engine else {
             identityError = "NMP is not available."

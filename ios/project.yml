@@ -30,7 +30,6 @@ targets:
           UIApplicationSupportsMultipleScenes: false
         NMPIndexerRelays:
           - wss://purplepag.es
-          - wss://relay.primal.net
         NMPGroupRelay: wss://nip29.f7z.io
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
