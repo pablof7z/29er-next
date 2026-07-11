@@ -15,14 +15,19 @@ final class AppModel {
     private(set) var groups: [GroupSummary] = []
     private(set) var coverage: Coverage = .unknown
     private(set) var diagnostics = DiagnosticsSnapshot()
+    private(set) var activePubkey: String?
+    private(set) var isSigningIn = false
+    private(set) var identityError: String?
 
-    let engine: NMPEngine?
-    private var isRunning = false
+    private(set) var engine: NMPEngine?
+    private(set) var engineGeneration = 0
+    private var engineConfig: NMPConfig?
     let groupRelay: String
 
     init(
         fileManager: FileManager = .default,
-        operatorConfiguration: OperatorConfiguration? = nil
+        operatorConfiguration: OperatorConfiguration? = nil,
+        applicationSupportURL: URL? = nil
     ) {
         let configuration: OperatorConfiguration
         if let operatorConfiguration {
@@ -34,6 +39,7 @@ final class AppModel {
             case .invalid(let error):
                 groupRelay = ""
                 engine = nil
+                engineConfig = nil
                 state = .failed(error.localizedDescription)
                 return
             }
@@ -41,39 +47,44 @@ final class AppModel {
 
         groupRelay = configuration.groupRelay
         do {
-            let support = try fileManager.url(
-                for: .applicationSupportDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: true
-            )
+            let support: URL
+            if let applicationSupportURL {
+                support = applicationSupportURL
+            } else {
+                support = try fileManager.url(
+                    for: .applicationSupportDirectory,
+                    in: .userDomainMask,
+                    appropriateFor: nil,
+                    create: true
+                )
+            }
             let appDirectory = support.appendingPathComponent("29er-next", isDirectory: true)
             try fileManager.createDirectory(at: appDirectory, withIntermediateDirectories: true)
-            engine = try NMPEngine(
-                config: NMPConfig(
-                    storePath: appDirectory.appendingPathComponent("nmp.redb").path,
-                    indexerRelays: configuration.indexerRelays,
-                    appRelays: [configuration.groupRelay]
-                )
+            let engineConfig = NMPConfig(
+                storePath: appDirectory.appendingPathComponent("nmp.redb").path,
+                indexerRelays: configuration.indexerRelays,
+                appRelays: [configuration.groupRelay]
             )
+            self.engineConfig = engineConfig
+            engine = try NMPEngine(config: engineConfig)
         } catch {
             engine = nil
+            engineConfig = nil
             state = .failed(error.localizedDescription)
         }
     }
 
     func run() async {
-        guard let engine, !isRunning else { return }
-        isRunning = true
+        guard let engine else { return }
+        let generation = engineGeneration
         state = .observing
-        defer { isRunning = false }
 
         await withTaskGroup(of: Void.self) { group in
             group.addTask { [weak self] in
-                await self?.observeGroups(using: engine)
+                await self?.observeGroups(using: engine, generation: generation)
             }
             group.addTask { [weak self] in
-                await self?.observeDiagnostics(using: engine)
+                await self?.observeDiagnostics(using: engine, generation: generation)
             }
         }
     }
@@ -86,28 +97,98 @@ final class AppModel {
         diagnostics.relays.reduce(0) { $0 + $1.wireSubCount }
     }
 
-    private func observeGroups(using engine: NMPEngine) async {
+    func signIn(secretKey: String) async {
+        guard let engine else {
+            identityError = "NMP is not available."
+            return
+        }
+        guard !isSigningIn else { return }
+
+        isSigningIn = true
+        identityError = nil
+        defer { isSigningIn = false }
+
+        do {
+            let pubkey = try await engine.addAccount(secretKey: secretKey)
+            do {
+                try engine.setActiveAccount(pubkey)
+                activePubkey = pubkey
+            } catch {
+                replaceWithReadOnlyEngine(identityError: Self.identityMessage(for: error))
+            }
+        } catch {
+            activePubkey = nil
+            identityError = Self.identityMessage(for: error)
+        }
+    }
+
+    func endIdentitySession() {
+        replaceWithReadOnlyEngine(identityError: nil)
+    }
+
+    func clearIdentityError() {
+        identityError = nil
+    }
+
+    private func observeGroups(using engine: NMPEngine, generation: Int) async {
         do {
             let query = try engine.observe(NMPFilter(kinds: [39_000], limit: 250))
             defer { query.cancel() }
 
             for await batch in query {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, generation == engineGeneration else { return }
                 groups = NIP29ViewProjection.groups(from: batch.rows)
                 coverage = batch.coverage
             }
         } catch {
-            state = .failed(error.localizedDescription)
+            if generation == engineGeneration {
+                state = .failed(error.localizedDescription)
+            }
         }
     }
 
-    private func observeDiagnostics(using engine: NMPEngine) async {
+    private func observeDiagnostics(using engine: NMPEngine, generation: Int) async {
         let observation = engine.observeDiagnostics()
         defer { observation.cancel() }
 
         for await snapshot in observation {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, generation == engineGeneration else { return }
             diagnostics = snapshot
         }
     }
+
+    private func replaceWithReadOnlyEngine(identityError: String?) {
+        let oldEngine = engine
+        engine = nil
+        activePubkey = nil
+        self.identityError = identityError
+        state = .starting
+        oldEngine?.shutdown()
+
+        do {
+            guard let engineConfig else {
+                throw IdentityLifecycleError.missingConfiguration
+            }
+            engine = try NMPEngine(config: engineConfig)
+        } catch {
+            engine = nil
+            state = .failed("NMP could not restart a read-only session.")
+        }
+        engineGeneration &+= 1
+    }
+
+    private static func identityMessage(for error: Error) -> String {
+        switch error as? NMPError {
+        case .invalidSecretKey:
+            return "That secret key is not a valid nsec or secret hex key."
+        case .signerHasNoPublicKey:
+            return "NMP could not derive a public key for this signer."
+        default:
+            return "NMP could not sign in this account."
+        }
+    }
+}
+
+private enum IdentityLifecycleError: Error {
+    case missingConfiguration
 }
