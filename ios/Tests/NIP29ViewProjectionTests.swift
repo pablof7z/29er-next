@@ -108,4 +108,72 @@ final class NIP29ViewProjectionTests: XCTestCase {
             )
         )
     }
+
+    func testKind39002BecomesDeduplicatedRoomMembers() {
+        let members = NIP29ViewProjection.members(
+            eventID: "members-event",
+            kind: 39_002,
+            tags: [
+                ["d", "nip29"],
+                ["p", "member-b"],
+                ["p", "member-a"],
+                ["p", "member-a"],
+                ["p", ""],
+            ]
+        )
+
+        XCTAssertEqual(Set(members.map(\.pubkey)), ["member-a", "member-b"])
+        XCTAssertEqual(Set(members.map(\.membershipEventID)), ["members-event"])
+    }
+
+    func testPeopleJoinMembershipAndActivityByPubkey() throws {
+        let member = RoomMember(
+            id: "member-a",
+            membershipEventID: "members-event",
+            pubkey: "member-a"
+        )
+        let activity = try XCTUnwrap(makeActivity(pubkey: "member-a", createdAt: 200))
+
+        let people = NIP29ViewProjection.people(members: [member], activities: [activity])
+
+        XCTAssertEqual(people.members.count, 1)
+        XCTAssertEqual(people.members.first?.pubkey, "member-a")
+        XCTAssertEqual(people.members.first?.activity?.eventID, "status-200")
+        XCTAssertTrue(people.activeHere.isEmpty)
+    }
+
+    func testStatusOnlyPubkeyIsActiveHereNotMember() throws {
+        let activity = try XCTUnwrap(makeActivity(pubkey: "session-pubkey", createdAt: 200))
+
+        let people = NIP29ViewProjection.people(members: [], activities: [activity])
+
+        XCTAssertTrue(people.members.isEmpty)
+        XCTAssertEqual(people.activeHere.map(\.pubkey), ["session-pubkey"])
+        XCTAssertFalse(try XCTUnwrap(people.activeHere.first).isMember)
+    }
+
+    func testPeopleStayFlatWithOneLatestActivityPerPubkey() throws {
+        let older = try XCTUnwrap(makeActivity(pubkey: "session-pubkey", createdAt: 100))
+        let newer = try XCTUnwrap(makeActivity(pubkey: "session-pubkey", createdAt: 200))
+
+        let people = NIP29ViewProjection.people(members: [], activities: [older, newer])
+
+        XCTAssertEqual(people.activeHere.count, 1)
+        XCTAssertEqual(people.activeHere.first?.activity?.eventID, "status-200")
+    }
+
+    private func makeActivity(pubkey: String, createdAt: UInt64) -> AgentActivity? {
+        NIP29ViewProjection.activity(
+            eventID: "status-\(createdAt)",
+            pubkey: pubkey,
+            createdAt: createdAt,
+            kind: 30_315,
+            tags: [
+                ["d", "session-\(createdAt)"],
+                ["status", "busy"],
+                ["expiration", "\(createdAt + 90)"],
+            ],
+            content: "working"
+        )
+    }
 }

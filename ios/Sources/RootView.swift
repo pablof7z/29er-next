@@ -79,26 +79,7 @@ struct RootView: View {
                 }
             }
             .listStyle(.plain)
-            .safeAreaInset(edge: .bottom) {
-                statusBar
-            }
         }
-    }
-
-    private var statusBar: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(model.relayCount > 0 ? Color.green : Color.orange)
-                .frame(width: 7, height: 7)
-            Text("\(model.groups.count) rooms")
-            Spacer()
-            Text("\(model.activeSubscriptionCount) live subscriptions")
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 9)
-        .background(.bar)
     }
 
     private var relayHost: String {
