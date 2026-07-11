@@ -129,7 +129,7 @@ final class AppModel {
 
             for await batch in query {
                 guard !Task.isCancelled, generation == engineGeneration else { return }
-                groups = NIP29ViewProjection.groups(from: batch.rows)
+                groups = GroupDirectoryProjection.groups(from: batch.rows, hostRelay: groupRelay)
                 coverage = batch.coverage
             }
         } catch {

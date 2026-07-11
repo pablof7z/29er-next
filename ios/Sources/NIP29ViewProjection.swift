@@ -1,21 +1,6 @@
 import Foundation
 import NMP
 
-struct GroupSummary: Identifiable, Hashable, Sendable {
-    let id: String
-    let name: String
-    let about: String?
-    let pictureURL: URL?
-    let isPublic: Bool
-    let isOpen: Bool
-
-    var initials: String {
-        let words = name.split(separator: " ").prefix(2)
-        let value = words.compactMap(\.first).map(String.init).joined()
-        return value.isEmpty ? "#" : value.uppercased()
-    }
-}
-
 struct RoomMessage: Identifiable, Hashable, Sendable {
     let id: String
     let author: String
@@ -80,13 +65,6 @@ struct RoomPeople: Hashable, Sendable {
 }
 
 enum NIP29ViewProjection {
-    static func groups(from rows: [Row]) -> [GroupSummary] {
-        rows.compactMap(group(from:))
-            .sorted {
-                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-            }
-    }
-
     static func messages(from rows: [Row]) -> [RoomMessage] {
         rows.compactMap(message(from:))
             .sorted {
@@ -155,27 +133,6 @@ enum NIP29ViewProjection {
         return RoomPeople(members: listed, activeHere: activeHere)
     }
 
-    static func group(
-        eventID: String,
-        kind: UInt16,
-        tags: [[String]]
-    ) -> GroupSummary? {
-        guard kind == 39_000, let groupID = firstTag("d", in: tags), !groupID.isEmpty else {
-            return nil
-        }
-        let name = firstTag("name", in: tags).flatMap { $0.isEmpty ? nil : $0 } ?? groupID
-        let about = firstTag("about", in: tags).flatMap { $0.isEmpty ? nil : $0 }
-        let pictureURL = firstTag("picture", in: tags).flatMap(URL.init(string:))
-        return GroupSummary(
-            id: groupID,
-            name: name,
-            about: about,
-            pictureURL: pictureURL,
-            isPublic: containsMarker("public", in: tags),
-            isOpen: containsMarker("open", in: tags)
-        )
-    }
-
     static func message(
         eventID: String,
         pubkey: String,
@@ -242,10 +199,6 @@ enum NIP29ViewProjection {
         }
     }
 
-    private static func group(from row: Row) -> GroupSummary? {
-        group(eventID: row.id, kind: row.kind, tags: row.tags)
-    }
-
     private static func message(from row: Row) -> RoomMessage? {
         message(
             eventID: row.id,
@@ -273,10 +226,6 @@ enum NIP29ViewProjection {
 
     private static func nonEmptyTag(_ name: String, in tags: [[String]]) -> String? {
         firstTag(name, in: tags).flatMap { $0.isEmpty ? nil : $0 }
-    }
-
-    private static func containsMarker(_ name: String, in tags: [[String]]) -> Bool {
-        tags.contains { $0.first == name }
     }
 
     private static func newestRowFirst(_ lhs: Row, _ rhs: Row) -> Bool {

@@ -25,7 +25,7 @@ struct RootView: View {
             .navigationTitle("29er")
             .navigationDestination(for: GroupSummary.self) { group in
                 if let engine = model.engine {
-                    RoomView(group: group, engine: engine)
+                    RoomView(group: group, allGroups: model.groups, engine: engine)
                 }
             }
             .toolbar {
@@ -73,7 +73,7 @@ struct RootView: View {
                 ProgressView()
             }
         } else {
-            List(model.groups) { group in
+            List(GroupDirectoryProjection.roots(in: model.groups)) { group in
                 NavigationLink(value: group) {
                     GroupRow(group: group)
                 }
@@ -87,7 +87,7 @@ struct RootView: View {
     }
 }
 
-private struct GroupRow: View {
+struct GroupRow: View {
     let group: GroupSummary
 
     var body: some View {
@@ -97,7 +97,7 @@ private struct GroupRow: View {
                 Text(group.name)
                     .font(.headline)
                     .lineLimit(1)
-                Text(group.about ?? group.id)
+                Text(group.about ?? group.localID)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -119,7 +119,7 @@ struct GroupAvatar: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(group.id.avatarColor.gradient)
+                .fill(group.localID.avatarColor.gradient)
             Text(group.initials)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
