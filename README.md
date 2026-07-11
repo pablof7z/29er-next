@@ -37,8 +37,12 @@ The preview bundle identifier is `io.f7z.app29er.next`, so it installs beside th
 - Live room metadata query (`kind:39000`).
 - One scope-bound room query for chat (`kind:9`) and live agent activity (`kind:30315`), filtered by the selected group's `h` tag.
 - Kind:30315 replacement and NIP-40 expiry are applied by NMP; Swift only projects the current rows for display.
+- Explicit session key import through NMP's `addAccount` and `setActiveAccount` surface. The app retains only the returned public key.
+- Ending an identity session shuts down the credential-owning engine and creates a fresh read-only engine over the same event store.
 - Live per-relay NMP diagnostics.
 
-The top relay selector is the next upstream-backed slice. Its signed-in list is the user's NIP-51 relay set (`kind:30002`, `d=nip29`), tracked by [NMP #63](https://github.com/pablof7z/nmp/issues/63). Selected-host read authority is tracked by [NMP #1](https://github.com/pablof7z/nmp/issues/1); the app will not emulate either contract by rebuilding the engine or maintaining a Swift-only relay list.
+Identity is deliberately session-only. 29er Next does not persist an nsec, and it does not describe this import surface as production-secure persistent login. Standard platform vault providers, credential reset, and remote-signer reattachment remain upstream NMP work.
+
+The top relay selector is the next upstream-backed slice. Its signed-in hosts come from typed NIP-29 composition over the user's NIP-51 remembered-groups list (`kind:10009`), tracked by [NMP #63](https://github.com/pablof7z/nmp/issues/63). Selected-host read authority is tracked by [NMP #1](https://github.com/pablof7z/nmp/issues/1); the app will not emulate either contract by maintaining a Swift-only relay list.
 
 Tracked by [issue #1](https://github.com/pablof7z/29er-next/issues/1).

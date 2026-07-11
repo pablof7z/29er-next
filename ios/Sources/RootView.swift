@@ -4,6 +4,7 @@ import SwiftUI
 struct RootView: View {
     @Bindable var model: AppModel
     @State private var showingDiagnostics = false
+    @State private var showingIdentity = false
 
     var body: some View {
         NavigationStack {
@@ -30,6 +31,18 @@ struct RootView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        showingIdentity = true
+                    } label: {
+                        Label(
+                            model.activePubkey == nil ? "Sign In" : "Account",
+                            systemImage: model.activePubkey == nil
+                                ? "person.crop.circle"
+                                : "person.crop.circle.badge.checkmark"
+                        )
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         showingDiagnostics = true
                     } label: {
                         Label("Diagnostics", systemImage: "waveform.path.ecg")
@@ -39,8 +52,12 @@ struct RootView: View {
             .sheet(isPresented: $showingDiagnostics) {
                 DiagnosticsView(snapshot: model.diagnostics)
             }
+            .sheet(isPresented: $showingIdentity) {
+                IdentitySheet(model: model)
+            }
         }
-        .task {
+        .id(model.engineGeneration)
+        .task(id: model.engineGeneration) {
             await model.run()
         }
     }
