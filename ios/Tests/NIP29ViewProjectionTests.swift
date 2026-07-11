@@ -63,4 +63,49 @@ final class NIP29ViewProjectionTests: XCTestCase {
         XCTAssertEqual(message.content, "hello")
         XCTAssertEqual(message.authorLabel, "01234567…89abcdef")
     }
+
+    func testKind30315BecomesLiveAgentActivity() throws {
+        let activity = try XCTUnwrap(
+            NIP29ViewProjection.activity(
+                eventID: "status-event",
+                pubkey: "0123456789abcdef0123456789abcdef",
+                createdAt: 1_700_000_000,
+                kind: 30_315,
+                tags: [
+                    ["d", "session-7"],
+                    ["title", "Rebuild 29er"],
+                    ["status", "busy"],
+                    ["host", "laptop"],
+                    ["slug", "codex-slate-falcon-434"],
+                    ["rel-cwd", "Work/29er-next"],
+                    ["h", "nostr-multi-platform"],
+                    ["expiration", "1700000090"],
+                ],
+                content: "wiring selected-room activity"
+            )
+        )
+
+        XCTAssertEqual(activity.id, "0123456789abcdef0123456789abcdef:session-7")
+        XCTAssertEqual(activity.authorLabel, "codex-slate-falcon-434")
+        XCTAssertEqual(activity.title, "Rebuild 29er")
+        XCTAssertEqual(activity.activityLabel, "wiring selected-room activity")
+        XCTAssertTrue(activity.isBusy)
+        XCTAssertEqual(activity.expiresAt, 1_700_000_090)
+    }
+
+    func testKind30315WithoutLivenessBoundaryIsNotLiveActivity() {
+        XCTAssertNil(
+            NIP29ViewProjection.activity(
+                eventID: "status-event",
+                pubkey: "pubkey",
+                createdAt: 1_700_000_000,
+                kind: 30_315,
+                tags: [
+                    ["d", "session-7"],
+                    ["status", "idle"],
+                ],
+                content: ""
+            )
+        )
+    }
 }

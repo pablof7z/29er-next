@@ -2,7 +2,7 @@
 
 Greenfield 29er client built on the new [NMP](https://github.com/pablof7z/nmp) engine.
 
-The first vertical slice is intentionally read-only: it discovers public NIP-29 rooms, opens live kind:9 room timelines, and exposes NMP's permanent diagnostics. Durable publishing and identity persistence will arrive through NMP's canonical SDK surfaces instead of being reimplemented in the app.
+The first vertical slice is intentionally read-only: it discovers public NIP-29 rooms, opens live room timelines, renders current kind:30315 agent activity, and exposes NMP's permanent diagnostics. Durable publishing and identity persistence will arrive through NMP's canonical SDK surfaces instead of being reimplemented in the app.
 
 ## Architecture
 
@@ -35,7 +35,10 @@ The preview bundle identifier is `io.f7z.app29er.next`, so it installs beside th
 - Persistent NMP cache in Application Support.
 - App-owned indexer and NIP-29 operator relay configuration.
 - Live room metadata query (`kind:39000`).
-- Scope-bound room timeline query (`kind:9`, `h` tag), with an honest blocked state while the current NMP grammar cannot yet express `h` ([NMP #45](https://github.com/pablof7z/nmp/issues/45)).
+- One scope-bound room query for chat (`kind:9`) and live agent activity (`kind:30315`), filtered by the selected group's `h` tag.
+- Kind:30315 replacement and NIP-40 expiry are applied by NMP; Swift only projects the current rows for display.
 - Live per-relay NMP diagnostics.
+
+The top relay selector is the next upstream-backed slice. Its signed-in list is the user's NIP-51 relay set (`kind:30002`, `d=nip29`), tracked by [NMP #63](https://github.com/pablof7z/nmp/issues/63). Selected-host read authority is tracked by [NMP #1](https://github.com/pablof7z/nmp/issues/1); the app will not emulate either contract by rebuilding the engine or maintaining a Swift-only relay list.
 
 Tracked by [issue #1](https://github.com/pablof7z/29er-next/issues/1).

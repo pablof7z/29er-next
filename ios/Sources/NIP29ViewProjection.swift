@@ -28,6 +28,31 @@ struct RoomMessage: Identifiable, Hashable, Sendable {
     }
 }
 
+struct AgentActivity: Identifiable, Hashable, Sendable {
+    let id: String
+    let eventID: String
+    let author: String
+    let sessionID: String
+    let title: String
+    let activity: String
+    let isBusy: Bool
+    let host: String?
+    let slug: String?
+    let relativeWorkingDirectory: String?
+    let expiresAt: UInt64
+
+    var authorLabel: String {
+        if let slug, !slug.isEmpty { return slug }
+        guard author.count > 16 else { return author }
+        return "\(author.prefix(8))…\(author.suffix(8))"
+    }
+
+    var activityLabel: String {
+        if !activity.isEmpty { return activity }
+        return isBusy ? "Working" : "Idle"
+    }
+}
+
 enum NIP29ViewProjection {
     static func groups(from rows: [Row]) -> [GroupSummary] {
         rows.compactMap(group(from:))
@@ -41,6 +66,17 @@ enum NIP29ViewProjection {
             .sorted {
                 if $0.createdAt == $1.createdAt { return $0.id < $1.id }
                 return $0.createdAt < $1.createdAt
+            }
+    }
+
+    static func activities(from rows: [Row]) -> [AgentActivity] {
+        rows.compactMap(activity(from:))
+            .sorted {
+                if $0.isBusy != $1.isBusy { return $0.isBusy }
+                if $0.title != $1.title {
+                    return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+                }
+                return $0.id < $1.id
             }
     }
 
@@ -76,6 +112,40 @@ enum NIP29ViewProjection {
         return RoomMessage(id: eventID, author: pubkey, createdAt: createdAt, content: content)
     }
 
+    static func activity(
+        eventID: String,
+        pubkey: String,
+        createdAt: UInt64,
+        kind: UInt16,
+        tags: [[String]],
+        content: String
+    ) -> AgentActivity? {
+        guard kind == 30_315,
+              let sessionID = firstTag("d", in: tags),
+              !sessionID.isEmpty,
+              let status = firstTag("status", in: tags),
+              status == "busy" || status == "idle",
+              let expirationValue = firstTag("expiration", in: tags),
+              let expiresAt = UInt64(expirationValue),
+              expiresAt >= createdAt else {
+            return nil
+        }
+
+        return AgentActivity(
+            id: "\(pubkey):\(sessionID)",
+            eventID: eventID,
+            author: pubkey,
+            sessionID: sessionID,
+            title: firstTag("title", in: tags) ?? "",
+            activity: content,
+            isBusy: status == "busy",
+            host: nonEmptyTag("host", in: tags),
+            slug: nonEmptyTag("slug", in: tags),
+            relativeWorkingDirectory: nonEmptyTag("rel-cwd", in: tags),
+            expiresAt: expiresAt
+        )
+    }
+
     private static func group(from row: Row) -> GroupSummary? {
         group(eventID: row.id, kind: row.kind, tags: row.tags)
     }
@@ -90,8 +160,23 @@ enum NIP29ViewProjection {
         )
     }
 
+    private static func activity(from row: Row) -> AgentActivity? {
+        activity(
+            eventID: row.id,
+            pubkey: row.pubkey,
+            createdAt: row.createdAt,
+            kind: row.kind,
+            tags: row.tags,
+            content: row.content
+        )
+    }
+
     private static func firstTag(_ name: String, in tags: [[String]]) -> String? {
         tags.first { $0.first == name && $0.count > 1 }?[1]
+    }
+
+    private static func nonEmptyTag(_ name: String, in tags: [[String]]) -> String? {
+        firstTag(name, in: tags).flatMap { $0.isEmpty ? nil : $0 }
     }
 
     private static func containsMarker(_ name: String, in tags: [[String]]) -> Bool {
