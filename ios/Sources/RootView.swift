@@ -78,8 +78,11 @@ struct RootView: View {
                 }
             }
             .toolbar {
-                if model.activePubkey != nil {
-                    ToolbarItem(placement: .topBarTrailing) {
+                // One group with a @ViewBuilder body: a conditional first item
+                // inserts reliably when the account signs in, which a
+                // conditional standalone ToolbarItem does not.
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if model.activePubkey != nil {
                         Button {
                             path.append(InboxRoute())
                         } label: {
@@ -87,8 +90,6 @@ struct RootView: View {
                         }
                         .accessibilityIdentifier("inbox-button")
                     }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingIdentity = true
                     } label: {
@@ -99,8 +100,6 @@ struct RootView: View {
                                 : "person.crop.circle.badge.checkmark"
                         )
                     }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingDiagnostics = true
                     } label: {
