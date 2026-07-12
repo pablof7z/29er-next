@@ -11,6 +11,8 @@ import Observation
 final class InboxModel {
     private(set) var mentions: [Mention] = []
     private(set) var profiles = ProfileBook()
+    private(set) var mentionError: String?
+    private(set) var profileError: String?
 
     let reads: MentionReads
 
@@ -49,10 +51,11 @@ final class InboxModel {
             for await batch in query {
                 guard !Task.isCancelled else { return }
                 mentions = MentionProjection.mentions(from: batch.rows, recipient: recipient)
+                mentionError = nil
             }
         } catch {
-            // The inbox is enrichment; on failure the app still runs unmentioned.
-            return
+            guard !Task.isCancelled else { return }
+            mentionError = error.localizedDescription
         }
     }
 
@@ -79,10 +82,11 @@ final class InboxModel {
             for await batch in query {
                 guard !Task.isCancelled else { return }
                 profiles = RoomProfileProjection.profiles(from: batch.rows)
+                profileError = nil
             }
         } catch {
-            // Identity is enrichment; the inbox still renders shortened-hex.
-            return
+            guard !Task.isCancelled else { return }
+            profileError = error.localizedDescription
         }
     }
 }
