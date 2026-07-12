@@ -1,4 +1,3 @@
-import Foundation
 import NMP
 import Observation
 
@@ -41,8 +40,9 @@ final class InboxModel {
 
     private func observeMentions() async {
         do {
-            let query = try engine.observe(
-                NMPFilter(kinds: [9], tags: ["p": .literal([recipient])], limit: 500)
+            let query = try await openNMPQuery(
+                engine: engine,
+                filter: NMPFilter(kinds: [9], tags: ["p": .literal([recipient])], limit: 500)
             )
             defer { query.cancel() }
 
@@ -61,12 +61,19 @@ final class InboxModel {
         // binding so demand grows as new mention authors appear. NMP owns the
         // routing; the app only declares which authors it cares about.
         let authors: NMPBinding = .derived(
-            inner: NMPFilter(kinds: [9], tags: ["p": .literal([recipient])]),
+            inner: NMPFilter(
+                kinds: [9],
+                tags: ["p": .literal([recipient])],
+                limit: 500
+            ),
             project: .authors
         )
 
         do {
-            let query = try engine.observe(NMPFilter(kinds: [0], authors: authors, limit: 500))
+            let query = try await openNMPQuery(
+                engine: engine,
+                filter: NMPFilter(kinds: [0], authors: authors, limit: 500)
+            )
             defer { query.cancel() }
 
             for await batch in query {

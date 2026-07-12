@@ -124,7 +124,10 @@ final class AppModel {
 
     private func observeGroups(using engine: NMPEngine, generation: Int) async {
         do {
-            let query = try engine.observe(NMPFilter(kinds: [39_000], limit: 250))
+            let query = try await openNMPQuery(
+                engine: engine,
+                filter: NMPFilter(kinds: [39_000], limit: 250)
+            )
             defer { query.cancel() }
 
             for await batch in query {

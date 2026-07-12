@@ -1,4 +1,3 @@
-import NMP
 import SwiftUI
 
 struct SubchannelsRoute: Hashable {

@@ -1,4 +1,3 @@
-import NMP
 import SwiftUI
 
 /// The one channel list, used for both the root directory and any subchannel

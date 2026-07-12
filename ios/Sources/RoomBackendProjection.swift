@@ -19,7 +19,7 @@ enum RoomBackendProjection {
         var result: [RoomBackend] = []
         for pubkey in candidatePubkeys where seen.insert(pubkey).inserted {
             guard let profile = profiles.profile(for: pubkey), profile.isBackend else { continue }
-            let label = profile.host ?? profile.displayName ?? shortHex(pubkey)
+            let label = profile.host ?? profile.displayName ?? PubkeyDisplay.shortHex(pubkey)
             result.append(RoomBackend(pubkey: pubkey, label: label, agents: profile.agents))
         }
         return result.sorted { lhs, rhs in
@@ -27,9 +27,5 @@ enum RoomBackendProjection {
             if comparison != .orderedSame { return comparison == .orderedAscending }
             return lhs.pubkey < rhs.pubkey
         }
-    }
-
-    private static func shortHex(_ pubkey: String) -> String {
-        pubkey.count > 16 ? "\(pubkey.prefix(8))…\(pubkey.suffix(8))" : pubkey
     }
 }

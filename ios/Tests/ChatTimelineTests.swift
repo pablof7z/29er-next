@@ -10,20 +10,20 @@ final class ChatTimelineTests: XCTestCase {
         RoomMessage(id: id, author: author, createdAt: createdAt, content: "m-\(id)")
     }
 
-    private func calendar() -> Calendar {
+    private func calendar() throws -> Calendar {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
         return calendar
     }
 
-    func testConsecutiveSameAuthorMessagesShareOneHeader() {
+    func testConsecutiveSameAuthorMessagesShareOneHeader() throws {
         let messages = [
             message("1", author: "alice", at: base),
             message("2", author: "alice", at: base + 60),
-            message("3", author: "alice", at: base + 120),
+            message("3", author: "alice", at: base + 120)
         ]
 
-        let entries = ChatTimeline.entries(for: messages, calendar: calendar())
+        let entries = ChatTimeline.entries(for: messages, calendar: try calendar())
         let headers = entries.compactMap { entry -> Bool? in
             if case .message(_, let showsHeader) = entry { return showsHeader }
             return nil
@@ -32,14 +32,14 @@ final class ChatTimelineTests: XCTestCase {
         XCTAssertEqual(headers, [true, false, false])
     }
 
-    func testAuthorChangeStartsANewHeader() {
+    func testAuthorChangeStartsANewHeader() throws {
         let messages = [
             message("1", author: "alice", at: base),
             message("2", author: "bob", at: base + 30),
-            message("3", author: "alice", at: base + 60),
+            message("3", author: "alice", at: base + 60)
         ]
 
-        let entries = ChatTimeline.entries(for: messages, calendar: calendar())
+        let entries = ChatTimeline.entries(for: messages, calendar: try calendar())
         let headers = entries.compactMap { entry -> Bool? in
             if case .message(_, let showsHeader) = entry { return showsHeader }
             return nil
@@ -48,13 +48,13 @@ final class ChatTimelineTests: XCTestCase {
         XCTAssertEqual(headers, [true, true, true])
     }
 
-    func testGapBeyondGroupingWindowBreaksTheGroup() {
+    func testGapBeyondGroupingWindowBreaksTheGroup() throws {
         let messages = [
             message("1", author: "alice", at: base),
-            message("2", author: "alice", at: base + ChatTimeline.groupingWindow + 1),
+            message("2", author: "alice", at: base + ChatTimeline.groupingWindow + 1)
         ]
 
-        let entries = ChatTimeline.entries(for: messages, calendar: calendar())
+        let entries = ChatTimeline.entries(for: messages, calendar: try calendar())
         let headers = entries.compactMap { entry -> Bool? in
             if case .message(_, let showsHeader) = entry { return showsHeader }
             return nil
@@ -63,13 +63,13 @@ final class ChatTimelineTests: XCTestCase {
         XCTAssertEqual(headers, [true, true])
     }
 
-    func testDaySeparatorInsertedAtEachDayBoundary() {
+    func testDaySeparatorInsertedAtEachDayBoundary() throws {
         let messages = [
             message("1", author: "alice", at: base),
-            message("2", author: "alice", at: base + day),
+            message("2", author: "alice", at: base + day)
         ]
 
-        let entries = ChatTimeline.entries(for: messages, calendar: calendar())
+        let entries = ChatTimeline.entries(for: messages, calendar: try calendar())
         let separatorCount = entries.filter {
             if case .daySeparator = $0 { return true }
             return false
@@ -84,13 +84,13 @@ final class ChatTimelineTests: XCTestCase {
         }
     }
 
-    func testSameDayProducesExactlyOneLeadingSeparator() {
+    func testSameDayProducesExactlyOneLeadingSeparator() throws {
         let messages = [
             message("1", author: "alice", at: base),
-            message("2", author: "bob", at: base + 30),
+            message("2", author: "bob", at: base + 30)
         ]
 
-        let entries = ChatTimeline.entries(for: messages, calendar: calendar())
+        let entries = ChatTimeline.entries(for: messages, calendar: try calendar())
         let separatorCount = entries.filter {
             if case .daySeparator = $0 { return true }
             return false

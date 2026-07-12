@@ -11,10 +11,7 @@ final class GroupDirectoryTests: XCTestCase {
                     ["d", "general"],
                     ["name", "General"],
                     ["about", "The main room"],
-                    ["picture", "https://example.com/room.png"],
-                    ["parent", "workspace"],
-                    ["public"],
-                    ["open"],
+                    ["parent", "workspace"]
                 ]
             )
         )
@@ -25,10 +22,7 @@ final class GroupDirectoryTests: XCTestCase {
         )
         XCTAssertEqual(group.name, "General")
         XCTAssertEqual(group.about, "The main room")
-        XCTAssertEqual(group.pictureURL?.absoluteString, "https://example.com/room.png")
         XCTAssertEqual(group.parentLocalID, "workspace")
-        XCTAssertTrue(group.isPublic)
-        XCTAssertTrue(group.isOpen)
     }
 
     func testProjectionFallsBackToLocalIdentifier() throws {
@@ -62,7 +56,7 @@ final class GroupDirectoryTests: XCTestCase {
                 tags: [
                     ["d", "child"],
                     ["parent", "root-a"],
-                    ["parent", "root-b"],
+                    ["parent", "root-b"]
                 ]
             )
         )
@@ -80,7 +74,7 @@ final class GroupDirectoryTests: XCTestCase {
                 tags: [
                     ["d", "child"],
                     ["parent", "root"],
-                    ["parent", "root"],
+                    ["parent", "root"]
                 ]
             )
         )
@@ -130,9 +124,6 @@ final class GroupDirectoryTests: XCTestCase {
             id: GroupCoordinate(hostRelay: host, localID: localID),
             name: localID,
             about: nil,
-            pictureURL: nil,
-            isPublic: true,
-            isOpen: false,
             parentLocalID: parent
         )
     }

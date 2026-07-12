@@ -67,7 +67,10 @@ struct IdentitySheet: View {
         } header: {
             Text("Nostr secret key")
         } footer: {
-            Text("Your key is handed once to NMP and is not saved by 29er Next. This is a session import, not persistent secure login.")
+            Text(
+                "Your key is handed once to NMP and is not saved by 29er Next. "
+                    + "This is a session import, not persistent secure login."
+            )
         }
 
         if let identityError = model.identityError {

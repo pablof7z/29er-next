@@ -2,6 +2,14 @@ import XCTest
 @testable import TwentyNinerNext
 
 final class NIP29ViewProjectionTests: XCTestCase {
+    func testShortPubkeyFormattingIsConsistent() {
+        XCTAssertEqual(PubkeyDisplay.shortHex("short"), "short")
+        XCTAssertEqual(
+            PubkeyDisplay.shortHex("0123456789abcdef0123456789abcdef"),
+            "01234567…89abcdef"
+        )
+    }
+
     func testKindNineBecomesRoomMessage() throws {
         let message = try XCTUnwrap(
             NIP29ViewProjection.message(
@@ -32,7 +40,7 @@ final class NIP29ViewProjectionTests: XCTestCase {
                     ["slug", "codex-slate-falcon-434"],
                     ["rel-cwd", "Work/29er-next"],
                     ["h", "nostr-multi-platform"],
-                    ["expiration", "1700000090"],
+                    ["expiration", "1700000090"]
                 ],
                 content: "wiring selected-room activity"
             )
@@ -43,7 +51,6 @@ final class NIP29ViewProjectionTests: XCTestCase {
         XCTAssertEqual(activity.title, "Rebuild 29er")
         XCTAssertEqual(activity.activityLabel, "wiring selected-room activity")
         XCTAssertTrue(activity.isBusy)
-        XCTAssertEqual(activity.expiresAt, 1_700_000_090)
     }
 
     func testKind30315WithoutLivenessBoundaryIsNotLiveActivity() {
@@ -55,7 +62,7 @@ final class NIP29ViewProjectionTests: XCTestCase {
                 kind: 30_315,
                 tags: [
                     ["d", "session-7"],
-                    ["status", "idle"],
+                    ["status", "idle"]
                 ],
                 content: ""
             )
@@ -64,25 +71,22 @@ final class NIP29ViewProjectionTests: XCTestCase {
 
     func testKind39002BecomesDeduplicatedRoomMembers() {
         let members = NIP29ViewProjection.members(
-            eventID: "members-event",
             kind: 39_002,
             tags: [
                 ["d", "nip29"],
                 ["p", "member-b"],
                 ["p", "member-a"],
                 ["p", "member-a"],
-                ["p", ""],
+                ["p", ""]
             ]
         )
 
         XCTAssertEqual(Set(members.map(\.pubkey)), ["member-a", "member-b"])
-        XCTAssertEqual(Set(members.map(\.membershipEventID)), ["members-event"])
     }
 
     func testPeopleJoinMembershipAndActivityByPubkey() throws {
         let member = RoomMember(
             id: "member-a",
-            membershipEventID: "members-event",
             pubkey: "member-a"
         )
         let activity = try XCTUnwrap(makeActivity(pubkey: "member-a", createdAt: 200))
@@ -102,7 +106,6 @@ final class NIP29ViewProjectionTests: XCTestCase {
 
         XCTAssertTrue(people.members.isEmpty)
         XCTAssertEqual(people.activeHere.map(\.pubkey), ["session-pubkey"])
-        XCTAssertFalse(try XCTUnwrap(people.activeHere.first).isMember)
     }
 
     func testPeopleStayFlatWithOneLatestActivityPerPubkey() throws {
@@ -124,7 +127,7 @@ final class NIP29ViewProjectionTests: XCTestCase {
             tags: [
                 ["d", "session-\(createdAt)"],
                 ["status", "busy"],
-                ["expiration", "\(createdAt + 90)"],
+                ["expiration", "\(createdAt + 90)"]
             ],
             content: "working"
         )

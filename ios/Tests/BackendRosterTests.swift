@@ -12,7 +12,7 @@ final class BackendRosterTests: XCTestCase {
                 ["p", "owner-pubkey"],
                 ["agent", "claude", "general coding agent"],
                 ["agent", "writer", ""],
-                ["agent", "", "no slug is ignored"],
+                ["agent", "", "no slug is ignored"]
             ]
         )
 
