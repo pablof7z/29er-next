@@ -102,6 +102,16 @@ struct ChatTimelineView: View {
     }
 }
 
+/// Indices of message rows whose frames currently intersect the viewport.
+/// Rows a `LazyVStack` has not instantiated simply do not contribute, so the
+/// union is exactly the set of on-screen rows.
+private struct VisibleRowIndicesKey: PreferenceKey {
+    static var defaultValue: Set<Int> { [] }
+    static func reduce(value: inout Set<Int>, nextValue: () -> Set<Int>) {
+        value.formUnion(nextValue())
+    }
+}
+
 private struct MessageTimelineView: View {
     let messages: [RoomMessage]
     let profiles: ProfileBook
@@ -114,6 +124,7 @@ private struct MessageTimelineView: View {
     @State private var didFocus = false
 
     private let bottomAnchorID = "chat-bottom-anchor"
+    private let scrollSpace = "chat-scroll-space"
 
     private var entries: [TimelineEntry] { ChatTimeline.entries(for: messages) }
 
@@ -139,74 +150,96 @@ private struct MessageTimelineView: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(entries) { entry in
-                        switch entry {
-                        case .daySeparator(_, let label):
-                            DaySeparatorRow(label: label)
-                                .id(entry.id)
-                        case .message(let message, let showsHeader):
-                            MessageRow(message: message, showsHeader: showsHeader, profiles: profiles)
-                                .id(entry.id)
-                                .onAppear { rowAppeared(message) }
-                                .onDisappear { rowDisappeared(message) }
-                        }
-                    }
-
-                    // Sentinel that tracks whether the newest message is on screen.
-                    Color.clear
-                        .frame(height: 1)
-                        .id(bottomAnchorID)
-                        .onAppear { isPinnedToBottom = true }
-                        .onDisappear { isPinnedToBottom = false }
-                }
-            }
-            .defaultScrollAnchor(.bottom)
-            .onChange(of: messages.last?.id) { _, _ in
-                // Only follow new messages when the reader is already at the
-                // bottom; never yank someone who scrolled up to read history.
-                guard isPinnedToBottom else { return }
-                scrollToBottom(proxy)
-            }
-            .onChange(of: messages.count) { _, _ in focusIfNeeded(proxy) }
-            .onAppear { focusIfNeeded(proxy) }
-            .overlay(alignment: .bottomTrailing) {
-                VStack(spacing: 10) {
-                    if !unreadMentionsAbove.isEmpty {
-                        JumpToMentionButton(count: unreadMentionsAbove.count) {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            if let target = unreadMentionsAbove.max() {
-                                scrollTo(messages[target].id, proxy: proxy)
+        // The ScrollView fills this reader, so its height is the viewport
+        // height used to decide which rows are truly on screen.
+        GeometryReader { viewport in
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(entries) { entry in
+                            switch entry {
+                            case .daySeparator(_, let label):
+                                DaySeparatorRow(label: label)
+                                    .id(entry.id)
+                            case .message(let message, let showsHeader):
+                                MessageRow(message: message, showsHeader: showsHeader, profiles: profiles)
+                                    .id(entry.id)
+                                    .background(visibilityReporter(for: message, viewportHeight: viewport.size.height))
                             }
                         }
-                        .transition(.scale.combined(with: .opacity))
-                    }
-                    if !isPinnedToBottom {
-                        ScrollToBottomButton {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            scrollToBottom(proxy)
-                        }
-                        .transition(.scale.combined(with: .opacity))
+
+                        // Sentinel that tracks whether the newest message is on screen.
+                        Color.clear
+                            .frame(height: 1)
+                            .id(bottomAnchorID)
+                            .onAppear { isPinnedToBottom = true }
+                            .onDisappear { isPinnedToBottom = false }
                     }
                 }
-                .padding(.trailing, 16)
-                .padding(.bottom, 16)
+                .coordinateSpace(name: scrollSpace)
+                .defaultScrollAnchor(.bottom)
+                .onPreferenceChange(VisibleRowIndicesKey.self) { visible in
+                    updateVisible(visible)
+                }
+                .onChange(of: messages.last?.id) { _, _ in
+                    // Only follow new messages when the reader is already at the
+                    // bottom; never yank someone who scrolled up to read history.
+                    guard isPinnedToBottom else { return }
+                    scrollToBottom(proxy)
+                }
+                .onChange(of: messages.count) { _, _ in focusIfNeeded(proxy) }
+                .onAppear { focusIfNeeded(proxy) }
+                .overlay(alignment: .bottomTrailing) {
+                    VStack(spacing: 10) {
+                        if !unreadMentionsAbove.isEmpty {
+                            JumpToMentionButton(count: unreadMentionsAbove.count) {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                if let target = unreadMentionsAbove.max() {
+                                    scrollTo(messages[target].id, proxy: proxy)
+                                }
+                            }
+                            .transition(.scale.combined(with: .opacity))
+                        }
+                        if !isPinnedToBottom {
+                            ScrollToBottomButton {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                scrollToBottom(proxy)
+                            }
+                            .transition(.scale.combined(with: .opacity))
+                        }
+                    }
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 16)
+                }
+                .animation(.easeOut(duration: 0.2), value: isPinnedToBottom)
+                .animation(.easeOut(duration: 0.2), value: unreadMentionsAbove.isEmpty)
             }
-            .animation(.easeOut(duration: 0.2), value: isPinnedToBottom)
-            .animation(.easeOut(duration: 0.2), value: unreadMentionsAbove.isEmpty)
         }
     }
 
-    private func rowAppeared(_ message: RoomMessage) {
-        if let index = indexByID[message.id] { visibleIndices.insert(index) }
-        // A mention is read the moment it is actually on screen.
-        if mentionIDs.contains(message.id) { reads?.markRead(message.id) }
+    /// Reports a message row's index into `VisibleRowIndicesKey` only while the
+    /// row's frame actually intersects the viewport. This replaces `.onAppear`,
+    /// which a `LazyVStack` fires for rows it instantiates just outside the
+    /// viewport — that would mark an off-screen mention read prematurely.
+    private func visibilityReporter(for message: RoomMessage, viewportHeight: CGFloat) -> some View {
+        GeometryReader { geo in
+            let frame = geo.frame(in: .named(scrollSpace))
+            let isVisible = frame.maxY > 0 && frame.minY < viewportHeight
+            let indices: Set<Int> = {
+                guard isVisible, let index = indexByID[message.id] else { return [] }
+                return [index]
+            }()
+            Color.clear.preference(key: VisibleRowIndicesKey.self, value: indices)
+        }
     }
 
-    private func rowDisappeared(_ message: RoomMessage) {
-        if let index = indexByID[message.id] { visibleIndices.remove(index) }
+    private func updateVisible(_ visible: Set<Int>) {
+        visibleIndices = visible
+        // A mention is read the moment it is genuinely on screen.
+        for index in visible where index < messages.count {
+            let message = messages[index]
+            if mentionIDs.contains(message.id) { reads?.markRead(message.id) }
+        }
     }
 
     private func focusIfNeeded(_ proxy: ScrollViewProxy) {
