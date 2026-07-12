@@ -1,3 +1,4 @@
+import NMPContent
 import SwiftUI
 
 struct SubchannelsRoute: Hashable {
@@ -50,6 +51,7 @@ struct RootView: View {
                     ),
                     allGroups: model.groups,
                     directory: directory,
+                    contentClient: model.contentClient,
                     path: $path
                 )
                 .navigationTitle(route.parent.name)
@@ -153,6 +155,7 @@ struct RootView: View {
                 channels: GroupDirectoryProjection.roots(in: model.groups),
                 allGroups: model.groups,
                 directory: directory,
+                contentClient: model.contentClient,
                 path: $path
             )
         }
@@ -167,6 +170,7 @@ struct GroupRow: View {
     let group: GroupSummary
     let childCount: Int
     let entry: RoomDirectoryEntry?
+    let contentClient: NMPContentClient?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -175,10 +179,7 @@ struct GroupRow: View {
                 Text(group.name)
                     .font(.headline)
                     .lineLimit(1)
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                preview
             }
             Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 5) {
@@ -201,12 +202,19 @@ struct GroupRow: View {
         .padding(.vertical, 4)
     }
 
-    private var subtitle: String {
-        if let content = entry?.latest?.content.trimmingCharacters(in: .whitespacesAndNewlines),
-           !content.isEmpty {
-            return content
+    @ViewBuilder
+    private var preview: some View {
+        if let message = entry?.latest,
+           !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let contentClient {
+            GroupContentPreview(message: message, contentClient: contentClient)
+                .id(message.id)
+        } else {
+            Text(group.about ?? group.localID)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
         }
-        return group.about ?? group.localID
     }
 
     static func relativeTime(_ timestamp: UInt64) -> String {

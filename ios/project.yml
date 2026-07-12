@@ -20,6 +20,10 @@ targets:
     dependencies:
       - package: NMP
         product: NMP
+      - package: NMP
+        product: NMPContent
+      - package: NMP
+        product: NMPUI
     info:
       path: Generated-Info.plist
       properties:
@@ -48,6 +52,10 @@ targets:
       - path: Tests
     dependencies:
       - target: TwentyNinerNext
+      - package: NMP
+        product: NMPContent
+      - package: NMP
+        product: NMPUI
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.f7z.app29er.next.tests
