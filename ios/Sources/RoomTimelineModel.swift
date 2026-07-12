@@ -13,6 +13,9 @@ final class RoomTimelineModel {
 
     private(set) var state: State = .loading
     private(set) var messages: [RoomMessage] = []
+    /// Event ids of the room's messages that p-tag the active account. Drives
+    /// the mark-on-view read tracking and the jump-to-unread affordance.
+    private(set) var mentionIDs: Set<String> = []
     private(set) var activities: [AgentActivity] = []
     private(set) var members: [RoomMember] = []
     private(set) var admins: [String] = []
@@ -34,11 +37,13 @@ final class RoomTimelineModel {
     private let engine: NMPEngine
     private let groupID: String
     private let hostRelay: String
+    private let recipient: String?
 
-    init(engine: NMPEngine, groupID: String, hostRelay: String) {
+    init(engine: NMPEngine, groupID: String, hostRelay: String, recipient: String? = nil) {
         self.engine = engine
         self.groupID = groupID
         self.hostRelay = hostRelay
+        self.recipient = recipient
     }
 
     var people: RoomPeople {
@@ -93,6 +98,9 @@ final class RoomTimelineModel {
             for await batch in query {
                 guard !Task.isCancelled else { return }
                 messages = NIP29ViewProjection.messages(from: batch.rows)
+                if let recipient {
+                    mentionIDs = MentionProjection.mentionIDs(from: batch.rows, recipient: recipient)
+                }
                 messageCoverage = batch.coverage
                 messageError = nil
                 hasReceivedMessages = true

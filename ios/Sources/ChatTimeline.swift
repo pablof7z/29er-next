@@ -70,6 +70,9 @@ struct ChatTimelineView: View {
     let profiles: ProfileBook
     let hasReceivedSnapshot: Bool
     let error: String?
+    var mentionIDs: Set<String> = []
+    var reads: MentionReads?
+    var focusMessageID: String?
 
     @ViewBuilder
     var body: some View {
@@ -88,7 +91,13 @@ struct ChatTimelineView: View {
                 description: Text("Messages will appear here as NMP receives room events.")
             )
         } else {
-            MessageTimelineView(messages: messages, profiles: profiles)
+            MessageTimelineView(
+                messages: messages,
+                profiles: profiles,
+                mentionIDs: mentionIDs,
+                reads: reads,
+                focusMessageID: focusMessageID
+            )
         }
     }
 }
@@ -96,12 +105,38 @@ struct ChatTimelineView: View {
 private struct MessageTimelineView: View {
     let messages: [RoomMessage]
     let profiles: ProfileBook
+    let mentionIDs: Set<String>
+    let reads: MentionReads?
+    let focusMessageID: String?
 
     @State private var isPinnedToBottom = true
+    @State private var visibleIndices: Set<Int> = []
+    @State private var didFocus = false
 
     private let bottomAnchorID = "chat-bottom-anchor"
 
     private var entries: [TimelineEntry] { ChatTimeline.entries(for: messages) }
+
+    private var indexByID: [String: Int] {
+        Dictionary(uniqueKeysWithValues: messages.enumerated().map { ($1.id, $0) })
+    }
+
+    /// Indices of messages that mention the user and are still unread.
+    private var unreadMentionIndices: [Int] {
+        guard let reads else { return [] }
+        return messages.indices.filter { index in
+            let message = messages[index]
+            return mentionIDs.contains(message.id)
+                && reads.isUnread(id: message.id, createdAt: message.createdAt)
+        }
+    }
+
+    /// Unread mentions positioned above the topmost currently-visible row. Only
+    /// meaningful once something is on screen, so an empty viewport yields none.
+    private var unreadMentionsAbove: [Int] {
+        guard let top = visibleIndices.min() else { return [] }
+        return unreadMentionIndices.filter { $0 < top }
+    }
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -115,6 +150,8 @@ private struct MessageTimelineView: View {
                         case .message(let message, let showsHeader):
                             MessageRow(message: message, showsHeader: showsHeader, profiles: profiles)
                                 .id(entry.id)
+                                .onAppear { rowAppeared(message) }
+                                .onDisappear { rowDisappeared(message) }
                         }
                     }
 
@@ -133,18 +170,59 @@ private struct MessageTimelineView: View {
                 guard isPinnedToBottom else { return }
                 scrollToBottom(proxy)
             }
+            .onChange(of: messages.count) { _, _ in focusIfNeeded(proxy) }
+            .onAppear { focusIfNeeded(proxy) }
             .overlay(alignment: .bottomTrailing) {
-                if !isPinnedToBottom {
-                    ScrollToBottomButton {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        scrollToBottom(proxy)
+                VStack(spacing: 10) {
+                    if !unreadMentionsAbove.isEmpty {
+                        JumpToMentionButton(count: unreadMentionsAbove.count) {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            if let target = unreadMentionsAbove.max() {
+                                scrollTo(messages[target].id, proxy: proxy)
+                            }
+                        }
+                        .transition(.scale.combined(with: .opacity))
                     }
-                    .padding(.trailing, 16)
-                    .padding(.bottom, 16)
-                    .transition(.scale.combined(with: .opacity))
+                    if !isPinnedToBottom {
+                        ScrollToBottomButton {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            scrollToBottom(proxy)
+                        }
+                        .transition(.scale.combined(with: .opacity))
+                    }
                 }
+                .padding(.trailing, 16)
+                .padding(.bottom, 16)
             }
             .animation(.easeOut(duration: 0.2), value: isPinnedToBottom)
+            .animation(.easeOut(duration: 0.2), value: unreadMentionsAbove.isEmpty)
+        }
+    }
+
+    private func rowAppeared(_ message: RoomMessage) {
+        if let index = indexByID[message.id] { visibleIndices.insert(index) }
+        // A mention is read the moment it is actually on screen.
+        if mentionIDs.contains(message.id) { reads?.markRead(message.id) }
+    }
+
+    private func rowDisappeared(_ message: RoomMessage) {
+        if let index = indexByID[message.id] { visibleIndices.remove(index) }
+    }
+
+    private func focusIfNeeded(_ proxy: ScrollViewProxy) {
+        guard !didFocus,
+              let focusMessageID,
+              messages.contains(where: { $0.id == focusMessageID }) else {
+            return
+        }
+        didFocus = true
+        isPinnedToBottom = false
+        proxy.scrollTo(focusMessageID, anchor: .center)
+    }
+
+    private func scrollTo(_ id: String, proxy: ScrollViewProxy) {
+        withAnimation(.easeOut(duration: 0.2)) {
+            proxy.scrollTo(id, anchor: .center)
         }
     }
 
@@ -170,6 +248,36 @@ private struct ScrollToBottomButton: View {
         }
         .accessibilityLabel("Scroll to latest message")
         .accessibilityIdentifier("scroll-to-bottom-button")
+    }
+}
+
+/// Floating affordance to jump up to unread mentions above the viewport,
+/// mirroring `ScrollToBottomButton` but pointing up and carrying a count badge.
+private struct JumpToMentionButton: View {
+    let count: Int
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.up")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .background(Color.accentColor, in: Circle())
+                .overlay(alignment: .topTrailing) {
+                    Text(count > 99 ? "99+" : "\(count)")
+                        .font(.system(size: 11, weight: .bold))
+                        .monospacedDigit()
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Color.red))
+                        .offset(x: 6, y: -4)
+                }
+                .shadow(color: .black.opacity(0.15), radius: 6, y: 2)
+        }
+        .accessibilityLabel("Jump to \(count) unread \(count == 1 ? "mention" : "mentions") above")
+        .accessibilityIdentifier("jump-to-mention-button")
     }
 }
 

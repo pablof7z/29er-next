@@ -9,6 +9,8 @@ struct RootView: View {
     @Bindable var model: AppModel
     @State private var path = NavigationPath()
     @State private var directory: RoomDirectoryModel?
+    @State private var inbox: InboxModel?
+    @State private var reads = MentionReads()
     @State private var showingDiagnostics = false
     @State private var showingIdentity = false
 
@@ -36,6 +38,7 @@ struct RootView: View {
                         allGroups: model.groups,
                         engine: engine,
                         activePubkey: model.activePubkey,
+                        reads: reads,
                         onOpen: { directory?.markRead(group) }
                     )
                 }
@@ -51,11 +54,40 @@ struct RootView: View {
                         allGroups: model.groups,
                         engine: engine,
                         activePubkey: model.activePubkey,
+                        reads: reads,
                         directory: directory
                     )
                 }
             }
+            .navigationDestination(for: InboxRoute.self) { _ in
+                if let inbox {
+                    InboxView(inbox: inbox, groups: model.groups)
+                }
+            }
+            .navigationDestination(for: MentionRoute.self) { route in
+                if let engine = model.engine {
+                    RoomView(
+                        group: route.group,
+                        allGroups: model.groups,
+                        engine: engine,
+                        activePubkey: model.activePubkey,
+                        reads: reads,
+                        focusMessageID: route.messageID,
+                        onOpen: { directory?.markRead(route.group) }
+                    )
+                }
+            }
             .toolbar {
+                if model.activePubkey != nil {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            path.append(InboxRoute())
+                        } label: {
+                            InboxBell(count: inbox?.unreadCount ?? 0)
+                        }
+                        .accessibilityIdentifier("inbox-button")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingIdentity = true
@@ -93,6 +125,22 @@ struct RootView: View {
             self.directory = directory
             await directory.observe()
         }
+        .task(id: InboxContext(generation: model.engineGeneration, pubkey: model.activePubkey)) {
+            guard let engine = model.engine, let pubkey = model.activePubkey else {
+                inbox = nil
+                return
+            }
+            let inbox = InboxModel(engine: engine, recipient: pubkey, reads: reads)
+            self.inbox = inbox
+            await inbox.observe()
+        }
+    }
+
+    /// Re-roots the inbox query whenever the engine is replaced or the signed-in
+    /// account changes (sign-in does not bump the engine generation).
+    private struct InboxContext: Hashable {
+        let generation: Int
+        let pubkey: String?
     }
 
     @ViewBuilder

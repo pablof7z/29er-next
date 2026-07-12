@@ -7,6 +7,7 @@ struct ChildChannelsView: View {
     let allGroups: [GroupSummary]
     let engine: NMPEngine
     let activePubkey: String?
+    var reads: MentionReads?
     var directory: RoomDirectoryModel?
 
     var body: some View {
@@ -19,6 +20,7 @@ struct ChildChannelsView: View {
                             allGroups: allGroups,
                             engine: engine,
                             activePubkey: activePubkey,
+                            reads: reads,
                             onOpen: { directory?.markRead(child) }
                         )
                     } label: {
