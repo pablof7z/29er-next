@@ -4,6 +4,17 @@ struct NoticeContent: Equatable, Identifiable {
     let message: String
 
     var id: String { "\(symbol):\(title)" }
+
+    static func profilesUnavailable(
+        _ message: String,
+        symbol: String = "exclamationmark.triangle.fill"
+    ) -> NoticeContent {
+        NoticeContent(
+            symbol: symbol,
+            title: "Profiles unavailable",
+            message: message
+        )
+    }
 }
 
 enum ChannelListPresentation {
@@ -52,11 +63,7 @@ struct InboxPresentation: Equatable {
         if let profileError {
             return InboxPresentation(
                 content: .mentions,
-                notice: NoticeContent(
-                    symbol: "exclamationmark.triangle.fill",
-                    title: "Profiles unavailable",
-                    message: profileError
-                )
+                notice: NoticeContent.profilesUnavailable(profileError)
             )
         }
         return InboxPresentation(content: .mentions, notice: nil)
@@ -78,13 +85,7 @@ enum ChatTimelinePresentation: Equatable {
         if let error { return .unavailable(error) }
         if !hasReceivedSnapshot { return .loading }
         if messageCount == 0 { return .empty }
-        let notice = profileError.map {
-            NoticeContent(
-                symbol: "exclamationmark.triangle.fill",
-                title: "Profiles unavailable",
-                message: $0
-            )
-        }
+        let notice = profileError.map { NoticeContent.profilesUnavailable($0) }
         return .messages(profileNotice: notice)
     }
 }
@@ -142,10 +143,9 @@ struct RoomPeoplePresentation: Equatable {
                 NoticeContent(symbol: "person.badge.key", title: "Backend admins unavailable", message: $0)
             },
             input.profileError.map {
-                NoticeContent(
-                    symbol: "person.crop.circle.badge.exclamationmark",
-                    title: "Profiles unavailable",
-                    message: $0
+                NoticeContent.profilesUnavailable(
+                    $0,
+                    symbol: "person.crop.circle.badge.exclamationmark"
                 )
             },
             input.activityError.map {

@@ -111,10 +111,7 @@ struct ChatTimelineView: View {
             )
             .safeAreaInset(edge: .top, spacing: 0) {
                 if let profileNotice {
-                    DegradedStateNotice(
-                        title: profileNotice.title,
-                        message: profileNotice.message
-                    )
+                    DegradedStateNotice(profileNotice)
                 }
             }
         }

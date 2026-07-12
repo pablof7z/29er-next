@@ -47,6 +47,7 @@ final class ObservationPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.content, .mentions)
         XCTAssertEqual(presentation.notice?.title, "Profiles unavailable")
         XCTAssertEqual(presentation.notice?.message, "profiles stale")
+        XCTAssertEqual(presentation.notice?.symbol, "exclamationmark.triangle.fill")
     }
 
     func testChatTimelinePresentationOrder() {
@@ -92,6 +93,7 @@ final class ObservationPresentationTests: XCTestCase {
         }
         XCTAssertEqual(notice?.title, "Profiles unavailable")
         XCTAssertEqual(notice?.message, "profiles stale")
+        XCTAssertEqual(notice?.symbol, "exclamationmark.triangle.fill")
     }
 
     func testRoomPeopleMembershipPresentationOrder() {
@@ -136,6 +138,14 @@ final class ObservationPresentationTests: XCTestCase {
         XCTAssertEqual(
             notices.map(\.message),
             ["admins stale", "profiles stale", "activity stale"]
+        )
+        XCTAssertEqual(
+            notices.map(\.symbol),
+            [
+                "person.badge.key",
+                "person.crop.circle.badge.exclamationmark",
+                "bolt.slash"
+            ]
         )
     }
 
