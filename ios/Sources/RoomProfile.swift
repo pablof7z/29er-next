@@ -1,12 +1,28 @@
 import Foundation
 import NMP
 
+/// One agent a tenex-edge backend advertises on its kind:0, as
+/// `["agent", <slug>, <description>]`. `slug` is exactly what the backend's
+/// `add <slug>` management command accepts, so it round-trips to a kind:9.
+struct BackendAgent: Hashable, Sendable, Identifiable {
+    let slug: String
+    let description: String
+    var id: String { slug }
+}
+
 /// A resolved kind:0 identity for display. The app only formats these raw
 /// values; NMP owns acquisition and storage.
 struct RoomProfile: Hashable, Sendable {
     let pubkey: String
     let displayName: String?
     let pictureURL: URL?
+    /// A tenex-edge management backend advertises itself with a bare
+    /// `["backend"]` tag on its kind:0; these are read from tags, not content.
+    let isBackend: Bool
+    /// The backend's host label (`["host", "laptop"]`), when present.
+    let host: String?
+    /// Agents this backend manages (`["agent", slug, description]`).
+    let agents: [BackendAgent]
 }
 
 /// Display resolution for a set of pubkeys: a kind:0 name/avatar when known,
@@ -27,6 +43,10 @@ struct ProfileBook: Hashable, Sendable {
     func pictureURL(for pubkey: String) -> URL? {
         profiles[pubkey]?.pictureURL
     }
+
+    func profile(for pubkey: String) -> RoomProfile? {
+        profiles[pubkey]
+    }
 }
 
 enum RoomProfileProjection {
@@ -45,12 +65,31 @@ enum RoomProfileProjection {
     }
 
     static func profile(from row: Row) -> RoomProfile {
-        let metadata = Metadata(json: row.content)
+        profile(pubkey: row.pubkey, content: row.content, tags: row.tags)
+    }
+
+    static func profile(pubkey: String, content: String, tags: [[String]]) -> RoomProfile {
+        let metadata = Metadata(json: content)
+        let hostTag = tags.first { $0.first == "host" && $0.count > 1 }
+        let host = hostTag.map { $0[1] }.flatMap { $0.isEmpty ? nil : $0 }
         return RoomProfile(
-            pubkey: row.pubkey,
+            pubkey: pubkey,
             displayName: metadata.displayName,
-            pictureURL: metadata.pictureURL
+            pictureURL: metadata.pictureURL,
+            isBackend: tags.contains { $0.first == "backend" },
+            host: host,
+            agents: backendAgents(from: tags)
         )
+    }
+
+    /// `["agent", slug, description]` tags, in declared order, ignoring
+    /// malformed entries and empty slugs. Description defaults to empty.
+    private static func backendAgents(from tags: [[String]]) -> [BackendAgent] {
+        tags.compactMap { tag in
+            guard tag.first == "agent", tag.count > 1, !tag[1].isEmpty else { return nil }
+            let description = tag.count > 2 ? tag[2] : ""
+            return BackendAgent(slug: tag[1], description: description)
+        }
     }
 
     private struct Metadata {

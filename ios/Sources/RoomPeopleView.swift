@@ -7,11 +7,20 @@ struct RoomPeopleView: View {
     let membershipError: String?
     let hasReceivedActivities: Bool
     let activityError: String?
+    var backends: [RoomBackend] = []
+    var canSendCommands: Bool = false
+    var sendCommand: (String, String) async -> String? = { _, _ in nil }
+
+    @State private var selectedBackend: RoomBackend?
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 22) {
                 membershipNotice
+
+                if !backends.isEmpty {
+                    backendsSection
+                }
 
                 if let activityError {
                     ObservationNotice(
@@ -21,11 +30,11 @@ struct RoomPeopleView: View {
                     )
                 }
 
-                if !people.members.isEmpty {
+                if !visibleMembers.isEmpty {
                     PersonSection(
                         title: "Members",
                         detail: "Listed by the room relay",
-                        people: people.members,
+                        people: visibleMembers,
                         isActivityLoading: !hasReceivedActivities
                     )
                 } else if hasMembershipMetadata {
@@ -36,11 +45,11 @@ struct RoomPeopleView: View {
                     )
                 }
 
-                if !people.activeHere.isEmpty {
+                if !visibleActiveHere.isEmpty {
                     PersonSection(
                         title: "Active here",
                         detail: "Live sessions not present in the room's member list",
-                        people: people.activeHere,
+                        people: visibleActiveHere,
                         isActivityLoading: false
                     )
                 }
@@ -60,6 +69,55 @@ struct RoomPeopleView: View {
             .padding(.bottom, 20)
         }
         .background(Color(uiColor: .systemGroupedBackground))
+        .sheet(item: $selectedBackend) { backend in
+            BackendCommandsSheet(
+                backend: backend,
+                canSend: canSendCommands,
+                send: { command in await sendCommand(command, backend.pubkey) }
+            )
+        }
+    }
+
+    private var backendPubkeys: Set<String> { Set(backends.map(\.pubkey)) }
+
+    // Backends get their own section; keep them out of the plain rosters so a
+    // backend that is also a listed member or admin is not shown twice.
+    private var visibleMembers: [RoomPerson] {
+        people.members.filter { !backendPubkeys.contains($0.pubkey) }
+    }
+    private var visibleActiveHere: [RoomPerson] {
+        people.activeHere.filter { !backendPubkeys.contains($0.pubkey) }
+    }
+
+    @ViewBuilder
+    private var backendsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Backends")
+                    .font(.title3.weight(.semibold))
+                Text("Tap to manage sessions and agents")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 4)
+
+            LazyVStack(spacing: 0) {
+                ForEach(Array(backends.enumerated()), id: \.element.id) { index, backend in
+                    Button {
+                        selectedBackend = backend
+                    } label: {
+                        BackendRow(backend: backend)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("room-backend-\(backend.pubkey)")
+                    if index < backends.count - 1 {
+                        Divider().padding(.leading, 68)
+                    }
+                }
+            }
+            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
     }
 
     @ViewBuilder

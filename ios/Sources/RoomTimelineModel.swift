@@ -1,3 +1,4 @@
+import Foundation
 import NMP
 import Observation
 
@@ -14,6 +15,7 @@ final class RoomTimelineModel {
     private(set) var messages: [RoomMessage] = []
     private(set) var activities: [AgentActivity] = []
     private(set) var members: [RoomMember] = []
+    private(set) var admins: [String] = []
     private(set) var profiles = ProfileBook()
 
     private(set) var messageCoverage: Coverage = .unknown
@@ -31,14 +33,23 @@ final class RoomTimelineModel {
 
     private let engine: NMPEngine
     private let groupID: String
+    private let hostRelay: String
 
-    init(engine: NMPEngine, groupID: String) {
+    init(engine: NMPEngine, groupID: String, hostRelay: String) {
         self.engine = engine
         self.groupID = groupID
+        self.hostRelay = hostRelay
     }
 
     var people: RoomPeople {
         NIP29ViewProjection.people(members: members, activities: activities)
+    }
+
+    /// Management backends present in this room, resolved from kind:0 across
+    /// members, admins, and live-session authors.
+    var backends: [RoomBackend] {
+        let candidates = members.map(\.pubkey) + admins + activities.map(\.author)
+        return RoomBackendProjection.backends(candidatePubkeys: candidates, profiles: profiles)
     }
 
     func observe() async {
@@ -56,6 +67,10 @@ final class RoomTimelineModel {
             group.addTask { [weak self] in
                 guard let self else { return }
                 await self.observeMembership()
+            }
+            group.addTask { [weak self] in
+                guard let self else { return }
+                await self.observeAdmins()
             }
             group.addTask { [weak self] in
                 guard let self else { return }
@@ -137,11 +152,34 @@ final class RoomTimelineModel {
         }
     }
 
+    private func observeAdmins() async {
+        do {
+            let query = try engine.observe(
+                NMPFilter(
+                    kinds: [39_001],
+                    tags: ["d": .literal([groupID])],
+                    limit: 20
+                )
+            )
+            defer { query.cancel() }
+
+            for await batch in query {
+                guard !Task.isCancelled else { return }
+                admins = NIP29ViewProjection.admins(from: batch.rows)
+            }
+        } catch {
+            // Admin discovery is enrichment for the backend affordance; on
+            // failure the room still renders members and the timeline.
+            return
+        }
+    }
+
     private func observeProfiles() async {
         // kind:0 for every pubkey the room can show — message authors, listed
-        // members, and live-session authors — via a reactive union binding so
-        // demand grows as new pubkeys appear. NMP owns the routing; the app
-        // only declares which authors it cares about, never a hand-kept list.
+        // members, admins (the tenex-edge backend surfaces here), and
+        // live-session authors — via a reactive union binding so demand grows
+        // as new pubkeys appear. NMP owns the routing; the app only declares
+        // which authors it cares about, never a hand-kept list.
         let authors: NMPBinding = .setOp(.union, [
             .derived(
                 inner: NMPFilter(kinds: [9], tags: ["h": .literal([groupID])]),
@@ -149,6 +187,10 @@ final class RoomTimelineModel {
             ),
             .derived(
                 inner: NMPFilter(kinds: [39_002], tags: ["d": .literal([groupID])]),
+                project: .tag("p")
+            ),
+            .derived(
+                inner: NMPFilter(kinds: [39_001], tags: ["d": .literal([groupID])]),
                 project: .tag("p")
             ),
             .derived(
@@ -169,6 +211,45 @@ final class RoomTimelineModel {
             // Identity is enrichment; on failure the timeline still renders
             // with the shortened-hex fallback rather than failing the room.
             return
+        }
+    }
+
+    /// Send a tenex-edge management command (`add <slug>`, `list sessions`,
+    /// `list agents`, …) as a kind:9 chat message that p-tags `backendPubkey`.
+    /// The engine signs as `author` and routes to the group host; the backend
+    /// replies inline in this room. Returns a message on failure, else nil.
+    func sendManagementCommand(_ command: String, backendPubkey: String, author: String) async -> String? {
+        let intent = WriteIntent(
+            payload: .unsigned(
+                pubkey: author,
+                createdAt: UInt64(Date().timeIntervalSince1970),
+                kind: 9,
+                tags: [["h", groupID], ["p", backendPubkey]],
+                content: command
+            ),
+            durability: .durable,
+            routing: .authorOutbox
+        )
+
+        do {
+            let receipt = try await engine.publish(intent)
+            for await status in receipt.status {
+                switch status {
+                case .rejected(_, let reason):
+                    return "The relay rejected the command: \(reason)"
+                case .failed(let reason):
+                    return reason
+                case .gaveUp(let relay):
+                    return "Could not deliver to \(relay)."
+                case .sent, .acked:
+                    return nil
+                case .accepted, .awaitingCapability, .signed, .routed:
+                    continue
+                }
+            }
+            return nil
+        } catch {
+            return error.localizedDescription
         }
     }
 }
