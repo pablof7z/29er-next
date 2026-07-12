@@ -29,12 +29,7 @@ struct DirectoryReadStore {
 @MainActor
 @Observable
 final class RoomDirectoryModel {
-    struct Entry: Hashable, Sendable {
-        var latest: RoomMessage?
-        var unread: Int
-    }
-
-    private(set) var entries: [String: Entry] = [:]
+    private(set) var entries: [String: RoomDirectoryEntry] = [:]
 
     private let engine: NMPEngine
     private let store: DirectoryReadStore
@@ -70,16 +65,16 @@ final class RoomDirectoryModel {
     /// message currently known for it.
     func markRead(_ group: GroupSummary) {
         let key = group.localID
-        baselines[key] = latestByGroup[key]?.createdAt ?? UInt64(Date().timeIntervalSince1970)
+        baselines[key] = RoomDirectoryProjection.readBaseline(
+            latest: latestByGroup[key],
+            now: UInt64(Date().timeIntervalSince1970)
+        )
         store.save(baselines)
         recompute()
     }
 
     private func ingest(rows: [Row]) {
-        var latest: [String: RoomMessage] = [:]
-        var times: [String: [UInt64]] = [:]
-
-        for row in rows where row.kind == 9 {
+        let messages = rows.compactMap { row -> ScopedRoomMessage? in
             guard let group = groupID(from: row.tags),
                   let message = NIP29ViewProjection.message(
                       eventID: row.id,
@@ -87,43 +82,32 @@ final class RoomDirectoryModel {
                       createdAt: row.createdAt,
                       kind: row.kind,
                       content: row.content
-                  ) else { continue }
-
-            times[group, default: []].append(message.createdAt)
-            if let current = latest[group] {
-                if message.createdAt > current.createdAt ||
-                    (message.createdAt == current.createdAt && message.id > current.id) {
-                    latest[group] = message
-                }
-            } else {
-                latest[group] = message
-            }
+                  ) else { return nil }
+            return ScopedRoomMessage(groupID: group, message: message)
         }
 
         // First time a room is seen, baseline to the current wall clock so the
         // whole existing backlog (including late-arriving history) reads as read,
         // and only messages that land afterwards count as unread.
-        let now = UInt64(Date().timeIntervalSince1970)
-        var seededNewBaseline = false
-        for group in latest.keys where baselines[group] == nil {
-            baselines[group] = now
-            seededNewBaseline = true
-        }
-        if seededNewBaseline { store.save(baselines) }
+        let snapshot = RoomDirectoryProjection.snapshot(
+            messages: messages,
+            baselines: baselines,
+            now: UInt64(Date().timeIntervalSince1970)
+        )
+        if snapshot.baselines != baselines { store.save(snapshot.baselines) }
 
-        latestByGroup = latest
-        timesByGroup = times
-        recompute()
+        baselines = snapshot.baselines
+        latestByGroup = snapshot.latestByGroup
+        timesByGroup = snapshot.timesByGroup
+        entries = snapshot.entries
     }
 
     private func recompute() {
-        var result: [String: Entry] = [:]
-        for (group, message) in latestByGroup {
-            let baseline = baselines[group] ?? message.createdAt
-            let unread = (timesByGroup[group] ?? []).reduce(0) { $0 + ($1 > baseline ? 1 : 0) }
-            result[group] = Entry(latest: message, unread: unread)
-        }
-        entries = result
+        entries = RoomDirectoryProjection.entries(
+            latestByGroup: latestByGroup,
+            timesByGroup: timesByGroup,
+            baselines: baselines
+        )
     }
 
     private func groupID(from tags: [[String]]) -> String? {
