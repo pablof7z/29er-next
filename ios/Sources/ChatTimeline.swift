@@ -70,9 +70,10 @@ struct ChatTimelineView: View {
     let profiles: ProfileBook
     let hasReceivedSnapshot: Bool
     let error: String?
-    var mentionIDs: Set<String> = []
-    var reads: MentionReads?
-    var focusMessageID: String?
+    let profileError: String?
+    let mentionIDs: Set<String>
+    let reads: MentionReads?
+    let focusMessageID: String?
 
     @ViewBuilder
     var body: some View {
@@ -98,6 +99,14 @@ struct ChatTimelineView: View {
                 reads: reads,
                 focusMessageID: focusMessageID
             )
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let profileError {
+                    DegradedStateNotice(
+                        title: "Profiles unavailable",
+                        message: profileError
+                    )
+                }
+            }
         }
     }
 }

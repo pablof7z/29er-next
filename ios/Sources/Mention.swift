@@ -1,4 +1,3 @@
-import Foundation
 import NMP
 
 /// One kind:9 message that p-tags the active user, projected for the inbox.

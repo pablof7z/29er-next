@@ -98,6 +98,39 @@ final class RoomDirectoryTests: XCTestCase {
         XCTAssertEqual(store.load(), ["general": 1_000, "random": 2_000])
     }
 
+    func testBaselineHistoryKeepsNewestBoundedRooms() {
+        var baselines = Dictionary(
+            uniqueKeysWithValues: (0...RoomDirectoryProjection.maximumBaselines).map {
+                ("room-\($0)", UInt64($0))
+            }
+        )
+        baselines["same-time-a"] = 2_000
+        baselines["same-time-b"] = 2_000
+
+        let bounded = RoomDirectoryProjection.prunedBaselines(baselines)
+
+        XCTAssertEqual(bounded.count, RoomDirectoryProjection.maximumBaselines)
+        XCTAssertNil(bounded["room-0"])
+        XCTAssertEqual(bounded["same-time-a"], 2_000)
+        XCTAssertEqual(bounded["same-time-b"], 2_000)
+    }
+
+    func testSnapshotPrunesPersistedBaselineHistory() {
+        let baselines = Dictionary(
+            uniqueKeysWithValues: (0...RoomDirectoryProjection.maximumBaselines).map {
+                ("room-\($0)", UInt64($0))
+            }
+        )
+        let snapshot = RoomDirectoryProjection.snapshot(
+            messages: [scoped("fresh", group: "fresh-room", at: 2_000)],
+            baselines: baselines,
+            now: 2_000
+        )
+
+        XCTAssertEqual(snapshot.baselines.count, RoomDirectoryProjection.maximumBaselines)
+        XCTAssertEqual(snapshot.baselines["fresh-room"], 2_000)
+    }
+
     private func scoped(_ id: String, group: String, at createdAt: UInt64) -> ScopedRoomMessage {
         ScopedRoomMessage(groupID: group, message: message(id, at: createdAt))
     }

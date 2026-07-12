@@ -51,31 +51,16 @@ struct MessageRow: View {
     @ViewBuilder
     private var gutter: some View {
         if showsHeader {
-            avatar.accessibilityHidden(true)
+            AuthorAvatar(
+                pubkey: message.author,
+                displayName: displayName,
+                pictureURL: avatarURL,
+                size: avatarWidth
+            )
+            .accessibilityHidden(true)
         } else {
             Color.clear.frame(width: avatarWidth, height: 1)
         }
-    }
-
-    private var avatar: some View {
-        let initial = Text(String(displayName.prefix(1)).uppercased())
-            .font(.caption.bold())
-            .foregroundStyle(.white)
-
-        return Circle()
-            .fill(message.author.avatarColor.gradient)
-            .frame(width: avatarWidth, height: avatarWidth)
-            .overlay { initial }
-            .overlay {
-                if let avatarURL {
-                    AsyncImage(url: avatarURL) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
-                        Color.clear
-                    }
-                    .clipShape(Circle())
-                }
-            }
     }
 
     private var header: some View {

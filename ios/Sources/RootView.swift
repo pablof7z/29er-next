@@ -165,8 +165,8 @@ struct RootView: View {
 
 struct GroupRow: View {
     let group: GroupSummary
-    var childCount: Int = 0
-    var entry: RoomDirectoryEntry?
+    let childCount: Int
+    let entry: RoomDirectoryEntry?
 
     var body: some View {
         HStack(spacing: 12) {

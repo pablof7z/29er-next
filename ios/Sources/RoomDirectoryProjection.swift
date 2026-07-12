@@ -9,6 +9,8 @@ struct ScopedRoomMessage: Hashable, Sendable {
 }
 
 enum RoomDirectoryProjection {
+    static let maximumBaselines = 1_000
+
     struct Snapshot: Equatable, Sendable {
         let entries: [String: RoomDirectoryEntry]
         let latestByGroup: [String: RoomMessage]
@@ -43,6 +45,7 @@ enum RoomDirectoryProjection {
         for groupID in latestByGroup.keys where updatedBaselines[groupID] == nil {
             updatedBaselines[groupID] = now
         }
+        updatedBaselines = prunedBaselines(updatedBaselines)
 
         return Snapshot(
             entries: entries(
@@ -72,5 +75,16 @@ enum RoomDirectoryProjection {
 
     static func readBaseline(latest: RoomMessage?, now: UInt64) -> UInt64 {
         latest?.createdAt ?? now
+    }
+
+    static func prunedBaselines(_ baselines: [String: UInt64]) -> [String: UInt64] {
+        guard baselines.count > maximumBaselines else { return baselines }
+        let newest = baselines.sorted { lhs, rhs in
+            if lhs.value != rhs.value { return lhs.value > rhs.value }
+            return lhs.key < rhs.key
+        }
+        return Dictionary(
+            uniqueKeysWithValues: newest.prefix(maximumBaselines).map { ($0.key, $0.value) }
+        )
     }
 }
