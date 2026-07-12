@@ -108,24 +108,76 @@ private struct ChatTimelineView: View {
                 description: Text("Messages will appear here as NMP receives room events.")
             )
         } else {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(messages) { message in
-                            MessageRow(message: message)
-                                .id(message.id)
-                        }
+            MessageTimelineView(messages: messages)
+        }
+    }
+}
+
+private struct MessageTimelineView: View {
+    let messages: [RoomMessage]
+
+    @State private var isPinnedToBottom = true
+
+    private let bottomAnchorID = "chat-bottom-anchor"
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(messages) { message in
+                        MessageRow(message: message)
+                            .id(message.id)
                     }
-                }
-                .defaultScrollAnchor(.bottom)
-                .onChange(of: messages.last?.id) { _, id in
-                    guard let id else { return }
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(id, anchor: .bottom)
-                    }
+
+                    // Sentinel that tracks whether the newest message is on screen.
+                    Color.clear
+                        .frame(height: 1)
+                        .id(bottomAnchorID)
+                        .onAppear { isPinnedToBottom = true }
+                        .onDisappear { isPinnedToBottom = false }
                 }
             }
+            .defaultScrollAnchor(.bottom)
+            .onChange(of: messages.last?.id) { _, _ in
+                // Only follow new messages when the reader is already at the
+                // bottom; never yank someone who scrolled up to read history.
+                guard isPinnedToBottom else { return }
+                scrollToBottom(proxy)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if !isPinnedToBottom {
+                    ScrollToBottomButton { scrollToBottom(proxy) }
+                        .padding(.trailing, 16)
+                        .padding(.bottom, 16)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: isPinnedToBottom)
         }
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        withAnimation(.easeOut(duration: 0.2)) {
+            proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+        }
+    }
+}
+
+private struct ScrollToBottomButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.down")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 40, height: 40)
+                .background(.regularMaterial, in: Circle())
+                .overlay(Circle().strokeBorder(.separator, lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.15), radius: 6, y: 2)
+        }
+        .accessibilityLabel("Scroll to latest message")
+        .accessibilityIdentifier("scroll-to-bottom-button")
     }
 }
 
