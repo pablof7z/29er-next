@@ -104,7 +104,7 @@ struct RootView: View {
                 }
             }
             .sheet(isPresented: $showingDiagnostics) {
-                DiagnosticsView(snapshot: model.diagnostics)
+                DiagnosticsView(snapshot: model.diagnostics, error: model.diagnosticsError)
             }
             .sheet(isPresented: $showingIdentity) {
                 IdentitySheet(model: model)

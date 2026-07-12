@@ -11,11 +11,7 @@ final class RoomTimelineModel {
     }
 
     private(set) var state: State = .loading
-    private(set) var messages: [RoomMessage] = []
-    /// Event ids of the room's messages that p-tag the active account. Drives
-    /// the mark-on-view read tracking and the jump-to-unread affordance.
-    private(set) var mentionIDs: Set<String> = []
-    private(set) var activities: [AgentActivity] = []
+    private(set) var contentRows: [Row] = []
     private(set) var members: [RoomMember] = []
     private(set) var admins: [String] = []
     private(set) var profiles = ProfileBook()
@@ -31,12 +27,27 @@ final class RoomTimelineModel {
 
     private let engine: NMPEngine
     private let groupID: String
+    private let hostRelay: String
     private let recipient: String?
 
-    init(engine: NMPEngine, groupID: String, recipient: String? = nil) {
+    init(engine: NMPEngine, groupID: String, hostRelay: String, recipient: String? = nil) {
         self.engine = engine
         self.groupID = groupID
+        self.hostRelay = hostRelay
         self.recipient = recipient
+    }
+
+    var messages: [RoomMessage] {
+        NIP29ViewProjection.messages(from: contentRows)
+    }
+
+    var mentionIDs: Set<String> {
+        guard let recipient else { return [] }
+        return MentionProjection.mentionIDs(from: contentRows, recipient: recipient)
+    }
+
+    var activities: [AgentActivity] {
+        NIP29ViewProjection.activities(from: contentRows)
     }
 
     var people: RoomPeople {
@@ -56,11 +67,7 @@ final class RoomTimelineModel {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { [weak self] in
                 guard let self else { return }
-                await self.observeMessages()
-            }
-            group.addTask { [weak self] in
-                guard let self else { return }
-                await self.observeActivities()
+                await self.observeContent()
             }
             group.addTask { [weak self] in
                 guard let self else { return }
@@ -77,53 +84,27 @@ final class RoomTimelineModel {
         }
     }
 
-    private func observeMessages() async {
+    private func observeContent() async {
         do {
+            var demand = try groupContentDemand(host: hostRelay, groupId: groupID)
+            demand.selection.limit = 200
             let query = try await openNMPQuery(
                 engine: engine,
-                filter: NMPFilter(
-                    kinds: [9],
-                    tags: ["h": .literal([groupID])],
-                    limit: 200
-                )
+                demand: demand
             )
             defer { query.cancel() }
 
             for await batch in query {
                 guard !Task.isCancelled else { return }
-                messages = NIP29ViewProjection.messages(from: batch.rows)
-                if let recipient {
-                    mentionIDs = MentionProjection.mentionIDs(from: batch.rows, recipient: recipient)
-                }
+                contentRows = batch.rows
                 messageError = nil
-                hasReceivedMessages = true
-            }
-        } catch {
-            guard !Task.isCancelled else { return }
-            messageError = error.localizedDescription
-        }
-    }
-
-    private func observeActivities() async {
-        do {
-            let query = try await openNMPQuery(
-                engine: engine,
-                filter: NMPFilter(
-                    kinds: [30_315],
-                    tags: ["h": .literal([groupID])],
-                    limit: 100
-                )
-            )
-            defer { query.cancel() }
-
-            for await batch in query {
-                guard !Task.isCancelled else { return }
-                activities = NIP29ViewProjection.activities(from: batch.rows)
                 activityError = nil
+                hasReceivedMessages = true
                 hasReceivedActivities = true
             }
         } catch {
             guard !Task.isCancelled else { return }
+            messageError = error.localizedDescription
             activityError = error.localizedDescription
         }
     }
@@ -227,25 +208,23 @@ final class RoomTimelineModel {
         }
     }
 
-    /// Send a tenex-edge management command (`add <slug>`, `list sessions`,
-    /// `list agents`, …) as a kind:9 chat message that p-tags `backendPubkey`.
-    /// The engine signs as `author` and routes to the group host; the backend
-    /// replies inline in this room. Returns a message on failure, else nil.
+    /// Send a tenex-edge management command through NMP's typed NIP-29 group
+    /// composition. NMP owns the host routing, durability, `h` context, and
+    /// best-effort `previous` evidence couriered from the delivered room rows.
+    /// Returns a message on failure, else nil after relay acknowledgement.
     func sendManagementCommand(_ command: String, backendPubkey: String, author: String) async -> String? {
-        let intent = WriteIntent(
-            payload: .unsigned(
-                pubkey: author,
+        do {
+            let intent = try groupSendIntent(
+                host: hostRelay,
+                groupId: groupID,
+                authorPubkey: author,
                 createdAt: UInt64(Date().timeIntervalSince1970),
                 kind: 9,
-                tags: [["h", groupID], ["p", backendPubkey]],
-                content: command
-            ),
-            durability: .durable,
-            routing: .authorOutbox
-        )
-
-        do {
-            let receipt = try await engine.publish(intent)
+                content: command,
+                extraTags: [["p", backendPubkey]],
+                recentRows: contentRows
+            )
+            let receipt = try await engine.publishComposed(intent)
             for await status in receipt.status {
                 switch status {
                 case .rejected(_, let reason):
@@ -254,13 +233,19 @@ final class RoomTimelineModel {
                     return reason
                 case .gaveUp(let relay):
                     return "Could not deliver to \(relay)."
-                case .sent, .acked:
+                case .persistenceBlocked(let relay):
+                    return "Could not persist the command for \(relay)."
+                case .routePersistenceBlocked(let relay):
+                    return "Could not persist routing for \(relay)."
+                case .outcomeUnknown(let relay):
+                    return "Delivery outcome for \(relay) is unknown."
+                case .acked:
                     return nil
-                case .accepted, .awaitingCapability, .signed, .routed:
+                case .accepted, .awaitingCapability, .signed, .routed, .sent:
                     continue
                 }
             }
-            return nil
+            return "Delivery ended without relay acknowledgement."
         } catch {
             return error.localizedDescription
         }
