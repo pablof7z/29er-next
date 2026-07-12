@@ -8,8 +8,7 @@ struct RoomMessage: Identifiable, Hashable, Sendable {
     let content: String
 
     var authorLabel: String {
-        guard author.count > 16 else { return author }
-        return "\(author.prefix(8))…\(author.suffix(8))"
+        PubkeyDisplay.shortHex(author)
     }
 }
 
@@ -18,18 +17,14 @@ struct AgentActivity: Identifiable, Hashable, Sendable {
     let eventID: String
     let author: String
     let createdAt: UInt64
-    let sessionID: String
     let title: String
     let activity: String
     let isBusy: Bool
     let host: String?
     let slug: String?
-    let relativeWorkingDirectory: String?
-    let expiresAt: UInt64
     var authorLabel: String {
         if let slug, !slug.isEmpty { return slug }
-        guard author.count > 16 else { return author }
-        return "\(author.prefix(8))…\(author.suffix(8))"
+        return PubkeyDisplay.shortHex(author)
     }
 
     var activityLabel: String {
@@ -40,11 +35,9 @@ struct AgentActivity: Identifiable, Hashable, Sendable {
 
 struct RoomMember: Identifiable, Hashable, Sendable {
     let id: String
-    let membershipEventID: String
     let pubkey: String
     var authorLabel: String {
-        guard pubkey.count > 16 else { return pubkey }
-        return "\(pubkey.prefix(8))…\(pubkey.suffix(8))"
+        PubkeyDisplay.shortHex(pubkey)
     }
 }
 
@@ -53,7 +46,6 @@ struct RoomPerson: Identifiable, Hashable, Sendable {
     let activity: AgentActivity?
     let pubkey: String
     var id: String { pubkey }
-    var isMember: Bool { member != nil }
     var authorLabel: String {
         activity?.authorLabel ?? member?.authorLabel ?? pubkey
     }
@@ -88,10 +80,9 @@ enum NIP29ViewProjection {
         var membersByPubkey: [String: RoomMember] = [:]
 
         for row in rows.sorted(by: newestRowFirst) {
-            for member in members(eventID: row.id, kind: row.kind, tags: row.tags) {
-                if membersByPubkey[member.pubkey] == nil {
-                    membersByPubkey[member.pubkey] = member
-                }
+            for member in members(kind: row.kind, tags: row.tags)
+            where membersByPubkey[member.pubkey] == nil {
+                membersByPubkey[member.pubkey] = member
             }
         }
 
@@ -194,19 +185,15 @@ enum NIP29ViewProjection {
             eventID: eventID,
             author: pubkey,
             createdAt: createdAt,
-            sessionID: sessionID,
             title: firstTag("title", in: tags) ?? "",
             activity: content,
             isBusy: status == "busy",
             host: nonEmptyTag("host", in: tags),
-            slug: nonEmptyTag("slug", in: tags),
-            relativeWorkingDirectory: nonEmptyTag("rel-cwd", in: tags),
-            expiresAt: expiresAt
+            slug: nonEmptyTag("slug", in: tags)
         )
     }
 
     static func members(
-        eventID: String,
         kind: UInt16,
         tags: [[String]]
     ) -> [RoomMember] {
@@ -221,7 +208,7 @@ enum NIP29ViewProjection {
             guard tag.first == "p", tag.count > 1, !tag[1].isEmpty, seen.insert(tag[1]).inserted else {
                 return nil
             }
-            return RoomMember(id: tag[1], membershipEventID: eventID, pubkey: tag[1])
+            return RoomMember(id: tag[1], pubkey: tag[1])
         }
     }
 

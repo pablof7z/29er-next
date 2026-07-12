@@ -4,7 +4,6 @@ import SwiftUI
 struct RoomView: View {
     let group: GroupSummary
     let allGroups: [GroupSummary]
-    let engine: NMPEngine
     let activePubkey: String?
     var reads: MentionReads?
     var focusMessageID: String?
@@ -22,7 +21,6 @@ struct RoomView: View {
     ) {
         self.group = group
         self.allGroups = allGroups
-        self.engine = engine
         self.activePubkey = activePubkey
         self.reads = reads
         self.focusMessageID = focusMessageID
@@ -31,7 +29,6 @@ struct RoomView: View {
             initialValue: RoomTimelineModel(
                 engine: engine,
                 groupID: group.localID,
-                hostRelay: group.hostRelay,
                 recipient: activePubkey
             )
         )
@@ -42,12 +39,6 @@ struct RoomView: View {
             switch model.state {
             case .loading:
                 ProgressView("Opening room…")
-            case .failed(let message):
-                ContentUnavailableView(
-                    "Room Unavailable",
-                    systemImage: "exclamationmark.bubble",
-                    description: Text(message)
-                )
             case .observing:
                 roomContent
             }

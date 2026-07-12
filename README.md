@@ -2,7 +2,7 @@
 
 Greenfield 29er client built on the new [NMP](https://github.com/pablof7z/nmp) engine.
 
-The first vertical slice is intentionally read-only: it discovers public NIP-29 rooms, opens live room timelines, renders current kind:30315 agent activity, and exposes NMP's permanent diagnostics. Durable publishing and identity persistence will arrive through NMP's canonical SDK surfaces instead of being reimplemented in the app.
+The current slice discovers public NIP-29 rooms, opens live room timelines, renders current kind:30315 agent activity, exposes NMP's permanent diagnostics, and lets a session identity send durable management commands to tenex-edge backends. Identity persistence waits for NMP's canonical signer-provider surface instead of being reimplemented in the app.
 
 ## Architecture
 
@@ -41,6 +41,7 @@ The preview bundle identifier is `io.f7z.app29er.next`, so it installs beside th
 - Kind:30315 replacement and NIP-40 expiry are applied by NMP; Swift only projects the current rows for display.
 - Explicit session key import through NMP's `addAccount` and `setActiveAccount` surface. The app retains only the returned public key.
 - Ending an identity session shuts down the credential-owning engine and creates a fresh read-only engine over the same event store.
+- Signed-in sessions can publish durable kind:9 management commands to room backends and follow NMP's canonical write receipts.
 - Live per-relay NMP diagnostics.
 
 Identity is deliberately session-only. 29er Next does not persist an nsec, and it does not describe this import surface as production-secure persistent login. Standard platform vault providers, credential reset, and remote-signer reattachment remain upstream NMP work.

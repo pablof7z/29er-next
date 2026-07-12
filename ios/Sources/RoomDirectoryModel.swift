@@ -50,7 +50,10 @@ final class RoomDirectoryModel {
 
     func observe() async {
         do {
-            let query = try engine.observe(NMPFilter(kinds: [9], limit: 500))
+            let query = try await openNMPQuery(
+                engine: engine,
+                filter: NMPFilter(kinds: [9], limit: 500)
+            )
             defer { query.cancel() }
 
             for await batch in query {

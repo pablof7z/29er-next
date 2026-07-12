@@ -13,8 +13,7 @@ struct Mention: Identifiable, Hashable, Sendable {
     let groupLocalID: String
 
     var authorLabel: String {
-        guard author.count > 16 else { return author }
-        return "\(author.prefix(8))…\(author.suffix(8))"
+        PubkeyDisplay.shortHex(author)
     }
 }
 

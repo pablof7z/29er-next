@@ -15,12 +15,12 @@ struct MentionReadStore {
         self.defaults = defaults
     }
 
-    func loadRead() -> Set<String> {
-        Set(defaults.stringArray(forKey: readKey) ?? [])
+    func loadRead() -> [String] {
+        defaults.stringArray(forKey: readKey) ?? []
     }
 
-    func saveRead(_ ids: Set<String>) {
-        defaults.set(Array(ids), forKey: readKey)
+    func saveRead(_ ids: [String]) {
+        defaults.set(ids, forKey: readKey)
     }
 
     func loadSeededAt() -> UInt64? {
@@ -39,17 +39,28 @@ struct MentionReadStore {
 @MainActor
 @Observable
 final class MentionReads {
+    static let maximumReadIDs = 1_000
+
     private(set) var readIDs: Set<String>
     let seededAt: UInt64
 
     private let store: MentionReadStore
+    private var orderedReadIDs: [String]
 
     init(
         store: MentionReadStore = MentionReadStore(),
         now: UInt64 = UInt64(Date().timeIntervalSince1970)
     ) {
         self.store = store
-        self.readIDs = store.loadRead()
+        let stored = store.loadRead()
+        var seen = Set<String>()
+        let unique = stored.filter { seen.insert($0).inserted }
+        let bounded = Array(unique.suffix(Self.maximumReadIDs))
+        self.orderedReadIDs = bounded
+        self.readIDs = Set(bounded)
+        if bounded != stored {
+            store.saveRead(bounded)
+        }
         if let existing = store.loadSeededAt() {
             self.seededAt = existing
         } else {
@@ -67,6 +78,11 @@ final class MentionReads {
     func markRead(_ id: String) {
         guard !readIDs.contains(id) else { return }
         readIDs.insert(id)
-        store.saveRead(readIDs)
+        orderedReadIDs.append(id)
+        if orderedReadIDs.count > Self.maximumReadIDs {
+            let evicted = orderedReadIDs.removeFirst()
+            readIDs.remove(evicted)
+        }
+        store.saveRead(orderedReadIDs)
     }
 }

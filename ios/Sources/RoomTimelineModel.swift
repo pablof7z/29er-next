@@ -8,7 +8,6 @@ final class RoomTimelineModel {
     enum State: Equatable {
         case loading
         case observing
-        case failed(String)
     }
 
     private(set) var state: State = .loading
@@ -21,10 +20,6 @@ final class RoomTimelineModel {
     private(set) var admins: [String] = []
     private(set) var profiles = ProfileBook()
 
-    private(set) var messageCoverage: Coverage = .unknown
-    private(set) var activityCoverage: Coverage = .unknown
-    private(set) var membershipCoverage: Coverage = .unknown
-
     private(set) var messageError: String?
     private(set) var activityError: String?
     private(set) var membershipError: String?
@@ -36,13 +31,11 @@ final class RoomTimelineModel {
 
     private let engine: NMPEngine
     private let groupID: String
-    private let hostRelay: String
     private let recipient: String?
 
-    init(engine: NMPEngine, groupID: String, hostRelay: String, recipient: String? = nil) {
+    init(engine: NMPEngine, groupID: String, recipient: String? = nil) {
         self.engine = engine
         self.groupID = groupID
-        self.hostRelay = hostRelay
         self.recipient = recipient
     }
 
@@ -55,19 +48,6 @@ final class RoomTimelineModel {
     var backends: [RoomBackend] {
         let candidates = members.map(\.pubkey) + admins + activities.map(\.author)
         return RoomBackendProjection.backends(candidatePubkeys: candidates, profiles: profiles)
-    }
-
-    /// Open a live query WITHOUT blocking the main actor. `engine.observe`
-    /// blocks its caller until NMP's `on_subscribe` runs synchronously and
-    /// replies — that resolution decodes the subscription's initial snapshot,
-    /// which for a room with a large stored history takes real time. Every
-    /// `observe*` method below runs on this `@MainActor` model, so issuing the
-    /// call directly froze the UI for seconds when opening a busy room. This
-    /// helper is `nonisolated`, so the blocking round-trip happens off the main
-    /// thread; batches still stream back through the returned query and are
-    /// applied on the main actor as before.
-    private nonisolated func openQuery(_ filter: NMPFilter) async throws -> NMPQuery {
-        try engine.observe(filter)
     }
 
     func observe() async {
@@ -99,8 +79,9 @@ final class RoomTimelineModel {
 
     private func observeMessages() async {
         do {
-            let query = try await openQuery(
-                NMPFilter(
+            let query = try await openNMPQuery(
+                engine: engine,
+                filter: NMPFilter(
                     kinds: [9],
                     tags: ["h": .literal([groupID])],
                     limit: 200
@@ -114,7 +95,6 @@ final class RoomTimelineModel {
                 if let recipient {
                     mentionIDs = MentionProjection.mentionIDs(from: batch.rows, recipient: recipient)
                 }
-                messageCoverage = batch.coverage
                 messageError = nil
                 hasReceivedMessages = true
             }
@@ -126,8 +106,9 @@ final class RoomTimelineModel {
 
     private func observeActivities() async {
         do {
-            let query = try await openQuery(
-                NMPFilter(
+            let query = try await openNMPQuery(
+                engine: engine,
+                filter: NMPFilter(
                     kinds: [30_315],
                     tags: ["h": .literal([groupID])],
                     limit: 100
@@ -138,7 +119,6 @@ final class RoomTimelineModel {
             for await batch in query {
                 guard !Task.isCancelled else { return }
                 activities = NIP29ViewProjection.activities(from: batch.rows)
-                activityCoverage = batch.coverage
                 activityError = nil
                 hasReceivedActivities = true
             }
@@ -150,8 +130,9 @@ final class RoomTimelineModel {
 
     private func observeMembership() async {
         do {
-            let query = try await openQuery(
-                NMPFilter(
+            let query = try await openNMPQuery(
+                engine: engine,
+                filter: NMPFilter(
                     kinds: [39_002],
                     tags: ["d": .literal([groupID])],
                     limit: 20
@@ -162,7 +143,6 @@ final class RoomTimelineModel {
             for await batch in query {
                 guard !Task.isCancelled else { return }
                 members = NIP29ViewProjection.members(from: batch.rows)
-                membershipCoverage = batch.coverage
                 membershipError = nil
                 hasReceivedMembership = true
                 hasMembershipMetadata = batch.rows.contains { $0.kind == 39_002 }
@@ -175,8 +155,9 @@ final class RoomTimelineModel {
 
     private func observeAdmins() async {
         do {
-            let query = try await openQuery(
-                NMPFilter(
+            let query = try await openNMPQuery(
+                engine: engine,
+                filter: NMPFilter(
                     kinds: [39_001],
                     tags: ["d": .literal([groupID])],
                     limit: 20
@@ -225,11 +206,14 @@ final class RoomTimelineModel {
             .derived(
                 inner: NMPFilter(kinds: [30_315], tags: ["h": .literal([groupID])], limit: 100),
                 project: .authors
-            ),
+            )
         ])
 
         do {
-            let query = try await openQuery(NMPFilter(kinds: [0], authors: authors, limit: 500))
+            let query = try await openNMPQuery(
+                engine: engine,
+                filter: NMPFilter(kinds: [0], authors: authors, limit: 500)
+            )
             defer { query.cancel() }
 
             for await batch in query {

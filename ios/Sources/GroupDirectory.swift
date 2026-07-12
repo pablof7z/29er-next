@@ -10,9 +10,6 @@ struct GroupSummary: Identifiable, Hashable, Sendable {
     let id: GroupCoordinate
     let name: String
     let about: String?
-    let pictureURL: URL?
-    let isPublic: Bool
-    let isOpen: Bool
     let parentLocalID: String?
 
     var hostRelay: String { id.hostRelay }
@@ -46,16 +43,12 @@ enum GroupDirectoryProjection {
 
         let name = firstTag("name", in: tags).flatMap { $0.isEmpty ? nil : $0 } ?? localID
         let about = firstTag("about", in: tags).flatMap { $0.isEmpty ? nil : $0 }
-        let pictureURL = firstTag("picture", in: tags).flatMap(URL.init(string:))
         let parentLocalID = authoritativeParent(in: tags, childLocalID: localID)
 
         return GroupSummary(
             id: GroupCoordinate(hostRelay: hostRelay, localID: localID),
             name: name,
             about: about,
-            pictureURL: pictureURL,
-            isPublic: containsMarker("public", in: tags),
-            isOpen: containsMarker("open", in: tags),
             parentLocalID: parentLocalID
         )
     }
@@ -94,10 +87,6 @@ enum GroupDirectoryProjection {
 
     private static func firstTag(_ name: String, in tags: [[String]]) -> String? {
         tags.first { $0.first == name && $0.count > 1 }?[1]
-    }
-
-    private static func containsMarker(_ name: String, in tags: [[String]]) -> Bool {
-        tags.contains { $0.first == name }
     }
 
     private static func groupNameFirst(_ lhs: GroupSummary, _ rhs: GroupSummary) -> Bool {
