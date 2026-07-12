@@ -1,3 +1,4 @@
+import NMPContent
 import SwiftUI
 
 /// The one channel list, used for both the root directory and any subchannel
@@ -9,6 +10,7 @@ struct ChannelListView: View {
     let channels: [GroupSummary]
     let allGroups: [GroupSummary]
     let directory: RoomDirectoryModel?
+    let contentClient: NMPContentClient?
     @Binding var path: NavigationPath
 
     var body: some View {
@@ -34,7 +36,8 @@ struct ChannelListView: View {
                 GroupRow(
                     group: group,
                     childCount: childCount,
-                    entry: directory?.entries[group.localID]
+                    entry: directory?.entries[group.localID],
+                    contentClient: contentClient
                 )
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: true) {

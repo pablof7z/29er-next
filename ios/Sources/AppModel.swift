@@ -1,5 +1,6 @@
 import Foundation
 import NMP
+import NMPContent
 import Observation
 
 @MainActor
@@ -20,6 +21,7 @@ final class AppModel {
     private(set) var identityError: String?
 
     private(set) var engine: NMPEngine?
+    private(set) var contentClient: NMPContentClient?
     private(set) var engineGeneration = 0
     private var engineConfig: NMPConfig?
     let groupRelay: String
@@ -39,6 +41,7 @@ final class AppModel {
             case .invalid(let error):
                 groupRelay = ""
                 engine = nil
+                contentClient = nil
                 engineConfig = nil
                 state = .failed(error.localizedDescription)
                 return
@@ -66,9 +69,12 @@ final class AppModel {
                 appRelays: [configuration.groupRelay]
             )
             self.engineConfig = engineConfig
-            engine = try NMPEngine(config: engineConfig)
+            let engine = try NMPEngine(config: engineConfig)
+            self.engine = engine
+            contentClient = NMPContentClient(engine: engine)
         } catch {
             engine = nil
+            contentClient = nil
             engineConfig = nil
             state = .failed(error.localizedDescription)
         }
@@ -162,6 +168,7 @@ final class AppModel {
     private func replaceWithReadOnlyEngine(identityError: String?) {
         let oldEngine = engine
         engine = nil
+        contentClient = nil
         activePubkey = nil
         self.identityError = identityError
         state = .starting
@@ -175,9 +182,12 @@ final class AppModel {
         }
 
         do {
-            engine = try NMPEngine(config: engineConfig)
+            let engine = try NMPEngine(config: engineConfig)
+            self.engine = engine
+            contentClient = NMPContentClient(engine: engine)
         } catch {
             engine = nil
+            contentClient = nil
             state = .failed("NMP could not restart a read-only session.")
         }
         engineGeneration &+= 1
