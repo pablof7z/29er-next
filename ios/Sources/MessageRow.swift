@@ -16,6 +16,10 @@ struct MessageRow: View {
         message.content.isEmpty ? "Empty message" : message.content
     }
 
+    private var attributedContent: AttributedString {
+        MessageContent.attributed(message.content)
+    }
+
     private var displayName: String {
         profiles.displayName(for: message.author, fallback: message.authorLabel)
     }
@@ -32,9 +36,8 @@ struct MessageRow: View {
                 if showsHeader {
                     header
                 }
-                Text(displayContent)
+                content
                     .font(.body)
-                    .foregroundStyle(message.content.isEmpty ? .tertiary : .primary)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -46,6 +49,17 @@ struct MessageRow: View {
         .contextMenu { contextActions }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if message.content.isEmpty {
+            Text(displayContent).foregroundStyle(.tertiary)
+        } else {
+            // Links open in the system browser; entity tokens are styled but
+            // inert until NMP exposes a bech32 decoder for name resolution.
+            Text(attributedContent).foregroundStyle(.primary).tint(.accentColor)
+        }
     }
 
     @ViewBuilder
