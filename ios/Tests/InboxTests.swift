@@ -101,4 +101,15 @@ final class MentionReadsTests: XCTestCase {
         XCTAssertFalse(second.isUnread(id: "seen", createdAt: 2_000))
         XCTAssertTrue(second.isUnread(id: "fresh", createdAt: 2_000))
     }
+
+    func testReadStateEvictsOldestIDsAtTheBound() throws {
+        let reads = try makeReads(seededAt: 1_000)
+        for index in 0...MentionReads.maximumReadIDs {
+            reads.markRead("mention-\(index)")
+        }
+
+        XCTAssertEqual(reads.readIDs.count, MentionReads.maximumReadIDs)
+        XCTAssertFalse(reads.readIDs.contains("mention-0"))
+        XCTAssertTrue(reads.readIDs.contains("mention-\(MentionReads.maximumReadIDs)"))
+    }
 }
