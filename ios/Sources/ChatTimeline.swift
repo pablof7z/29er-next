@@ -67,6 +67,7 @@ enum ChatTimeline {
 
 struct ChatTimelineView: View {
     let messages: [RoomMessage]
+    let profiles: ProfileBook
     let hasReceivedSnapshot: Bool
     let error: String?
 
@@ -87,13 +88,14 @@ struct ChatTimelineView: View {
                 description: Text("Messages will appear here as NMP receives room events.")
             )
         } else {
-            MessageTimelineView(messages: messages)
+            MessageTimelineView(messages: messages, profiles: profiles)
         }
     }
 }
 
 private struct MessageTimelineView: View {
     let messages: [RoomMessage]
+    let profiles: ProfileBook
 
     @State private var isPinnedToBottom = true
 
@@ -111,7 +113,7 @@ private struct MessageTimelineView: View {
                             DaySeparatorRow(label: label)
                                 .id(entry.id)
                         case .message(let message, let showsHeader):
-                            MessageRow(message: message, showsHeader: showsHeader)
+                            MessageRow(message: message, showsHeader: showsHeader, profiles: profiles)
                                 .id(entry.id)
                         }
                     }
@@ -196,91 +198,3 @@ private struct DaySeparatorRow: View {
     }
 }
 
-private let avatarWidth: CGFloat = 34
-private let avatarSpacing: CGFloat = 10
-
-private struct MessageRow: View {
-    let message: RoomMessage
-    let showsHeader: Bool
-
-    private var displayContent: String {
-        message.content.isEmpty ? "Empty message" : message.content
-    }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: avatarSpacing) {
-            gutter
-
-            VStack(alignment: .leading, spacing: 4) {
-                if showsHeader {
-                    header
-                }
-                Text(displayContent)
-                    .font(.body)
-                    .foregroundStyle(message.content.isEmpty ? .tertiary : .primary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, showsHeader ? 10 : 2)
-        .padding(.bottom, 2)
-        .background(Color(uiColor: .systemBackground))
-        .contextMenu { contextActions }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityText)
-    }
-
-    @ViewBuilder
-    private var gutter: some View {
-        if showsHeader {
-            Circle()
-                .fill(message.author.avatarColor.gradient)
-                .frame(width: avatarWidth, height: avatarWidth)
-                .overlay {
-                    Text(String(message.authorLabel.prefix(1)).uppercased())
-                        .font(.caption.bold())
-                        .foregroundStyle(.white)
-                }
-                .accessibilityHidden(true)
-        } else {
-            Color.clear.frame(width: avatarWidth, height: 1)
-        }
-    }
-
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(message.authorLabel)
-                .font(.subheadline.weight(.semibold))
-            Spacer()
-            Text(message.createdAt.messageClockTime)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    @ViewBuilder
-    private var contextActions: some View {
-        if !message.content.isEmpty {
-            Button {
-                UIPasteboard.general.string = message.content
-            } label: {
-                Label("Copy", systemImage: "doc.on.doc")
-            }
-            ShareLink(item: message.content) {
-                Label("Share", systemImage: "square.and.arrow.up")
-            }
-        }
-    }
-
-    private var accessibilityText: String {
-        "\(message.authorLabel), \(message.createdAt.messageClockTime): \(displayContent)"
-    }
-}
-
-private extension UInt64 {
-    var messageClockTime: String {
-        Date(timeIntervalSince1970: TimeInterval(self))
-            .formatted(date: .omitted, time: .shortened)
-    }
-}

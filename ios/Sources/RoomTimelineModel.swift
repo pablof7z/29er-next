@@ -14,6 +14,7 @@ final class RoomTimelineModel {
     private(set) var messages: [RoomMessage] = []
     private(set) var activities: [AgentActivity] = []
     private(set) var members: [RoomMember] = []
+    private(set) var profiles = ProfileBook()
 
     private(set) var messageCoverage: Coverage = .unknown
     private(set) var activityCoverage: Coverage = .unknown
@@ -55,6 +56,10 @@ final class RoomTimelineModel {
             group.addTask { [weak self] in
                 guard let self else { return }
                 await self.observeMembership()
+            }
+            group.addTask { [weak self] in
+                guard let self else { return }
+                await self.observeProfiles()
             }
         }
     }
@@ -129,6 +134,41 @@ final class RoomTimelineModel {
         } catch {
             guard !Task.isCancelled else { return }
             membershipError = error.localizedDescription
+        }
+    }
+
+    private func observeProfiles() async {
+        // kind:0 for every pubkey the room can show — message authors, listed
+        // members, and live-session authors — via a reactive union binding so
+        // demand grows as new pubkeys appear. NMP owns the routing; the app
+        // only declares which authors it cares about, never a hand-kept list.
+        let authors: NMPBinding = .setOp(.union, [
+            .derived(
+                inner: NMPFilter(kinds: [9], tags: ["h": .literal([groupID])]),
+                project: .authors
+            ),
+            .derived(
+                inner: NMPFilter(kinds: [39_002], tags: ["d": .literal([groupID])]),
+                project: .tag("p")
+            ),
+            .derived(
+                inner: NMPFilter(kinds: [30_315], tags: ["h": .literal([groupID])]),
+                project: .authors
+            ),
+        ])
+
+        do {
+            let query = try engine.observe(NMPFilter(kinds: [0], authors: authors, limit: 500))
+            defer { query.cancel() }
+
+            for await batch in query {
+                guard !Task.isCancelled else { return }
+                profiles = RoomProfileProjection.profiles(from: batch.rows)
+            }
+        } catch {
+            // Identity is enrichment; on failure the timeline still renders
+            // with the shortened-hex fallback rather than failing the room.
+            return
         }
     }
 }
