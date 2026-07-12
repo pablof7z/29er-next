@@ -106,7 +106,7 @@ struct RootView: View {
                 ProgressView()
             }
         } else {
-            List(GroupDirectoryProjection.roots(in: model.groups)) { group in
+            List(orderedRoots) { group in
                 let childCount = GroupDirectoryProjection.directChildren(of: group, in: model.groups).count
                 NavigationLink(value: group) {
                     GroupRow(
@@ -133,6 +133,28 @@ struct RootView: View {
 
     private var relayHost: String {
         URL(string: model.groupRelay)?.host ?? model.groupRelay
+    }
+
+    /// Roots ordered by most-recent message first; rooms without any known
+    /// message fall below active ones, alphabetically. Re-sorts live as new
+    /// messages arrive through `directory`.
+    private var orderedRoots: [GroupSummary] {
+        GroupDirectoryProjection.roots(in: model.groups).sorted(by: activityDescending)
+    }
+
+    private func activityDescending(_ lhs: GroupSummary, _ rhs: GroupSummary) -> Bool {
+        let lhsTime = directory?.entries[lhs.localID]?.latest?.createdAt
+        let rhsTime = directory?.entries[rhs.localID]?.latest?.createdAt
+        switch (lhsTime, rhsTime) {
+        case let (left?, right?) where left != right:
+            return left > right
+        case (.some, .none):
+            return true
+        case (.none, .some):
+            return false
+        default:
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
     }
 }
 
