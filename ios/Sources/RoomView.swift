@@ -5,12 +5,19 @@ struct RoomView: View {
     let group: GroupSummary
     let allGroups: [GroupSummary]
     let engine: NMPEngine
+    var onOpen: (() -> Void)?
     @State private var model: RoomTimelineModel
 
-    init(group: GroupSummary, allGroups: [GroupSummary], engine: NMPEngine) {
+    init(
+        group: GroupSummary,
+        allGroups: [GroupSummary],
+        engine: NMPEngine,
+        onOpen: (() -> Void)? = nil
+    ) {
         self.group = group
         self.allGroups = allGroups
         self.engine = engine
+        self.onOpen = onOpen
         _model = State(initialValue: RoomTimelineModel(engine: engine, groupID: group.localID))
     }
 
@@ -58,6 +65,7 @@ struct RoomView: View {
         .task {
             await model.observe()
         }
+        .onAppear { onOpen?() }
     }
 
     private var roomContent: some View {
