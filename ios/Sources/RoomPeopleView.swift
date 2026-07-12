@@ -16,9 +16,10 @@ struct RoomPeopleView: View {
     @State private var selectedBackend: RoomBackend?
 
     var body: some View {
+        let presentation = makePresentation()
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 22) {
-                membershipNotice
+                membershipNotice(presentation.membership)
 
                 if !backends.isEmpty {
                     backendsSection
@@ -56,7 +57,7 @@ struct RoomPeopleView: View {
                     )
                 }
 
-                if shouldShowEmptyState {
+                if presentation.showEmptyState {
                     ContentUnavailableView(
                         "Nobody Active",
                         systemImage: "person.2",
@@ -91,7 +92,7 @@ struct RoomPeopleView: View {
         people.activeHere.filter { !backendPubkeys.contains($0.pubkey) }
     }
 
-    private var presentation: RoomPeoplePresentation {
+    private func makePresentation() -> RoomPeoplePresentation {
         RoomPeoplePresentation.make(
             RoomPeoplePresentation.Input(
                 hasReceivedMembership: hasReceivedMembership,
@@ -139,8 +140,8 @@ struct RoomPeopleView: View {
     }
 
     @ViewBuilder
-    private var membershipNotice: some View {
-        switch presentation.membership {
+    private func membershipNotice(_ membership: MembershipPresentation) -> some View {
+        switch membership {
         case .unavailable(let notice), .metadataMissing(let notice):
             ObservationNotice(
                 symbol: notice.symbol,
@@ -160,9 +161,6 @@ struct RoomPeopleView: View {
         }
     }
 
-    private var shouldShowEmptyState: Bool {
-        presentation.showEmptyState
-    }
 }
 
 private struct PersonSection: View {

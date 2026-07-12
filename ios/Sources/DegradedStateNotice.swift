@@ -1,21 +1,32 @@
 import SwiftUI
 
 struct DegradedStateNotice: View {
-    let title: String
-    let message: String
+    let notice: NoticeContent
+
+    init(_ notice: NoticeContent) {
+        self.notice = notice
+    }
+
+    init(title: String, message: String) {
+        self.notice = NoticeContent(
+            symbol: "exclamationmark.triangle.fill",
+            title: title,
+            message: message
+        )
+    }
 
     var body: some View {
         Label {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
+                Text(notice.title)
                     .font(.footnote.weight(.semibold))
-                Text(message)
+                Text(notice.message)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
         } icon: {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image(systemName: notice.symbol)
                 .foregroundStyle(.orange)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

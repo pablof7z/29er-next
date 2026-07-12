@@ -17,10 +17,7 @@ struct ChannelListView: View {
                 error: directory?.observationError
             ) {
                 Section {
-                    DegradedStateNotice(
-                        title: notice.title,
-                        message: notice.message
-                    )
+                    DegradedStateNotice(notice)
                     .listRowInsets(EdgeInsets())
                 }
             }

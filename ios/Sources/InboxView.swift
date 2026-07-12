@@ -54,7 +54,7 @@ struct InboxView: View {
                 .listStyle(.plain)
                 .safeAreaInset(edge: .top, spacing: 0) {
                     if let notice = presentation.notice {
-                        DegradedStateNotice(title: notice.title, message: notice.message)
+                        DegradedStateNotice(notice)
                     }
                 }
             }
