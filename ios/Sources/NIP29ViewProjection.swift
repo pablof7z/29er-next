@@ -133,6 +133,32 @@ enum NIP29ViewProjection {
         return RoomPeople(members: listed, activeHere: activeHere)
     }
 
+    /// Admin pubkeys from the room's kind:39001 admin lists. tenex-edge adds
+    /// its backend management key as a group admin, so this is how the backend
+    /// surfaces even when it is not in the kind:39002 member roster.
+    static func admins(from rows: [Row]) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for row in rows.sorted(by: newestRowFirst) {
+            for pubkey in admins(kind: row.kind, tags: row.tags) where seen.insert(pubkey).inserted {
+                result.append(pubkey)
+            }
+        }
+        return result
+    }
+
+    static func admins(kind: UInt16, tags: [[String]]) -> [String] {
+        guard kind == 39_001,
+              let groupID = firstTag("d", in: tags),
+              !groupID.isEmpty else {
+            return []
+        }
+        return tags.compactMap { tag in
+            guard tag.first == "p", tag.count > 1, !tag[1].isEmpty else { return nil }
+            return tag[1]
+        }
+    }
+
     static func message(
         eventID: String,
         pubkey: String,

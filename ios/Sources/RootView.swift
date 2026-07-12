@@ -35,6 +35,7 @@ struct RootView: View {
                         group: group,
                         allGroups: model.groups,
                         engine: engine,
+                        activePubkey: model.activePubkey,
                         onOpen: { directory?.markRead(group) }
                     )
                 }
@@ -49,6 +50,7 @@ struct RootView: View {
                         ),
                         allGroups: model.groups,
                         engine: engine,
+                        activePubkey: model.activePubkey,
                         directory: directory
                     )
                 }

@@ -5,6 +5,7 @@ struct RoomView: View {
     let group: GroupSummary
     let allGroups: [GroupSummary]
     let engine: NMPEngine
+    let activePubkey: String?
     var onOpen: (() -> Void)?
     @State private var model: RoomTimelineModel
 
@@ -12,13 +13,21 @@ struct RoomView: View {
         group: GroupSummary,
         allGroups: [GroupSummary],
         engine: NMPEngine,
+        activePubkey: String?,
         onOpen: (() -> Void)? = nil
     ) {
         self.group = group
         self.allGroups = allGroups
         self.engine = engine
+        self.activePubkey = activePubkey
         self.onOpen = onOpen
-        _model = State(initialValue: RoomTimelineModel(engine: engine, groupID: group.localID))
+        _model = State(
+            initialValue: RoomTimelineModel(
+                engine: engine,
+                groupID: group.localID,
+                hostRelay: group.hostRelay
+            )
+        )
     }
 
     var body: some View {
@@ -46,7 +55,8 @@ struct RoomView: View {
                             parent: group,
                             children: childGroups,
                             allGroups: allGroups,
-                            engine: engine
+                            engine: engine,
+                            activePubkey: activePubkey
                         )
                     } label: {
                         Label("Subchannels", systemImage: "rectangle.stack")
@@ -88,9 +98,21 @@ struct RoomView: View {
             hasMembershipMetadata: model.hasMembershipMetadata,
             membershipError: model.membershipError,
             hasReceivedActivities: model.hasReceivedActivities,
-            activityError: model.activityError
+            activityError: model.activityError,
+            backends: model.backends,
+            canSendCommands: activePubkey != nil,
+            sendCommand: sendCommand
         )
         .navigationTitle("People")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func sendCommand(_ command: String, to backendPubkey: String) async -> String? {
+        guard let activePubkey else { return "Sign in to send commands." }
+        return await model.sendManagementCommand(
+            command,
+            backendPubkey: backendPubkey,
+            author: activePubkey
+        )
     }
 }
