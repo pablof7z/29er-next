@@ -1,13 +1,18 @@
 import NMP
 import SwiftUI
 
+struct SubchannelsRoute: Hashable {
+    let parent: GroupSummary
+}
+
 struct RootView: View {
     @Bindable var model: AppModel
+    @State private var path = NavigationPath()
     @State private var showingDiagnostics = false
     @State private var showingIdentity = false
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 switch model.state {
                 case .starting:
@@ -26,6 +31,19 @@ struct RootView: View {
             .navigationDestination(for: GroupSummary.self) { group in
                 if let engine = model.engine {
                     RoomView(group: group, allGroups: model.groups, engine: engine)
+                }
+            }
+            .navigationDestination(for: SubchannelsRoute.self) { route in
+                if let engine = model.engine {
+                    ChildChannelsView(
+                        parent: route.parent,
+                        children: GroupDirectoryProjection.directChildren(
+                            of: route.parent,
+                            in: model.groups
+                        ),
+                        allGroups: model.groups,
+                        engine: engine
+                    )
                 }
             }
             .toolbar {
@@ -74,8 +92,20 @@ struct RootView: View {
             }
         } else {
             List(GroupDirectoryProjection.roots(in: model.groups)) { group in
+                let children = GroupDirectoryProjection.directChildren(of: group, in: model.groups)
                 NavigationLink(value: group) {
-                    GroupRow(group: group)
+                    GroupRow(group: group, children: children)
+                }
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    if !children.isEmpty {
+                        Button {
+                            path.append(SubchannelsRoute(parent: group))
+                        } label: {
+                            Label("Subchannels", systemImage: "rectangle.stack")
+                        }
+                        .tint(.indigo)
+                        .accessibilityIdentifier("group-subchannels-swipe")
+                    }
                 }
             }
             .listStyle(.plain)
@@ -89,6 +119,7 @@ struct RootView: View {
 
 struct GroupRow: View {
     let group: GroupSummary
+    var children: [GroupSummary] = []
 
     var body: some View {
         HStack(spacing: 12) {
@@ -101,6 +132,10 @@ struct GroupRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                if !children.isEmpty {
+                    SubchannelChips(children: children)
+                        .padding(.top, 2)
+                }
             }
             Spacer(minLength: 4)
             if group.isPublic {
@@ -110,6 +145,44 @@ struct GroupRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+struct SubchannelChips: View {
+    let children: [GroupSummary]
+    private let maxVisible = 3
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "rectangle.stack")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            ForEach(children.prefix(maxVisible)) { child in
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(child.localID.avatarColor)
+                        .frame(width: 6, height: 6)
+                    Text(child.name)
+                        .font(.caption)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.secondary.opacity(0.12)))
+            }
+            if children.count > maxVisible {
+                Text("+\(children.count - maxVisible)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(chipsAccessibilityLabel)
+    }
+
+    private var chipsAccessibilityLabel: String {
+        let names = children.map(\.name).joined(separator: ", ")
+        return "\(children.count) subchannels: \(names)"
     }
 }
 

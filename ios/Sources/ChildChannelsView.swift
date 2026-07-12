@@ -14,7 +14,13 @@ struct ChildChannelsView: View {
                     NavigationLink {
                         RoomView(group: child, allGroups: allGroups, engine: engine)
                     } label: {
-                        GroupRow(group: child)
+                        GroupRow(
+                            group: child,
+                            children: GroupDirectoryProjection.directChildren(
+                                of: child,
+                                in: allGroups
+                            )
+                        )
                     }
                 }
             } header: {
