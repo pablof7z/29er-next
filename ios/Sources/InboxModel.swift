@@ -18,11 +18,18 @@ final class InboxModel {
 
     private let engine: NMPEngine
     private let recipient: String
+    private let queryOpening: NMPQueryOpening
 
-    init(engine: NMPEngine, recipient: String, reads: MentionReads) {
+    init(
+        engine: NMPEngine,
+        recipient: String,
+        reads: MentionReads,
+        queryOpening: NMPQueryOpening = .live
+    ) {
         self.engine = engine
         self.recipient = recipient
         self.reads = reads
+        self.queryOpening = queryOpening
     }
 
     var unreadMentions: [Mention] {
@@ -42,9 +49,9 @@ final class InboxModel {
 
     private func observeMentions() async {
         do {
-            let query = try await openNMPQuery(
-                engine: engine,
-                filter: NMPFilter(kinds: [9], tags: ["p": .literal([recipient])], limit: 500)
+            let query = try await queryOpening.filter(
+                engine,
+                NMPFilter(kinds: [9], tags: ["p": .literal([recipient])], limit: 500)
             )
             defer { query.cancel() }
 
@@ -73,9 +80,9 @@ final class InboxModel {
         )
 
         do {
-            let query = try await openNMPQuery(
-                engine: engine,
-                filter: NMPFilter(kinds: [0], authors: authors, limit: 500)
+            let query = try await queryOpening.filter(
+                engine,
+                NMPFilter(kinds: [0], authors: authors, limit: 500)
             )
             defer { query.cancel() }
 

@@ -46,6 +46,9 @@ enum MentionProjection {
         )
     }
 
+    // Mirrors the immutable fields needed from NMP Row without fabricating a
+    // constructible raw event. NMP #45 owns the eventual typed mention input.
+    // swiftlint:disable:next function_parameter_count
     static func mention(
         id: String,
         pubkey: String,

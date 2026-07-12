@@ -16,14 +16,12 @@ final class RoomTimelineModel {
     private(set) var admins: [String] = []
     private(set) var profiles = ProfileBook()
 
-    private(set) var messageError: String?
-    private(set) var activityError: String?
+    private(set) var contentError: String?
     private(set) var membershipError: String?
     private(set) var adminError: String?
     private(set) var profileError: String?
 
-    private(set) var hasReceivedMessages = false
-    private(set) var hasReceivedActivities = false
+    private(set) var hasReceivedContent = false
     private(set) var hasReceivedMembership = false
     private(set) var hasMembershipMetadata = false
 
@@ -31,12 +29,20 @@ final class RoomTimelineModel {
     private let groupID: String
     private let hostRelay: String
     private let recipient: String?
+    private let queryOpening: NMPQueryOpening
 
-    init(engine: NMPEngine, groupID: String, hostRelay: String, recipient: String? = nil) {
+    init(
+        engine: NMPEngine,
+        groupID: String,
+        hostRelay: String,
+        recipient: String? = nil,
+        queryOpening: NMPQueryOpening = .live
+    ) {
         self.engine = engine
         self.groupID = groupID
         self.hostRelay = hostRelay
         self.recipient = recipient
+        self.queryOpening = queryOpening
     }
 
     var messages: [RoomMessage] {
@@ -90,32 +96,26 @@ final class RoomTimelineModel {
         do {
             var demand = try groupContentDemand(host: hostRelay, groupId: groupID)
             demand.selection.limit = 200
-            let query = try await openNMPQuery(
-                engine: engine,
-                demand: demand
-            )
+            let query = try await queryOpening.demand(engine, demand)
             defer { query.cancel() }
 
             for await batch in query {
                 guard !Task.isCancelled else { return }
                 contentRows = batch.rows
-                messageError = nil
-                activityError = nil
-                hasReceivedMessages = true
-                hasReceivedActivities = true
+                contentError = nil
+                hasReceivedContent = true
             }
         } catch {
             guard !Task.isCancelled else { return }
-            messageError = error.localizedDescription
-            activityError = error.localizedDescription
+            contentError = error.localizedDescription
         }
     }
 
     private func observeMembership() async {
         do {
-            let query = try await openNMPQuery(
-                engine: engine,
-                filter: NMPFilter(
+            let query = try await queryOpening.filter(
+                engine,
+                NMPFilter(
                     kinds: [39_002],
                     tags: ["d": .literal([groupID])],
                     limit: 20
@@ -138,9 +138,9 @@ final class RoomTimelineModel {
 
     private func observeAdmins() async {
         do {
-            let query = try await openNMPQuery(
-                engine: engine,
-                filter: NMPFilter(
+            let query = try await queryOpening.filter(
+                engine,
+                NMPFilter(
                     kinds: [39_001],
                     tags: ["d": .literal([groupID])],
                     limit: 20
@@ -193,9 +193,9 @@ final class RoomTimelineModel {
         ])
 
         do {
-            let query = try await openNMPQuery(
-                engine: engine,
-                filter: NMPFilter(kinds: [0], authors: authors, limit: 500)
+            let query = try await queryOpening.filter(
+                engine,
+                NMPFilter(kinds: [0], authors: authors, limit: 500)
             )
             defer { query.cancel() }
 
