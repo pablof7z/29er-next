@@ -18,22 +18,30 @@ struct InboxView: View {
     let groups: [GroupSummary]
 
     private var unread: [Mention] { inbox.unreadMentions }
+    private var presentation: InboxPresentation {
+        InboxPresentation.make(
+            unreadCount: unread.count,
+            mentionError: inbox.mentionError,
+            profileError: inbox.profileError
+        )
+    }
 
     var body: some View {
         Group {
-            if unread.isEmpty, let error = inbox.mentionError {
+            switch presentation.content {
+            case .unavailable(let error):
                 ContentUnavailableView(
                     "Inbox Unavailable",
                     systemImage: "exclamationmark.triangle",
                     description: Text(error)
                 )
-            } else if unread.isEmpty {
+            case .zero:
                 ContentUnavailableView(
                     "Inbox Zero",
                     systemImage: "tray",
                     description: Text("Messages that mention you will appear here.")
                 )
-            } else {
+            case .mentions:
                 List(unread) { mention in
                     if let group = group(for: mention) {
                         NavigationLink(value: MentionRoute(group: group, messageID: mention.id)) {
@@ -45,7 +53,7 @@ struct InboxView: View {
                 }
                 .listStyle(.plain)
                 .safeAreaInset(edge: .top, spacing: 0) {
-                    if let notice {
+                    if let notice = presentation.notice {
                         DegradedStateNotice(title: notice.title, message: notice.message)
                     }
                 }
@@ -59,15 +67,6 @@ struct InboxView: View {
         groups.first { $0.localID == mention.groupLocalID }
     }
 
-    private var notice: (title: String, message: String)? {
-        if let error = inbox.mentionError {
-            return ("Inbox may be out of date", error)
-        }
-        if let error = inbox.profileError {
-            return ("Profiles unavailable", error)
-        }
-        return nil
-    }
 }
 
 struct MentionRow: View {

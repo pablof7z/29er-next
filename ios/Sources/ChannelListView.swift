@@ -13,11 +13,13 @@ struct ChannelListView: View {
 
     var body: some View {
         List {
-            if let error = directory?.observationError {
+            if let notice = ChannelListPresentation.activityNotice(
+                error: directory?.observationError
+            ) {
                 Section {
                     DegradedStateNotice(
-                        title: "Room activity unavailable",
-                        message: error
+                        title: notice.title,
+                        message: notice.message
                     )
                     .listRowInsets(EdgeInsets())
                 }

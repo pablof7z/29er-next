@@ -24,27 +24,11 @@ struct RoomPeopleView: View {
                     backendsSection
                 }
 
-                if let adminError {
+                ForEach(presentation.notices) { notice in
                     ObservationNotice(
-                        symbol: "person.badge.key",
-                        title: "Backend admins unavailable",
-                        detail: adminError
-                    )
-                }
-
-                if let profileError {
-                    ObservationNotice(
-                        symbol: "person.crop.circle.badge.exclamationmark",
-                        title: "Profiles unavailable",
-                        detail: profileError
-                    )
-                }
-
-                if let activityError {
-                    ObservationNotice(
-                        symbol: "bolt.slash",
-                        title: "Live status unavailable",
-                        detail: activityError
+                        symbol: notice.symbol,
+                        title: notice.title,
+                        detail: notice.message
                     )
                 }
 
@@ -107,6 +91,22 @@ struct RoomPeopleView: View {
         people.activeHere.filter { !backendPubkeys.contains($0.pubkey) }
     }
 
+    private var presentation: RoomPeoplePresentation {
+        RoomPeoplePresentation.make(
+            RoomPeoplePresentation.Input(
+                hasReceivedMembership: hasReceivedMembership,
+                hasMembershipMetadata: hasMembershipMetadata,
+                membershipError: membershipError,
+                hasReceivedActivities: hasReceivedActivities,
+                activityError: activityError,
+                adminError: adminError,
+                profileError: profileError,
+                memberCount: people.members.count,
+                activeCount: people.activeHere.count
+            )
+        )
+    }
+
     @ViewBuilder
     private var backendsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -140,13 +140,14 @@ struct RoomPeopleView: View {
 
     @ViewBuilder
     private var membershipNotice: some View {
-        if let membershipError {
+        switch presentation.membership {
+        case .unavailable(let notice), .metadataMissing(let notice):
             ObservationNotice(
-                symbol: "person.crop.circle.badge.exclamationmark",
-                title: "Member list unavailable",
-                detail: membershipError
+                symbol: notice.symbol,
+                title: notice.title,
+                detail: notice.message
             )
-        } else if !hasReceivedMembership {
+        case .loading:
             HStack(spacing: 10) {
                 ProgressView()
                 Text("Loading the room's member list…")
@@ -154,21 +155,13 @@ struct RoomPeopleView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 4)
-        } else if !hasMembershipMetadata {
-            ObservationNotice(
-                symbol: "person.crop.circle.badge.questionmark",
-                title: "Member list unavailable",
-                detail: "The relay has not provided kind 39002 membership metadata for this room."
-            )
+        case .ready:
+            EmptyView()
         }
     }
 
     private var shouldShowEmptyState: Bool {
-        hasReceivedMembership &&
-            hasReceivedActivities &&
-            people.members.isEmpty &&
-            people.activeHere.isEmpty &&
-            !hasMembershipMetadata
+        presentation.showEmptyState
     }
 }
 
