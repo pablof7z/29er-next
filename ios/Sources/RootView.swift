@@ -41,19 +41,17 @@ struct RootView: View {
                 }
             }
             .navigationDestination(for: SubchannelsRoute.self) { route in
-                if let engine = model.engine {
-                    ChildChannelsView(
-                        parent: route.parent,
-                        children: GroupDirectoryProjection.directChildren(
-                            of: route.parent,
-                            in: model.groups
-                        ),
-                        allGroups: model.groups,
-                        engine: engine,
-                        activePubkey: model.activePubkey,
-                        directory: directory
-                    )
-                }
+                ChannelListView(
+                    channels: GroupDirectoryProjection.directChildren(
+                        of: route.parent,
+                        in: model.groups
+                    ),
+                    allGroups: model.groups,
+                    directory: directory,
+                    path: $path
+                )
+                .navigationTitle(route.parent.name)
+                .navigationBarTitleDisplayMode(.inline)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -106,55 +104,17 @@ struct RootView: View {
                 ProgressView()
             }
         } else {
-            List(orderedRoots) { group in
-                let childCount = GroupDirectoryProjection.directChildren(of: group, in: model.groups).count
-                NavigationLink(value: group) {
-                    GroupRow(
-                        group: group,
-                        childCount: childCount,
-                        entry: directory?.entries[group.localID]
-                    )
-                }
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    if childCount > 0 {
-                        Button {
-                            path.append(SubchannelsRoute(parent: group))
-                        } label: {
-                            Label("Subchannels", systemImage: "rectangle.stack")
-                        }
-                        .tint(.indigo)
-                        .accessibilityIdentifier("group-subchannels-swipe")
-                    }
-                }
-            }
-            .listStyle(.plain)
+            ChannelListView(
+                channels: GroupDirectoryProjection.roots(in: model.groups),
+                allGroups: model.groups,
+                directory: directory,
+                path: $path
+            )
         }
     }
 
     private var relayHost: String {
         URL(string: model.groupRelay)?.host ?? model.groupRelay
-    }
-
-    /// Roots ordered by most-recent message first; rooms without any known
-    /// message fall below active ones, alphabetically. Re-sorts live as new
-    /// messages arrive through `directory`.
-    private var orderedRoots: [GroupSummary] {
-        GroupDirectoryProjection.roots(in: model.groups).sorted(by: activityDescending)
-    }
-
-    private func activityDescending(_ lhs: GroupSummary, _ rhs: GroupSummary) -> Bool {
-        let lhsTime = directory?.entries[lhs.localID]?.latest?.createdAt
-        let rhsTime = directory?.entries[rhs.localID]?.latest?.createdAt
-        switch (lhsTime, rhsTime) {
-        case let (left?, right?) where left != right:
-            return left > right
-        case (.some, .none):
-            return true
-        case (.none, .some):
-            return false
-        default:
-            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-        }
     }
 }
 
