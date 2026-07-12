@@ -21,7 +21,13 @@ struct InboxView: View {
 
     var body: some View {
         Group {
-            if unread.isEmpty {
+            if unread.isEmpty, let error = inbox.mentionError {
+                ContentUnavailableView(
+                    "Inbox Unavailable",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(error)
+                )
+            } else if unread.isEmpty {
                 ContentUnavailableView(
                     "Inbox Zero",
                     systemImage: "tray",
@@ -38,6 +44,11 @@ struct InboxView: View {
                     }
                 }
                 .listStyle(.plain)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if let notice {
+                        DegradedStateNotice(title: notice.title, message: notice.message)
+                    }
+                }
             }
         }
         .navigationTitle("Inbox")
@@ -46,6 +57,16 @@ struct InboxView: View {
 
     private func group(for mention: Mention) -> GroupSummary? {
         groups.first { $0.localID == mention.groupLocalID }
+    }
+
+    private var notice: (title: String, message: String)? {
+        if let error = inbox.mentionError {
+            return ("Inbox may be out of date", error)
+        }
+        if let error = inbox.profileError {
+            return ("Profiles unavailable", error)
+        }
+        return nil
     }
 }
 

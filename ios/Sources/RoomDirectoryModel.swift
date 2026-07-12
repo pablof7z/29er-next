@@ -30,6 +30,7 @@ struct DirectoryReadStore {
 @Observable
 final class RoomDirectoryModel {
     private(set) var entries: [String: RoomDirectoryEntry] = [:]
+    private(set) var observationError: String?
 
     private let engine: NMPEngine
     private let store: DirectoryReadStore
@@ -54,10 +55,11 @@ final class RoomDirectoryModel {
             for await batch in query {
                 guard !Task.isCancelled else { return }
                 ingest(rows: batch.rows)
+                observationError = nil
             }
         } catch {
-            // Previews are enrichment; the room list still renders without them.
-            return
+            guard !Task.isCancelled else { return }
+            observationError = error.localizedDescription
         }
     }
 
