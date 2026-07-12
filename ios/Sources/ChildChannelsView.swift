@@ -6,20 +6,27 @@ struct ChildChannelsView: View {
     let children: [GroupSummary]
     let allGroups: [GroupSummary]
     let engine: NMPEngine
+    var directory: RoomDirectoryModel?
 
     var body: some View {
         List {
             Section {
                 ForEach(children) { child in
                     NavigationLink {
-                        RoomView(group: child, allGroups: allGroups, engine: engine)
+                        RoomView(
+                            group: child,
+                            allGroups: allGroups,
+                            engine: engine,
+                            onOpen: { directory?.markRead(child) }
+                        )
                     } label: {
                         GroupRow(
                             group: child,
-                            children: GroupDirectoryProjection.directChildren(
+                            childCount: GroupDirectoryProjection.directChildren(
                                 of: child,
                                 in: allGroups
-                            )
+                            ).count,
+                            entry: directory?.entries[child.localID]
                         )
                     }
                 }
