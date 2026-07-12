@@ -29,6 +29,7 @@ struct RoomView: View {
             initialValue: RoomTimelineModel(
                 engine: engine,
                 groupID: group.localID,
+                hostRelay: group.hostRelay,
                 recipient: activePubkey
             )
         )

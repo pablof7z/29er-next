@@ -3,11 +3,20 @@ import SwiftUI
 
 struct DiagnosticsView: View {
     let snapshot: DiagnosticsSnapshot
+    let error: String?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             List {
+                if let error {
+                    DegradedStateNotice(
+                        title: "Diagnostics unavailable",
+                        message: error
+                    )
+                    .listRowInsets(EdgeInsets())
+                }
+
                 Section("Engine") {
                     LabeledContent("Planned relays", value: "\(snapshot.relays.count)")
                     LabeledContent("Uncovered authors", value: "\(snapshot.uncoveredAuthorCount)")

@@ -7,3 +7,7 @@ import NMP
 func openNMPQuery(engine: NMPEngine, filter: NMPFilter) async throws -> NMPQuery {
     try engine.observe(filter)
 }
+
+func openNMPQuery(engine: NMPEngine, demand: NMPDemand) async throws -> NMPQuery {
+    try engine.observe(demand)
+}

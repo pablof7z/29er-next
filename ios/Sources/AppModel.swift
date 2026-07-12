@@ -13,8 +13,8 @@ final class AppModel {
 
     private(set) var state: State = .starting
     private(set) var groups: [GroupSummary] = []
-    private(set) var coverage: Coverage = .unknown
     private(set) var diagnostics = DiagnosticsSnapshot()
+    private(set) var diagnosticsError: String?
     private(set) var activePubkey: String?
     private(set) var isSigningIn = false
     private(set) var identityError: String?
@@ -124,16 +124,17 @@ final class AppModel {
 
     private func observeGroups(using engine: NMPEngine, generation: Int) async {
         do {
+            var demand = try groupDiscoveryDemand(host: groupRelay)
+            demand.selection.limit = 250
             let query = try await openNMPQuery(
                 engine: engine,
-                filter: NMPFilter(kinds: [39_000], limit: 250)
+                demand: demand
             )
             defer { query.cancel() }
 
             for await batch in query {
                 guard !Task.isCancelled, generation == engineGeneration else { return }
                 groups = GroupDirectoryProjection.groups(from: batch.rows, hostRelay: groupRelay)
-                coverage = batch.coverage
             }
         } catch {
             if generation == engineGeneration {
@@ -143,12 +144,18 @@ final class AppModel {
     }
 
     private func observeDiagnostics(using engine: NMPEngine, generation: Int) async {
-        let observation = engine.observeDiagnostics()
-        defer { observation.cancel() }
+        do {
+            let observation = try engine.observeDiagnostics()
+            defer { observation.cancel() }
 
-        for await snapshot in observation {
+            for await snapshot in observation {
+                guard !Task.isCancelled, generation == engineGeneration else { return }
+                diagnostics = snapshot
+                diagnosticsError = nil
+            }
+        } catch {
             guard !Task.isCancelled, generation == engineGeneration else { return }
-            diagnostics = snapshot
+            diagnosticsError = error.localizedDescription
         }
     }
 
@@ -160,10 +167,14 @@ final class AppModel {
         state = .starting
         oldEngine?.shutdown()
 
+        guard let engineConfig else {
+            engine = nil
+            state = .failed("NMP could not restart a read-only session.")
+            engineGeneration &+= 1
+            return
+        }
+
         do {
-            guard let engineConfig else {
-                throw IdentityLifecycleError.missingConfiguration
-            }
             engine = try NMPEngine(config: engineConfig)
         } catch {
             engine = nil
@@ -176,14 +187,8 @@ final class AppModel {
         switch error as? NMPError {
         case .invalidSecretKey:
             return "That secret key is not a valid nsec or secret hex key."
-        case .signerHasNoPublicKey:
-            return "NMP could not derive a public key for this signer."
         default:
             return "NMP could not sign in this account."
         }
     }
-}
-
-private enum IdentityLifecycleError: Error {
-    case missingConfiguration
 }
