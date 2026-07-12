@@ -50,18 +50,15 @@ struct ProfileBook: Hashable, Sendable {
 }
 
 enum RoomProfileProjection {
-    /// Latest kind:0 per author (rows already de-duplicated by NMP; we still
-    /// keep the newest by createdAt defensively).
+    /// Canonical kind:0 values delivered by NMP. Swift does not apply a second
+    /// timestamp/replacement policy; a repeated pubkey would be an upstream
+    /// delivery-contract violation, so the first canonical value is retained.
     static func profiles(from rows: [Row]) -> ProfileBook {
-        var latestRowByPubkey: [String: Row] = [:]
-        for row in rows where row.kind == 0 {
-            if let current = latestRowByPubkey[row.pubkey], current.createdAt >= row.createdAt {
-                continue
-            }
-            latestRowByPubkey[row.pubkey] = row
+        var profilesByPubkey: [String: RoomProfile] = [:]
+        for row in rows where row.kind == 0 && profilesByPubkey[row.pubkey] == nil {
+            profilesByPubkey[row.pubkey] = profile(from: row)
         }
-
-        return ProfileBook(latestRowByPubkey.mapValues(profile(from:)))
+        return ProfileBook(profilesByPubkey)
     }
 
     static func profile(from row: Row) -> RoomProfile {
