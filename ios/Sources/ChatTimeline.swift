@@ -75,23 +75,33 @@ struct ChatTimelineView: View {
     let reads: MentionReads?
     let focusMessageID: String?
 
+    private var presentation: ChatTimelinePresentation {
+        ChatTimelinePresentation.make(
+            messageCount: messages.count,
+            hasReceivedSnapshot: hasReceivedSnapshot,
+            error: error,
+            profileError: profileError
+        )
+    }
+
     @ViewBuilder
     var body: some View {
-        if let error {
+        switch presentation {
+        case .unavailable(let error):
             ContentUnavailableView(
                 "Messages Unavailable",
                 systemImage: "exclamationmark.bubble",
                 description: Text(error)
             )
-        } else if !hasReceivedSnapshot {
+        case .loading:
             ProgressView("Loading messages…")
-        } else if messages.isEmpty {
+        case .empty:
             ContentUnavailableView(
                 "No Messages Yet",
                 systemImage: "bubble.left.and.bubble.right",
                 description: Text("Messages will appear here as NMP receives room events.")
             )
-        } else {
+        case .messages(let profileNotice):
             MessageTimelineView(
                 messages: messages,
                 profiles: profiles,
@@ -100,10 +110,10 @@ struct ChatTimelineView: View {
                 focusMessageID: focusMessageID
             )
             .safeAreaInset(edge: .top, spacing: 0) {
-                if let profileError {
+                if let profileNotice {
                     DegradedStateNotice(
-                        title: "Profiles unavailable",
-                        message: profileError
+                        title: profileNotice.title,
+                        message: profileNotice.message
                     )
                 }
             }
