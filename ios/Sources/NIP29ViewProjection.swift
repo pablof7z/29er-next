@@ -79,7 +79,7 @@ enum NIP29ViewProjection {
     static func members(from rows: [Row]) -> [RoomMember] {
         var membersByPubkey: [String: RoomMember] = [:]
 
-        for row in rows.sorted(by: newestRowFirst) {
+        for row in rows {
             for member in members(kind: row.kind, tags: row.tags)
             where membersByPubkey[member.pubkey] == nil {
                 membersByPubkey[member.pubkey] = member
@@ -130,7 +130,7 @@ enum NIP29ViewProjection {
     static func admins(from rows: [Row]) -> [String] {
         var seen = Set<String>()
         var result: [String] = []
-        for row in rows.sorted(by: newestRowFirst) {
+        for row in rows {
             for pubkey in admins(kind: row.kind, tags: row.tags) where seen.insert(pubkey).inserted {
                 result.append(pubkey)
             }
@@ -161,6 +161,9 @@ enum NIP29ViewProjection {
         return RoomMessage(id: eventID, author: pubkey, createdAt: createdAt, content: content)
     }
 
+    // Mirrors the immutable fields needed from NMP Row without fabricating a
+    // constructible raw event. NMP #45 owns the eventual typed activity input.
+    // swiftlint:disable:next function_parameter_count
     static func activity(
         eventID: String,
         pubkey: String,
@@ -239,11 +242,6 @@ enum NIP29ViewProjection {
 
     private static func nonEmptyTag(_ name: String, in tags: [[String]]) -> String? {
         firstTag(name, in: tags).flatMap { $0.isEmpty ? nil : $0 }
-    }
-
-    private static func newestRowFirst(_ lhs: Row, _ rhs: Row) -> Bool {
-        if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
-        return lhs.id > rhs.id
     }
 
     private static func personNameFirst(_ lhs: RoomPerson, _ rhs: RoomPerson) -> Bool {

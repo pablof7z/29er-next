@@ -34,13 +34,19 @@ final class RoomDirectoryModel {
 
     private let engine: NMPEngine
     private let store: DirectoryReadStore
+    private let queryOpening: NMPQueryOpening
     private var baselines: [String: UInt64]
     private var latestByGroup: [String: RoomMessage] = [:]
     private var timesByGroup: [String: [UInt64]] = [:]
 
-    init(engine: NMPEngine, store: DirectoryReadStore = DirectoryReadStore()) {
+    init(
+        engine: NMPEngine,
+        store: DirectoryReadStore = DirectoryReadStore(),
+        queryOpening: NMPQueryOpening = .live
+    ) {
         self.engine = engine
         self.store = store
+        self.queryOpening = queryOpening
         let stored = store.load()
         let bounded = RoomDirectoryProjection.prunedBaselines(stored)
         self.baselines = bounded
@@ -49,9 +55,9 @@ final class RoomDirectoryModel {
 
     func observe() async {
         do {
-            let query = try await openNMPQuery(
-                engine: engine,
-                filter: NMPFilter(kinds: [9], limit: 500)
+            let query = try await queryOpening.filter(
+                engine,
+                NMPFilter(kinds: [9], limit: 500)
             )
             defer { query.cancel() }
 
