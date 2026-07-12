@@ -19,6 +19,8 @@ final class RoomTimelineModel {
     private(set) var messageError: String?
     private(set) var activityError: String?
     private(set) var membershipError: String?
+    private(set) var adminError: String?
+    private(set) var profileError: String?
 
     private(set) var hasReceivedMessages = false
     private(set) var hasReceivedActivities = false
@@ -149,11 +151,11 @@ final class RoomTimelineModel {
             for await batch in query {
                 guard !Task.isCancelled else { return }
                 admins = NIP29ViewProjection.admins(from: batch.rows)
+                adminError = nil
             }
         } catch {
-            // Admin discovery is enrichment for the backend affordance; on
-            // failure the room still renders members and the timeline.
-            return
+            guard !Task.isCancelled else { return }
+            adminError = error.localizedDescription
         }
     }
 
@@ -200,11 +202,11 @@ final class RoomTimelineModel {
             for await batch in query {
                 guard !Task.isCancelled else { return }
                 profiles = RoomProfileProjection.profiles(from: batch.rows)
+                profileError = nil
             }
         } catch {
-            // Identity is enrichment; on failure the timeline still renders
-            // with the shortened-hex fallback rather than failing the room.
-            return
+            guard !Task.isCancelled else { return }
+            profileError = error.localizedDescription
         }
     }
 

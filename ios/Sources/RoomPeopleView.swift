@@ -7,9 +7,11 @@ struct RoomPeopleView: View {
     let membershipError: String?
     let hasReceivedActivities: Bool
     let activityError: String?
-    var backends: [RoomBackend] = []
-    var canSendCommands: Bool = false
-    var sendCommand: (String, String) async -> String? = { _, _ in nil }
+    let adminError: String?
+    let profileError: String?
+    let backends: [RoomBackend]
+    let canSendCommands: Bool
+    let sendCommand: (String, String) async -> String?
 
     @State private var selectedBackend: RoomBackend?
 
@@ -20,6 +22,22 @@ struct RoomPeopleView: View {
 
                 if !backends.isEmpty {
                     backendsSection
+                }
+
+                if let adminError {
+                    ObservationNotice(
+                        symbol: "person.badge.key",
+                        title: "Backend admins unavailable",
+                        detail: adminError
+                    )
+                }
+
+                if let profileError {
+                    ObservationNotice(
+                        symbol: "person.crop.circle.badge.exclamationmark",
+                        title: "Profiles unavailable",
+                        detail: profileError
+                    )
                 }
 
                 if let activityError {
@@ -241,13 +259,12 @@ private struct PersonRow: View {
 
     private var avatar: some View {
         ZStack(alignment: .bottomTrailing) {
-            Circle()
-                .fill(person.pubkey.avatarColor.gradient)
-                .overlay {
-                    Text(String(person.authorLabel.prefix(1)).uppercased())
-                        .font(.subheadline.bold())
-                        .foregroundStyle(.white)
-                }
+            AuthorAvatar(
+                pubkey: person.pubkey,
+                displayName: person.authorLabel,
+                pictureURL: nil,
+                size: 42
+            )
 
             if let activity = person.activity {
                 Circle()
@@ -256,7 +273,6 @@ private struct PersonRow: View {
                     .overlay { Circle().stroke(Color(uiColor: .secondarySystemGroupedBackground), lineWidth: 2) }
             }
         }
-        .frame(width: 42, height: 42)
     }
 }
 
@@ -270,30 +286,5 @@ private struct StatusLabel: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background((isBusy ? Color.green : Color.secondary).opacity(0.12), in: Capsule())
-    }
-}
-
-private struct ObservationNotice: View {
-    let symbol: String
-    let title: String
-    let detail: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: symbol)
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .frame(width: 28)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }

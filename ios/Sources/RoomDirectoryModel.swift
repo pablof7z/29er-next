@@ -41,7 +41,10 @@ final class RoomDirectoryModel {
     init(engine: NMPEngine, store: DirectoryReadStore = DirectoryReadStore()) {
         self.engine = engine
         self.store = store
-        self.baselines = store.load()
+        let stored = store.load()
+        let bounded = RoomDirectoryProjection.prunedBaselines(stored)
+        self.baselines = bounded
+        if bounded != stored { store.save(bounded) }
     }
 
     func observe() async {
@@ -71,6 +74,7 @@ final class RoomDirectoryModel {
             latest: latestByGroup[key],
             now: UInt64(Date().timeIntervalSince1970)
         )
+        baselines = RoomDirectoryProjection.prunedBaselines(baselines)
         store.save(baselines)
         recompute()
     }

@@ -89,7 +89,13 @@ struct MentionRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            avatar.accessibilityHidden(true)
+            AuthorAvatar(
+                pubkey: mention.author,
+                displayName: displayName,
+                pictureURL: avatarURL,
+                size: avatarWidth
+            )
+            .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(displayName)
@@ -116,26 +122,6 @@ struct MentionRow: View {
         .accessibilityLabel("\(displayName) in \(roomName): \(displayContent)")
     }
 
-    private var avatar: some View {
-        let initial = Text(String(displayName.prefix(1)).uppercased())
-            .font(.caption.bold())
-            .foregroundStyle(.white)
-
-        return Circle()
-            .fill(mention.author.avatarColor.gradient)
-            .frame(width: avatarWidth, height: avatarWidth)
-            .overlay { initial }
-            .overlay {
-                if let avatarURL {
-                    AsyncImage(url: avatarURL) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
-                        Color.clear
-                    }
-                    .clipShape(Circle())
-                }
-            }
-    }
 }
 
 /// A bell with an unread-count badge for the main-screen toolbar.

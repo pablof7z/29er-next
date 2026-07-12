@@ -5,9 +5,9 @@ struct RoomView: View {
     let group: GroupSummary
     let allGroups: [GroupSummary]
     let activePubkey: String?
-    var reads: MentionReads?
-    var focusMessageID: String?
-    var onOpen: (() -> Void)?
+    let reads: MentionReads?
+    let focusMessageID: String?
+    let onOpen: (() -> Void)?
     @State private var model: RoomTimelineModel
 
     init(
@@ -15,9 +15,9 @@ struct RoomView: View {
         allGroups: [GroupSummary],
         engine: NMPEngine,
         activePubkey: String?,
-        reads: MentionReads? = nil,
+        reads: MentionReads?,
         focusMessageID: String? = nil,
-        onOpen: (() -> Void)? = nil
+        onOpen: (() -> Void)?
     ) {
         self.group = group
         self.allGroups = allGroups
@@ -75,6 +75,7 @@ struct RoomView: View {
             profiles: model.profiles,
             hasReceivedSnapshot: model.hasReceivedMessages,
             error: model.messageError,
+            profileError: model.profileError,
             mentionIDs: model.mentionIDs,
             reads: reads,
             focusMessageID: focusMessageID
@@ -93,6 +94,8 @@ struct RoomView: View {
             membershipError: model.membershipError,
             hasReceivedActivities: model.hasReceivedActivities,
             activityError: model.activityError,
+            adminError: model.adminError,
+            profileError: model.profileError,
             backends: model.backends,
             canSendCommands: activePubkey != nil,
             sendCommand: sendCommand
