@@ -57,16 +57,7 @@ struct RoomView: View {
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if !childGroups.isEmpty {
-                    NavigationLink {
-                        ChildChannelsView(
-                            parent: group,
-                            children: childGroups,
-                            allGroups: allGroups,
-                            engine: engine,
-                            activePubkey: activePubkey,
-                            reads: reads
-                        )
-                    } label: {
+                    NavigationLink(value: SubchannelsRoute(parent: group)) {
                         Label("Subchannels", systemImage: "rectangle.stack")
                     }
                     .accessibilityIdentifier("room-subchannels-button")

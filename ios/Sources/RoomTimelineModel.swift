@@ -57,6 +57,19 @@ final class RoomTimelineModel {
         return RoomBackendProjection.backends(candidatePubkeys: candidates, profiles: profiles)
     }
 
+    /// Open a live query WITHOUT blocking the main actor. `engine.observe`
+    /// blocks its caller until NMP's `on_subscribe` runs synchronously and
+    /// replies — that resolution decodes the subscription's initial snapshot,
+    /// which for a room with a large stored history takes real time. Every
+    /// `observe*` method below runs on this `@MainActor` model, so issuing the
+    /// call directly froze the UI for seconds when opening a busy room. This
+    /// helper is `nonisolated`, so the blocking round-trip happens off the main
+    /// thread; batches still stream back through the returned query and are
+    /// applied on the main actor as before.
+    private nonisolated func openQuery(_ filter: NMPFilter) async throws -> NMPQuery {
+        try engine.observe(filter)
+    }
+
     func observe() async {
         state = .observing
 
@@ -86,7 +99,7 @@ final class RoomTimelineModel {
 
     private func observeMessages() async {
         do {
-            let query = try engine.observe(
+            let query = try await openQuery(
                 NMPFilter(
                     kinds: [9],
                     tags: ["h": .literal([groupID])],
@@ -113,7 +126,7 @@ final class RoomTimelineModel {
 
     private func observeActivities() async {
         do {
-            let query = try engine.observe(
+            let query = try await openQuery(
                 NMPFilter(
                     kinds: [30_315],
                     tags: ["h": .literal([groupID])],
@@ -137,7 +150,7 @@ final class RoomTimelineModel {
 
     private func observeMembership() async {
         do {
-            let query = try engine.observe(
+            let query = try await openQuery(
                 NMPFilter(
                     kinds: [39_002],
                     tags: ["d": .literal([groupID])],
@@ -162,7 +175,7 @@ final class RoomTimelineModel {
 
     private func observeAdmins() async {
         do {
-            let query = try engine.observe(
+            let query = try await openQuery(
                 NMPFilter(
                     kinds: [39_001],
                     tags: ["d": .literal([groupID])],
@@ -188,27 +201,35 @@ final class RoomTimelineModel {
         // live-session authors — via a reactive union binding so demand grows
         // as new pubkeys appear. NMP owns the routing; the app only declares
         // which authors it cares about, never a hand-kept list.
+        //
+        // Each derived inner filter carries the SAME limit as the display query
+        // it mirrors below. Without a limit the engine must materialize the
+        // group's entire kind:9 history just to project its authors — decoding
+        // and signature-parsing thousands of events on entry, which stalls the
+        // room for seconds in a busy channel. Bounding the derivation to the
+        // set we actually render keeps the author demand cheap and correct: we
+        // never resolve a profile for a message the timeline does not show.
         let authors: NMPBinding = .setOp(.union, [
             .derived(
-                inner: NMPFilter(kinds: [9], tags: ["h": .literal([groupID])]),
+                inner: NMPFilter(kinds: [9], tags: ["h": .literal([groupID])], limit: 200),
                 project: .authors
             ),
             .derived(
-                inner: NMPFilter(kinds: [39_002], tags: ["d": .literal([groupID])]),
+                inner: NMPFilter(kinds: [39_002], tags: ["d": .literal([groupID])], limit: 20),
                 project: .tag("p")
             ),
             .derived(
-                inner: NMPFilter(kinds: [39_001], tags: ["d": .literal([groupID])]),
+                inner: NMPFilter(kinds: [39_001], tags: ["d": .literal([groupID])], limit: 20),
                 project: .tag("p")
             ),
             .derived(
-                inner: NMPFilter(kinds: [30_315], tags: ["h": .literal([groupID])]),
+                inner: NMPFilter(kinds: [30_315], tags: ["h": .literal([groupID])], limit: 100),
                 project: .authors
             ),
         ])
 
         do {
-            let query = try engine.observe(NMPFilter(kinds: [0], authors: authors, limit: 500))
+            let query = try await openQuery(NMPFilter(kinds: [0], authors: authors, limit: 500))
             defer { query.cancel() }
 
             for await batch in query {

@@ -44,20 +44,17 @@ struct RootView: View {
                 }
             }
             .navigationDestination(for: SubchannelsRoute.self) { route in
-                if let engine = model.engine {
-                    ChildChannelsView(
-                        parent: route.parent,
-                        children: GroupDirectoryProjection.directChildren(
-                            of: route.parent,
-                            in: model.groups
-                        ),
-                        allGroups: model.groups,
-                        engine: engine,
-                        activePubkey: model.activePubkey,
-                        reads: reads,
-                        directory: directory
-                    )
-                }
+                ChannelListView(
+                    channels: GroupDirectoryProjection.directChildren(
+                        of: route.parent,
+                        in: model.groups
+                    ),
+                    allGroups: model.groups,
+                    directory: directory,
+                    path: $path
+                )
+                .navigationTitle(route.parent.name)
+                .navigationBarTitleDisplayMode(.inline)
             }
             .navigationDestination(for: InboxRoute.self) { _ in
                 if let inbox {
@@ -153,28 +150,12 @@ struct RootView: View {
                 ProgressView()
             }
         } else {
-            List(GroupDirectoryProjection.roots(in: model.groups)) { group in
-                let childCount = GroupDirectoryProjection.directChildren(of: group, in: model.groups).count
-                NavigationLink(value: group) {
-                    GroupRow(
-                        group: group,
-                        childCount: childCount,
-                        entry: directory?.entries[group.localID]
-                    )
-                }
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    if childCount > 0 {
-                        Button {
-                            path.append(SubchannelsRoute(parent: group))
-                        } label: {
-                            Label("Subchannels", systemImage: "rectangle.stack")
-                        }
-                        .tint(.indigo)
-                        .accessibilityIdentifier("group-subchannels-swipe")
-                    }
-                }
-            }
-            .listStyle(.plain)
+            ChannelListView(
+                channels: GroupDirectoryProjection.roots(in: model.groups),
+                allGroups: model.groups,
+                directory: directory,
+                path: $path
+            )
         }
     }
 
