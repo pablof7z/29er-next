@@ -174,5 +174,6 @@ schemes:
     test:
       environmentVariables:
         NMP_DEVICE_PROOF: "1"
+        NMP_DEVICE_PROOF_GROUP: nmp-scale-hot-room
       targets:
         - TwentyNinerNextProofUITests
