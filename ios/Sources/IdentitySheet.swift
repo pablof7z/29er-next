@@ -14,7 +14,7 @@ struct IdentitySheet: View {
                     signedOutContent
                 }
             }
-            .navigationTitle(model.activePubkey == nil ? "Session Sign In" : "Session Account")
+            .navigationTitle(model.activePubkey == nil ? "Sign In" : "Account")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -42,16 +42,17 @@ struct IdentitySheet: View {
                     .textSelection(.enabled)
             }
         } footer: {
-            Text("This account exists only in the current NMP engine session.")
+            Text("NMP restores this account automatically when the app starts.")
         }
 
         Section {
-            Button("End Session", role: .destructive) {
-                model.endIdentitySession()
-                dismiss()
+            Button("Sign Out", role: .destructive) {
+                if model.signOut() {
+                    dismiss()
+                }
             }
         } footer: {
-            Text("Ending the session shuts down the credential-owning engine and starts a fresh read-only engine.")
+            Text("Signing out removes the local account checkpoint and starts a fresh read-only engine.")
         }
     }
 
@@ -68,8 +69,8 @@ struct IdentitySheet: View {
             Text("Nostr secret key")
         } footer: {
             Text(
-                "Your key is handed once to NMP and is not saved by 29er Next. "
-                    + "This is a session import, not persistent secure login."
+                "NMP saves the key as plaintext in this app's sandbox for automatic login. "
+                    + "It is not protected by Keychain or hardware-backed encryption."
             )
         }
 
