@@ -61,7 +61,7 @@ struct ChatComposer: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 11)
                     .frame(minHeight: 46)
-                    .glassEffect(in: .capsule)
+                    .glassEffect(in: .rect(cornerRadius: 22))
                     .disabled(isSending)
                     .accessibilityIdentifier("room-message-composer")
 
@@ -74,12 +74,10 @@ struct ChatComposer: View {
                             .foregroundStyle(canSubmit ? .white : .secondary)
                     }
                 }
-                .frame(width: 46, height: 46)
-                .glassEffect(
-                    .regular.tint(canSubmit ? .blue.opacity(0.85) : .gray.opacity(0.2)).interactive(),
-                    in: .circle
-                )
-                .buttonStyle(.plain)
+                .frame(width: 56, height: 56)
+                .contentShape(Circle())
+                .buttonStyle(.glassProminent)
+                .tint(canSubmit ? .blue : .gray)
                 .disabled(!canSubmit || isSending)
                 .accessibilityLabel("Send message")
                 .accessibilityIdentifier("room-message-send")
@@ -117,7 +115,8 @@ struct ChatComposer: View {
                                 .font(.headline.weight(.semibold))
                         }
                     }
-                    .frame(width: 46, height: 46)
+                    .frame(width: 56, height: 56)
+                    .contentShape(Circle())
                     .background(Color.accentColor.opacity(canSubmit ? 0.9 : 0.2), in: .circle)
                     .buttonStyle(.plain)
                     .disabled(!canSubmit || isSending)
