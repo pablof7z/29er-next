@@ -72,7 +72,7 @@ struct RoomView: View {
 
     private var roomContent: some View {
         ChatTimelineView(
-            messages: model.messages,
+            items: model.timelineItems,
             profiles: model.profiles,
             hasReceivedSnapshot: model.hasReceivedContent,
             error: model.contentError,

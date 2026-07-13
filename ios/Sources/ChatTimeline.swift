@@ -1,72 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// One rendered row in the chat timeline: either a day boundary or a message.
-/// `showsHeader` is false for a message that continues a run from the same
-/// author within `ChatTimeline.groupingWindow`, so consecutive messages
-/// collapse under a single avatar/name/timestamp header.
-enum TimelineEntry: Identifiable, Hashable {
-    case daySeparator(anchorID: String, label: String)
-    case message(RoomMessage, showsHeader: Bool)
-
-    var id: String {
-        switch self {
-        case .daySeparator(let anchorID, _): return "day-\(anchorID)"
-        case .message(let message, _): return message.id
-        }
-    }
-}
-
-enum ChatTimeline {
-    /// Consecutive messages from one author within this window share a header.
-    static let groupingWindow: UInt64 = 5 * 60
-
-    static func entries(
-        for messages: [RoomMessage],
-        calendar: Calendar = .current
-    ) -> [TimelineEntry] {
-        var entries: [TimelineEntry] = []
-        var previous: RoomMessage?
-        var previousDay: DateComponents?
-
-        for message in messages {
-            let date = Date(timeIntervalSince1970: TimeInterval(message.createdAt))
-            let day = calendar.dateComponents([.year, .month, .day], from: date)
-            let isNewDay = day != previousDay
-
-            if isNewDay {
-                entries.append(
-                    .daySeparator(
-                        anchorID: message.id,
-                        label: daySeparatorLabel(for: date, calendar: calendar)
-                    )
-                )
-            }
-
-            let sameAuthor = previous?.author == message.author
-            let withinWindow = previous.map { message.createdAt &- $0.createdAt <= groupingWindow } ?? false
-            let showsHeader = isNewDay || !sameAuthor || !withinWindow
-            entries.append(.message(message, showsHeader: showsHeader))
-
-            previous = message
-            previousDay = day
-        }
-
-        return entries
-    }
-
-    static func daySeparatorLabel(for date: Date, calendar: Calendar) -> String {
-        if calendar.isDateInToday(date) { return "Today" }
-        if calendar.isDateInYesterday(date) { return "Yesterday" }
-        if calendar.isDate(date, equalTo: .now, toGranularity: .year) {
-            return date.formatted(.dateTime.month(.wide).day())
-        }
-        return date.formatted(.dateTime.year().month(.wide).day())
-    }
-}
-
 struct ChatTimelineView: View {
-    let messages: [RoomMessage]
+    let items: [RoomTimelineItem]
     let profiles: ProfileBook
     let hasReceivedSnapshot: Bool
     let error: String?
@@ -78,7 +14,7 @@ struct ChatTimelineView: View {
 
     private var presentation: ChatTimelinePresentation {
         ChatTimelinePresentation.make(
-            messageCount: messages.count,
+            itemCount: items.count,
             hasReceivedSnapshot: hasReceivedSnapshot,
             error: error,
             profileError: profileError
@@ -104,7 +40,7 @@ struct ChatTimelineView: View {
             )
         case .messages(let profileNotice):
             MessageTimelineView(
-                messages: messages,
+                items: items,
                 profiles: profiles,
                 mentionIDs: mentionIDs,
                 reads: reads,
@@ -131,7 +67,7 @@ private struct VisibleRowIndicesKey: PreferenceKey {
 }
 
 private struct MessageTimelineView: View {
-    let messages: [RoomMessage]
+    let items: [RoomTimelineItem]
     let profiles: ProfileBook
     let mentionIDs: Set<String>
     let reads: MentionReads?
@@ -145,7 +81,9 @@ private struct MessageTimelineView: View {
     private let bottomAnchorID = "chat-bottom-anchor"
     private let scrollSpace = "chat-scroll-space"
 
-    private var entries: [TimelineEntry] { ChatTimeline.entries(for: messages) }
+    private var messages: [RoomMessage] { items.compactMap(\.message) }
+
+    private var entries: [TimelineEntry] { ChatTimeline.entries(for: items) }
 
     private var indexByID: [String: Int] {
         Dictionary(uniqueKeysWithValues: messages.enumerated().map { ($1.id, $0) })
@@ -189,10 +127,13 @@ private struct MessageTimelineView: View {
                                 )
                                 .id(entry.id)
                                 .background(visibilityReporter(for: message, viewportHeight: viewport.size.height))
+                            case .membership(let event):
+                                MembershipEventRow(event: event, profiles: profiles)
+                                    .id(entry.id)
                             }
                         }
 
-                        // Sentinel that tracks whether the newest message is on screen.
+                        // Sentinel that tracks whether the newest timeline item is on screen.
                         Color.clear
                             .frame(height: 1)
                             .id(bottomAnchorID)
@@ -205,8 +146,8 @@ private struct MessageTimelineView: View {
                 .onPreferenceChange(VisibleRowIndicesKey.self) { visible in
                     updateVisible(visible)
                 }
-                .onChange(of: messages.last?.id) { _, _ in
-                    // Only follow new messages when the reader is already at the
+                .onChange(of: items.last?.id) { _, _ in
+                    // Only follow new activity when the reader is already at the
                     // bottom; never yank someone who scrolled up to read history.
                     guard isPinnedToBottom else { return }
                     scrollToBottom(proxy)

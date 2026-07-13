@@ -10,6 +10,10 @@ final class ChatTimelineTests: XCTestCase {
         RoomMessage(id: id, author: author, createdAt: createdAt, content: "m-\(id)")
     }
 
+    private func membership(_ id: String, at createdAt: UInt64) -> RoomMembershipEvent {
+        RoomMembershipEvent(id: id, pubkey: "member", createdAt: createdAt, change: .joined)
+    }
+
     private func calendar() throws -> Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
@@ -61,6 +65,27 @@ final class ChatTimelineTests: XCTestCase {
         }
 
         XCTAssertEqual(headers, [true, true])
+    }
+
+    func testMembershipEventAppearsInOrderAndBreaksMessageGrouping() throws {
+        let items: [RoomTimelineItem] = [
+            .message(message("1", author: "alice", at: base)),
+            .membership(membership("join", at: base + 30)),
+            .message(message("2", author: "alice", at: base + 60))
+        ]
+
+        let entries = ChatTimeline.entries(for: items, calendar: try calendar())
+        let content = entries.filter {
+            if case .daySeparator = $0 { return false }
+            return true
+        }
+
+        XCTAssertEqual(content.map(\.id), ["1", "join", "2"])
+        guard case .message(_, showsHeader: true) = content[0],
+              case .membership = content[1],
+              case .message(_, showsHeader: true) = content[2] else {
+            return XCTFail("Membership activity should separate message groups")
+        }
     }
 
     func testDaySeparatorInsertedAtEachDayBoundary() throws {

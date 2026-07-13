@@ -45,8 +45,8 @@ final class RoomTimelineModel {
         self.queryOpening = queryOpening
     }
 
-    var messages: [RoomMessage] {
-        NIP29ViewProjection.messages(from: contentRows)
+    var timelineItems: [RoomTimelineItem] {
+        NIP29ViewProjection.timelineItems(from: contentRows)
     }
 
     var mentionIDs: Set<String> {
@@ -106,8 +106,7 @@ final class RoomTimelineModel {
 
     private func observeContent() async {
         do {
-            var demand = try groupContentDemand(host: hostRelay, groupId: groupID)
-            demand.selection.limit = 200
+            let demand = try roomTimelineDemand(host: hostRelay, groupID: groupID)
             let query = try await queryOpening.demand(engine, demand)
             defer { query.cancel() }
 
@@ -173,10 +172,11 @@ final class RoomTimelineModel {
 
     private func observeProfiles() async {
         // kind:0 for every pubkey the room can show — message authors, listed
-        // members, admins (the tenex-edge backend surfaces here), and
-        // live-session authors — via a reactive union binding so demand grows
-        // as new pubkeys appear. NMP owns the routing; the app only declares
-        // which authors it cares about, never a hand-kept list.
+        // members, admins (the tenex-edge backend surfaces here), membership
+        // event subjects, and live-session authors — via a reactive union
+        // binding so demand grows as new pubkeys appear. NMP owns the routing;
+        // the app only declares which authors it cares about, never a hand-kept
+        // list.
         //
         // Each derived inner filter carries the SAME limit as the display query
         // it mirrors below. Without a limit the engine must materialize the
@@ -201,6 +201,10 @@ final class RoomTimelineModel {
             .derived(
                 inner: NMPFilter(kinds: [30_315], tags: ["h": .literal([groupID])], limit: 100),
                 project: .authors
+            ),
+            .derived(
+                inner: NMPFilter(kinds: [9_000, 9_001], tags: ["h": .literal([groupID])], limit: 200),
+                project: .tag("p")
             )
         ])
 

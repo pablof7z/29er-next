@@ -53,7 +53,7 @@ final class ObservationPresentationTests: XCTestCase {
     func testChatTimelinePresentationOrder() {
         XCTAssertEqual(
             ChatTimelinePresentation.make(
-                messageCount: 0,
+                itemCount: 0,
                 hasReceivedSnapshot: false,
                 error: "offline",
                 profileError: nil
@@ -62,7 +62,7 @@ final class ObservationPresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             ChatTimelinePresentation.make(
-                messageCount: 0,
+                itemCount: 0,
                 hasReceivedSnapshot: false,
                 error: nil,
                 profileError: nil
@@ -71,7 +71,7 @@ final class ObservationPresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             ChatTimelinePresentation.make(
-                messageCount: 0,
+                itemCount: 0,
                 hasReceivedSnapshot: true,
                 error: nil,
                 profileError: nil
@@ -82,7 +82,7 @@ final class ObservationPresentationTests: XCTestCase {
 
     func testPopulatedChatShowsProfileFailureNotice() {
         let presentation = ChatTimelinePresentation.make(
-            messageCount: 1,
+            itemCount: 1,
             hasReceivedSnapshot: true,
             error: nil,
             profileError: "profiles stale"
