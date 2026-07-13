@@ -11,6 +11,7 @@ struct MessageRow: View {
     let message: RoomMessage
     let showsHeader: Bool
     let profiles: ProfileBook
+    let onReply: () -> Void
 
     private var displayContent: String {
         message.content.isEmpty ? "Empty message" : message.content
@@ -46,9 +47,15 @@ struct MessageRow: View {
         .padding(.top, showsHeader ? 10 : 2)
         .padding(.bottom, 2)
         .background(Color(uiColor: .systemBackground))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onReply()
+        }
         .contextMenu { contextActions }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText)
+        .accessibilityAction(named: "Reply") { onReply() }
     }
 
     @ViewBuilder

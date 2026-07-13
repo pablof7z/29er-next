@@ -62,6 +62,18 @@ final class RoomTimelineModel {
         NIP29ViewProjection.people(members: members, activities: activities)
     }
 
+    var composerRecipients: [ComposerRecipient] {
+        RoomComposerProjection.recipients(
+            from: people,
+            profiles: profiles,
+            excluding: recipient
+        )
+    }
+
+    func composerReply(to message: RoomMessage) -> ComposerReply {
+        RoomComposerProjection.reply(to: message, people: people, profiles: profiles)
+    }
+
     /// Management backends present in this room, resolved from kind:0 across
     /// members, admins, and live-session authors.
     var backends: [RoomBackend] {
@@ -213,35 +225,39 @@ final class RoomTimelineModel {
     /// Send a normal room message through NMP's typed NIP-29 composition.
     /// The timeline receives the canonical accepted event through `observeContent`;
     /// it does not create an app-owned pending message.
-    func sendMessage(_ content: String, author: String) async -> String? {
-        await sendGroupMessage(content, extraTags: [], author: author)
+    func sendMessage(_ request: ComposerRequest) async -> String? {
+        await sendGroupMessage(
+            request.content,
+            recipientPubkeys: request.recipients.map(\.pubkey),
+            reply: request.reply
+        )
     }
 
     /// Send a tenex-edge management command as a room message p-tagging the
     /// selected backend. This shares the normal typed NIP-29 write path.
-    func sendManagementCommand(_ command: String, backendPubkey: String, author: String) async -> String? {
-        await sendGroupMessage(command, extraTags: [["p", backendPubkey]], author: author)
+    func sendManagementCommand(_ command: String, backendPubkey: String) async -> String? {
+        await sendGroupMessage(command, recipientPubkeys: [backendPubkey], reply: nil)
     }
 
     private func sendGroupMessage(
         _ content: String,
-        extraTags: [[String]],
-        author: String
+        recipientPubkeys: [String],
+        reply: ComposerReply?
     ) async -> String? {
         guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return "Messages cannot be empty."
         }
 
         do {
-            let intent = try groupSendIntent(
+            let replyParent = reply.map {
+                GroupReplyParent(eventID: $0.eventID, authorPubkey: $0.author.pubkey)
+            }
+            let intent = try engine.groupMessageIntent(
                 host: hostRelay,
-                groupId: groupID,
-                authorPubkey: author,
-                createdAt: UInt64(Date().timeIntervalSince1970),
-                kind: 9,
+                groupID: groupID,
                 content: content,
-                extraTags: extraTags,
-                recentRows: contentRows
+                recipients: recipientPubkeys,
+                reply: replyParent
             )
             let receipt = try await engine.publishComposed(intent)
             for await status in receipt.status {
