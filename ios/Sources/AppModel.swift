@@ -27,6 +27,10 @@ final class AppModel {
     private var localAccountStore: NMPInsecureFileAccountStore?
     let groupRelay: String
 
+    var canResetLocalDatabase: Bool {
+        engineConfig?.storePath != nil
+    }
+
     init(
         fileManager: FileManager = .default,
         operatorConfiguration: OperatorConfiguration? = nil,
@@ -84,8 +88,47 @@ final class AppModel {
         } catch {
             engine = nil
             contentClient = nil
-            engineConfig = nil
             state = .failed(error.localizedDescription)
+        }
+    }
+
+    /// Ask NMP to destroy its closed canonical store, then reconstruct the
+    /// engine. The separately configured local-account checkpoint is retained
+    /// so a saved account can be restored during reconstruction.
+    @discardableResult
+    func resetLocalDatabase() -> Bool {
+        guard let engineConfig, let storePath = engineConfig.storePath else {
+            state = .failed("NMP has no persistent local database to reset.")
+            return false
+        }
+
+        let oldEngine = engine
+        engine = nil
+        contentClient = nil
+        activePubkey = nil
+        oldEngine?.shutdown()
+
+        do {
+            try NMPEngine.resetPersistentStore(at: storePath)
+            let engine = try NMPEngine(
+                config: engineConfig,
+                localAccountStore: localAccountStore
+            )
+            self.engine = engine
+            contentClient = NMPContentClient(engine: engine)
+            activePubkey = try engine.activeAccount()
+            groups = []
+            diagnostics = DiagnosticsSnapshot()
+            diagnosticsError = nil
+            state = .starting
+            engineGeneration &+= 1
+            return true
+        } catch {
+            engine = nil
+            contentClient = nil
+            state = .failed("NMP could not reset the local database: \(error.localizedDescription)")
+            engineGeneration &+= 1
+            return false
         }
     }
 
