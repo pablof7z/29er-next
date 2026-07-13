@@ -26,6 +26,9 @@ struct ChannelListView: View {
             channelRows
         }
         .listStyle(.plain)
+        .overlay(alignment: .bottomTrailing) {
+            proofRoomShortcut
+        }
     }
 
     @ViewBuilder
@@ -33,13 +36,9 @@ struct ChannelListView: View {
         ForEach(ordered) { group in
             let childCount = GroupDirectoryProjection.directChildren(of: group, in: allGroups).count
             NavigationLink(value: group) {
-                GroupRow(
-                    group: group,
-                    childCount: childCount,
-                    entry: directory?.entries[group.localID],
-                    contentClient: contentClient
-                )
+                groupRow(group, childCount: childCount)
             }
+            .accessibilityIdentifier("group-row-\(group.localID)")
             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                 if childCount > 0 {
                     Button {
@@ -52,6 +51,39 @@ struct ChannelListView: View {
                 }
             }
         }
+    }
+
+    /// A deterministic entry point for the opt-in device proof. Live activity
+    /// can move a row outside SwiftUI's lazy accessibility window, so the test
+    /// opens the same directory value without depending on viewport position.
+    @ViewBuilder
+    private var proofRoomShortcut: some View {
+        if
+            RoomOpenProbe.shared.isEnabled,
+            let groupID = RoomOpenProbe.shared.targetGroupID,
+            let group = channels.first(where: { $0.localID == groupID })
+        {
+            Button {
+                RoomOpenProbe.shared.begin(groupID: group.localID)
+                path.append(group)
+            } label: {
+                Image(systemName: "stopwatch.fill")
+                    .padding(12)
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(8)
+            .accessibilityLabel("Open room performance proof")
+            .accessibilityIdentifier("room-open-proof-shortcut")
+        }
+    }
+
+    private func groupRow(_ group: GroupSummary, childCount: Int) -> some View {
+        GroupRow(
+            group: group,
+            childCount: childCount,
+            entry: directory?.entries[group.localID],
+            contentClient: contentClient
+        )
     }
 
     /// Most-recent message first; rooms without any known message fall below

@@ -104,6 +104,18 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: io.f7z.app29er.next.macos.tests
         GENERATE_INFOPLIST_FILE: YES
         DEVELOPMENT_TEAM: 456SHKPP26
+  TwentyNinerNextUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: TwentyNinerNext
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.f7z.app29er.next.ui-tests
+        GENERATE_INFOPLIST_FILE: YES
+        DEVELOPMENT_TEAM: 456SHKPP26
 schemes:
   TwentyNinerNext:
     build:
@@ -121,3 +133,13 @@ schemes:
     test:
       targets:
         - TwentyNinerNextMacTests
+  TwentyNinerNextDeviceProof:
+    build:
+      targets:
+        TwentyNinerNext: all
+        TwentyNinerNextUITests: [test]
+    test:
+      environmentVariables:
+        NMP_DEVICE_PROOF: "1"
+      targets:
+        - TwentyNinerNextUITests

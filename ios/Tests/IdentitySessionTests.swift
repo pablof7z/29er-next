@@ -93,6 +93,34 @@ final class IdentitySessionTests: XCTestCase {
         try FileManager.default.removeItem(at: root)
     }
 
+    func testLegacyStoreEpochIsResetBeforeCurrentEngineConstruction() throws {
+        let root = try makeRoot()
+        let appDirectory = root.appendingPathComponent("29er-next", isDirectory: true)
+        let store = appDirectory.appendingPathComponent("nmp.redb")
+        let marker = appDirectory.appendingPathComponent("nmp-store-epoch")
+        let unrelated = appDirectory.appendingPathComponent("identity-state")
+        try Data("legacy-store-sentinel".utf8).write(to: store)
+        try Data("5\n".utf8).write(to: marker)
+        try Data("preserve".utf8).write(to: unrelated)
+
+        var model: AppModel? = AppModel(
+            operatorConfiguration: OperatorConfiguration(
+                indexerRelays: [],
+                groupRelay: "wss://nip29.f7z.io"
+            ),
+            applicationSupportURL: root
+        )
+
+        XCTAssertNotNil(model?.engine)
+        XCTAssertEqual(try Data(contentsOf: marker), Data("6\n".utf8))
+        XCTAssertNotEqual(try Data(contentsOf: store), Data("legacy-store-sentinel".utf8))
+        XCTAssertEqual(try Data(contentsOf: unrelated), Data("preserve".utf8))
+
+        model?.engine?.shutdown()
+        model = nil
+        try FileManager.default.removeItem(at: root)
+    }
+
     private func makeRoot() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

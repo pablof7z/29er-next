@@ -60,12 +60,14 @@ final class AppModel {
             }
         }
 
-        groupRelay = configuration.groupRelay
+        let proofOfflineRelay = RoomOpenProbe.shared.offlineRelay
+        groupRelay = proofOfflineRelay ?? configuration.groupRelay
         do {
             let resources = try AppEngineBootstrap.resources(
                 fileManager: fileManager,
                 operatorConfiguration: configuration,
-                applicationSupportURL: applicationSupportURL
+                applicationSupportURL: applicationSupportURL,
+                relayOverride: proofOfflineRelay
             )
             engineConfig = resources.config
             localAccountStore = resources.accountStore
@@ -73,7 +75,7 @@ final class AppModel {
             engine = session.engine
             contentClient = session.contentClient
             activePubkey = session.activePubkey
-            selectedHost = session.activePubkey == nil ? configuration.groupRelay : nil
+            selectedHost = session.activePubkey == nil ? groupRelay : nil
         } catch {
             engine = nil
             contentClient = nil

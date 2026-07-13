@@ -10,6 +10,7 @@ struct RoomView: View {
     let onOpen: (() -> Void)?
     @State private var model: RoomTimelineModel
     @State private var replyTarget: ComposerReply?
+    @State private var roomOpenProbe = RoomOpenProbe.shared
 
     init(
         group: GroupSummary,
@@ -69,7 +70,27 @@ struct RoomView: View {
         .task {
             await model.observe()
         }
-        .onAppear { onOpen?() }
+        .onAppear {
+            if roomOpenProbe.groupID != group.localID {
+                // XCUITest does not always deliver a NavigationLink's
+                // simultaneous gesture. Starting here is the deterministic
+                // fallback; ordinary taps still start at activation time.
+                roomOpenProbe.begin(groupID: group.localID)
+            }
+            roomOpenProbe.recordFirstFrame(groupID: group.localID)
+            onOpen?()
+        }
+        .safeAreaInset(edge: .bottom) {
+            if roomOpenProbe.isEnabled {
+                Text(roomOpenProbe.report)
+                    .font(.caption2.monospaced())
+                    .lineLimit(12)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.thinMaterial)
+                    .accessibilityIdentifier("room-open-proof")
+            }
+        }
     }
 
     private var roomContent: some View {
