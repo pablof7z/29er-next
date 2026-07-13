@@ -24,6 +24,7 @@ final class AppModel {
     private(set) var contentClient: NMPContentClient?
     private(set) var engineGeneration = 0
     private var engineConfig: NMPConfig?
+    private var localAccountStore: NMPInsecureFileAccountStore?
     let groupRelay: String
 
     init(
@@ -68,10 +69,18 @@ final class AppModel {
                 indexerRelays: configuration.indexerRelays,
                 appRelays: [configuration.groupRelay]
             )
+            let localAccountStore = NMPInsecureFileAccountStore(
+                fileURL: appDirectory.appendingPathComponent("local-account.nsec")
+            )
             self.engineConfig = engineConfig
-            let engine = try NMPEngine(config: engineConfig)
+            self.localAccountStore = localAccountStore
+            let engine = try NMPEngine(
+                config: engineConfig,
+                localAccountStore: localAccountStore
+            )
             self.engine = engine
             contentClient = NMPContentClient(engine: engine)
+            activePubkey = try engine.activeAccount()
         } catch {
             engine = nil
             contentClient = nil
@@ -112,7 +121,13 @@ final class AppModel {
                 try engine.setActiveAccount(pubkey)
                 activePubkey = pubkey
             } catch {
-                replaceWithReadOnlyEngine(identityError: Self.identityMessage(for: error))
+                let message = Self.identityMessage(for: error)
+                do {
+                    try engine.clearPersistedAccount()
+                    replaceWithReadOnlyEngine(identityError: message)
+                } catch {
+                    identityError = "NMP could not activate or clear the saved account."
+                }
             }
         } catch {
             activePubkey = nil
@@ -120,8 +135,20 @@ final class AppModel {
         }
     }
 
-    func endIdentitySession() {
-        replaceWithReadOnlyEngine(identityError: nil)
+    @discardableResult
+    func signOut() -> Bool {
+        guard let engine else {
+            identityError = "NMP is not available."
+            return false
+        }
+        do {
+            try engine.clearPersistedAccount()
+            replaceWithReadOnlyEngine(identityError: nil)
+            return true
+        } catch {
+            identityError = "NMP could not clear the saved account."
+            return false
+        }
     }
 
     func clearIdentityError() {
@@ -182,7 +209,10 @@ final class AppModel {
         }
 
         do {
-            let engine = try NMPEngine(config: engineConfig)
+            let engine = try NMPEngine(
+                config: engineConfig,
+                localAccountStore: localAccountStore
+            )
             self.engine = engine
             contentClient = NMPContentClient(engine: engine)
         } catch {

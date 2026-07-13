@@ -2,7 +2,7 @@
 
 Greenfield 29er client built on the new [NMP](https://github.com/pablof7z/nmp) engine.
 
-The current slice discovers public NIP-29 rooms, opens live room timelines, renders current kind:30315 agent activity, exposes NMP's permanent diagnostics, and lets a session identity send durable management commands to tenex-edge backends. Identity persistence waits for NMP's canonical signer-provider surface instead of being reimplemented in the app.
+The current slice discovers public NIP-29 rooms, opens live room timelines, renders current kind:30315 agent activity, exposes NMP's permanent diagnostics, and lets a locally restored identity send durable management commands to tenex-edge backends. NMP owns the explicit plaintext account checkpoint and restores it on launch.
 
 ## Architecture
 
@@ -39,12 +39,13 @@ The preview bundle identifier is `io.f7z.app29er.next`, so it installs beside th
 - Independent scope-bound room queries for chat (`kind:9`), membership (`kind:39002`), and live agent activity (`kind:30315`), filtered by the selected group.
 - Native room toolbar navigation to direct subchannels and the People roster; Chat remains the primary room screen.
 - Kind:30315 replacement and NIP-40 expiry are applied by NMP; Swift only projects the current rows for display.
-- Explicit session key import through NMP's `addAccount` and `setActiveAccount` surface. The app retains only the returned public key.
-- Ending an identity session shuts down the credential-owning engine and creates a fresh read-only engine over the same event store.
-- Signed-in sessions can publish durable kind:9 management commands to room backends and follow NMP's canonical write receipts.
+- Explicit local key import through NMP's `addAccount` and `setActiveAccount` surface. The app retains only the returned public key.
+- NMP's opt-in plaintext file provider restores the active signer at launch; the nsec never enters the app's own product state or event database.
+- Signing out clears NMP's checkpoint, shuts down the credential-owning engine, and creates a fresh read-only engine over the same event store.
+- Signed-in accounts can publish durable kind:9 management commands to room backends and follow NMP's canonical write receipts.
 - Live per-relay NMP diagnostics.
 
-Identity is deliberately session-only. 29er Next does not persist an nsec, and it does not describe this import surface as production-secure persistent login. Standard platform vault providers, credential reset, and remote-signer reattachment remain upstream NMP work.
+Automatic login deliberately favors convenience over credential protection: the NMP SDK stores one plaintext nsec file inside the app sandbox with owner-only permissions. It does not use Keychain, Secure Enclave, hardware-backed encryption, or the canonical event/outbox database. Standard protected vault providers and credential recovery remain separate upstream NMP work.
 
 The top relay selector is the next upstream-backed slice. Its signed-in hosts come from typed NIP-29 composition over the user's NIP-51 remembered-groups list (`kind:10009`), tracked by [NMP #63](https://github.com/pablof7z/nmp/issues/63). Selected-host read authority is tracked by [NMP #1](https://github.com/pablof7z/nmp/issues/1); the app will not emulate either contract by maintaining a Swift-only relay list.
 

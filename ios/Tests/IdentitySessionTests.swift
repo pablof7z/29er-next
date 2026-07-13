@@ -6,9 +6,9 @@ final class IdentitySessionTests: XCTestCase {
     private let secretOne = String(repeating: "0", count: 63) + "1"
     private let publicOne = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
 
-    func testValidSecretActivatesAccountAndEndingSessionReplacesEngine() async throws {
-        let fixture = try makeModel()
-        var model: AppModel? = fixture.model
+    func testValidSecretRestoresAcrossLaunchAndSignOutClearsCheckpoint() async throws {
+        let root = try makeRoot()
+        var model: AppModel? = makeModel(root: root)
 
         await model?.signIn(secretKey: secretOne)
 
@@ -16,23 +16,36 @@ final class IdentitySessionTests: XCTestCase {
         XCTAssertNil(model?.identityError)
         XCTAssertFalse(model?.isSigningIn ?? true)
 
-        let signedInEngineID = try ObjectIdentifier(XCTUnwrap(model?.engine))
-        let signedInGeneration = model?.engineGeneration
-        model?.endIdentitySession()
-        XCTAssertNil(model?.activePubkey)
-        XCTAssertNil(model?.identityError)
-        XCTAssertEqual(model?.engineGeneration, (signedInGeneration ?? 0) + 1)
-        let readOnlyEngine = try XCTUnwrap(model?.engine)
-        XCTAssertNotEqual(ObjectIdentifier(readOnlyEngine), signedInEngineID)
-
         model?.engine?.shutdown()
         model = nil
-        try FileManager.default.removeItem(at: fixture.root)
+
+        var restored: AppModel? = makeModel(root: root)
+        XCTAssertEqual(restored?.activePubkey, publicOne)
+        let restoredEngineID = try ObjectIdentifier(XCTUnwrap(restored?.engine))
+        let restoredGeneration = restored?.engineGeneration
+
+        XCTAssertTrue(restored?.signOut() ?? false)
+        XCTAssertNil(restored?.activePubkey)
+        XCTAssertNil(restored?.identityError)
+        XCTAssertEqual(restored?.engineGeneration, (restoredGeneration ?? 0) + 1)
+        XCTAssertNotEqual(
+            ObjectIdentifier(try XCTUnwrap(restored?.engine)),
+            restoredEngineID
+        )
+
+        restored?.engine?.shutdown()
+        restored = nil
+
+        var signedOut: AppModel? = makeModel(root: root)
+        XCTAssertNil(signedOut?.activePubkey)
+        signedOut?.engine?.shutdown()
+        signedOut = nil
+        try FileManager.default.removeItem(at: root)
     }
 
     func testInvalidSecretStaysSignedOutWithTypedMessage() async throws {
-        let fixture = try makeModel()
-        var model: AppModel? = fixture.model
+        let root = try makeRoot()
+        var model: AppModel? = makeModel(root: root)
 
         await model?.signIn(secretKey: "not-a-key")
 
@@ -45,23 +58,24 @@ final class IdentitySessionTests: XCTestCase {
 
         model?.engine?.shutdown()
         model = nil
-        try FileManager.default.removeItem(at: fixture.root)
+        try FileManager.default.removeItem(at: root)
     }
 
-    private func makeModel() throws -> (model: AppModel, root: URL) {
+    private func makeRoot() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+
+    private func makeModel(root: URL) -> AppModel {
         let configuration = OperatorConfiguration(
             indexerRelays: [],
             groupRelay: "wss://nip29.f7z.io"
         )
-        return (
-            AppModel(
-                operatorConfiguration: configuration,
-                applicationSupportURL: root
-            ),
-            root
+        return AppModel(
+            operatorConfiguration: configuration,
+            applicationSupportURL: root
         )
     }
 }
