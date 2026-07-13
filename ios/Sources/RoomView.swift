@@ -115,17 +115,16 @@ struct RoomView: View {
     }
 
     private func sendCommand(_ command: String, to backendPubkey: String) async -> String? {
-        guard let activePubkey else { return "Sign in to send commands." }
+        guard activePubkey != nil else { return "Sign in to send commands." }
         return await model.sendManagementCommand(
             command,
-            backendPubkey: backendPubkey,
-            author: activePubkey
+            backendPubkey: backendPubkey
         )
     }
 
     private func sendMessage(_ request: ComposerRequest) async -> String? {
-        guard let activePubkey else { return "Sign in to write in this room." }
-        return await model.sendMessage(request, author: activePubkey)
+        guard activePubkey != nil else { return "Sign in to write in this room." }
+        return await model.sendMessage(request)
     }
 
     private func beginReply(_ message: RoomMessage) {
