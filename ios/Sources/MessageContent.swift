@@ -59,15 +59,12 @@ enum MessageContent {
     }
 
     private static func linkSpans(in raw: String) -> [Span] {
-        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
-            return []
-        }
         let full = NSRange(raw.startIndex..., in: raw)
-        return detector.matches(in: raw, range: full).compactMap { match in
+        return linkDetector.matches(in: raw, range: full).compactMap { match in
             guard let url = match.url, let range = Range(match.range, in: raw) else { return nil }
-            // NSDataDetector also recognises bare `nostr:` schemes as links;
-            // leave those to entity handling.
-            guard url.scheme?.lowercased() != "nostr" else { return nil }
+            guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) else {
+                return nil
+            }
             return Span(range: range, segment: .link(display: String(raw[range]), url: url))
         }
     }
@@ -90,11 +87,18 @@ enum MessageContent {
         )
     }()
 
+    private static let linkDetector: NSDataDetector = {
+        // swiftlint:disable:next force_try
+        try! NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+    }()
+
     /// Shortens a `nostr:npub1abc…xyz` token to `npub1abc…6w6` for inline
     /// display. The `nostr:` scheme prefix is dropped; short tokens are shown
     /// whole.
     static func entityLabel(for token: String) -> String {
-        let body = token.hasPrefix("nostr:") ? String(token.dropFirst("nostr:".count)) : token
+        let body = token.lowercased().hasPrefix("nostr:")
+            ? String(token.dropFirst("nostr:".count))
+            : token
         guard body.count > 18 else { return body }
         return "\(body.prefix(10))…\(body.suffix(5))"
     }

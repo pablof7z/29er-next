@@ -48,6 +48,13 @@ final class MessageContentTests: XCTestCase {
         XCTAssertEqual(links.count, 2)
     }
 
+    func testNonWebURLIsNotLinked() {
+        XCTAssertEqual(
+            MessageContent.segments(of: "download ftp://example.com/file"),
+            [.text("download ftp://example.com/file")]
+        )
+    }
+
     func testAttributedStringCarriesLinkAttribute() {
         let attributed = MessageContent.attributed("go https://example.com")
         let hasLink = attributed.runs.contains { $0.link != nil }
@@ -56,5 +63,9 @@ final class MessageContentTests: XCTestCase {
 
     func testShortEntityShownWhole() {
         XCTAssertEqual(MessageContent.entityLabel(for: "nostr:note1abc"), "note1abc")
+    }
+
+    func testUppercaseEntitySchemeIsRemovedFromLabel() {
+        XCTAssertEqual(MessageContent.entityLabel(for: "NOSTR:note1abc"), "note1abc")
     }
 }
