@@ -80,6 +80,12 @@ struct RoomView: View {
             reads: reads,
             focusMessageID: focusMessageID
         )
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            ChatComposer(
+                canSend: activePubkey != nil,
+                send: sendMessage
+            )
+        }
     }
 
     private var childGroups: [GroupSummary] {
@@ -111,5 +117,10 @@ struct RoomView: View {
             backendPubkey: backendPubkey,
             author: activePubkey
         )
+    }
+
+    private func sendMessage(_ content: String) async -> String? {
+        guard let activePubkey else { return "Sign in to write in this room." }
+        return await model.sendMessage(content, author: activePubkey)
     }
 }

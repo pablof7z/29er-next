@@ -210,11 +210,28 @@ final class RoomTimelineModel {
         }
     }
 
-    /// Send a tenex-edge management command through NMP's typed NIP-29 group
-    /// composition. NMP owns the host routing, durability, `h` context, and
-    /// best-effort `previous` evidence couriered from the delivered room rows.
-    /// Returns a message on failure, else nil after relay acknowledgement.
+    /// Send a normal room message through NMP's typed NIP-29 composition.
+    /// The timeline receives the canonical accepted event through `observeContent`;
+    /// it does not create an app-owned pending message.
+    func sendMessage(_ content: String, author: String) async -> String? {
+        await sendGroupMessage(content, extraTags: [], author: author)
+    }
+
+    /// Send a tenex-edge management command as a room message p-tagging the
+    /// selected backend. This shares the normal typed NIP-29 write path.
     func sendManagementCommand(_ command: String, backendPubkey: String, author: String) async -> String? {
+        await sendGroupMessage(command, extraTags: [["p", backendPubkey]], author: author)
+    }
+
+    private func sendGroupMessage(
+        _ content: String,
+        extraTags: [[String]],
+        author: String
+    ) async -> String? {
+        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "Messages cannot be empty."
+        }
+
         do {
             let intent = try groupSendIntent(
                 host: hostRelay,
@@ -222,34 +239,41 @@ final class RoomTimelineModel {
                 authorPubkey: author,
                 createdAt: UInt64(Date().timeIntervalSince1970),
                 kind: 9,
-                content: command,
-                extraTags: [["p", backendPubkey]],
+                content: content,
+                extraTags: extraTags,
                 recentRows: contentRows
             )
             let receipt = try await engine.publishComposed(intent)
             for await status in receipt.status {
-                switch status {
-                case .rejected(_, let reason):
-                    return "The relay rejected the command: \(reason)"
-                case .failed(let reason):
-                    return reason
-                case .gaveUp(let relay):
-                    return "Could not deliver to \(relay)."
-                case .persistenceBlocked(let relay):
-                    return "Could not persist the command for \(relay)."
-                case .routePersistenceBlocked(let relay):
-                    return "Could not persist routing for \(relay)."
-                case .outcomeUnknown(let relay):
-                    return "Delivery outcome for \(relay) is unknown."
-                case .acked:
+                if let failure = deliveryFailure(for: status) {
+                    return failure
+                }
+                if case .acked = status {
                     return nil
-                case .accepted, .awaitingCapability, .signed, .routed, .sent:
-                    continue
                 }
             }
-            return "Delivery ended without relay acknowledgement."
+            return "Message delivery ended without relay acknowledgement."
         } catch {
             return error.localizedDescription
+        }
+    }
+
+    private func deliveryFailure(for status: WriteStatus) -> String? {
+        switch status {
+        case .rejected(_, let reason):
+            return "The relay rejected the message: \(reason)"
+        case .failed(let reason):
+            return reason
+        case .gaveUp(let relay):
+            return "Could not deliver the message to \(relay)."
+        case .persistenceBlocked(let relay):
+            return "Could not persist the message for \(relay)."
+        case .routePersistenceBlocked(let relay):
+            return "Could not persist message routing for \(relay)."
+        case .outcomeUnknown(let relay):
+            return "Message delivery outcome for \(relay) is unknown."
+        default:
+            return nil
         }
     }
 }
