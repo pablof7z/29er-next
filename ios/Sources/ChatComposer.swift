@@ -11,13 +11,127 @@ struct ChatComposer: View {
     @State private var errorMessage: String?
 
     var body: some View {
+        Group {
+            if #available(iOS 26.0, *) {
+                liquidGlassContent
+            } else {
+                fallbackContent
+            }
+        }
+    }
+
+    @available(iOS 26.0, *)
+    private var liquidGlassContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             if canSend {
-                signedInComposer
+                liquidGlassComposer
+            } else {
+                liquidGlassSignedOutComposer
+            }
+
+            if isSending {
+                Label("Sending…", systemImage: "arrow.up.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .glassEffect(in: .capsule)
+                    .accessibilityIdentifier("room-composer-sending")
+            } else if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .glassEffect(.regular.tint(.red.opacity(0.12)), in: .capsule)
+                    .accessibilityIdentifier("room-composer-error")
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
+    }
+
+    @available(iOS 26.0, *)
+    private var liquidGlassComposer: some View {
+        GlassEffectContainer(spacing: 8) {
+            HStack(alignment: .bottom, spacing: 12) {
+                TextField("Message", text: $draft, axis: .vertical)
+                    .lineLimit(1...5)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 11)
+                    .frame(minHeight: 46)
+                    .glassEffect(in: .capsule)
+                    .disabled(isSending)
+                    .accessibilityIdentifier("room-message-composer")
+
+                Button(action: submit) {
+                    if isSending {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "arrow.up")
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(canSubmit ? .white : .secondary)
+                    }
+                }
+                .frame(width: 46, height: 46)
+                .glassEffect(
+                    .regular.tint(canSubmit ? .blue.opacity(0.85) : .gray.opacity(0.2)).interactive(),
+                    in: .circle
+                )
+                .buttonStyle(.plain)
+                .disabled(!canSubmit || isSending)
+                .accessibilityLabel("Send message")
+                .accessibilityIdentifier("room-message-send")
+            }
+        }
+    }
+
+    @available(iOS 26.0, *)
+    private var liquidGlassSignedOutComposer: some View {
+        Label("Sign in to write", systemImage: "lock.fill")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .glassEffect(in: .capsule)
+            .accessibilityIdentifier("room-composer-signed-out")
+    }
+
+    private var fallbackContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if canSend {
+                HStack(alignment: .bottom, spacing: 12) {
+                    TextField("Message", text: $draft, axis: .vertical)
+                        .lineLimit(1...5)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(isSending)
+                        .accessibilityIdentifier("room-message-composer")
+
+                    Button(action: submit) {
+                        if isSending {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "arrow.up")
+                                .font(.headline.weight(.semibold))
+                        }
+                    }
+                    .frame(width: 46, height: 46)
+                    .background(Color.accentColor.opacity(canSubmit ? 0.9 : 0.2), in: .circle)
+                    .buttonStyle(.plain)
+                    .disabled(!canSubmit || isSending)
+                    .accessibilityLabel("Send message")
+                    .accessibilityIdentifier("room-message-send")
+                }
             } else {
                 Label("Sign in to write", systemImage: "lock.fill")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(.thinMaterial, in: .capsule)
                     .accessibilityIdentifier("room-composer-signed-out")
             }
 
@@ -25,42 +139,19 @@ struct ChatComposer: View {
                 Label("Sending…", systemImage: "arrow.up.circle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .accessibilityIdentifier("room-composer-sending")
             } else if let errorMessage {
                 Text(errorMessage)
                     .font(.caption)
                     .foregroundStyle(.red)
-                    .accessibilityIdentifier("room-composer-error")
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.bar)
-        .overlay(alignment: .top) {
-            Divider()
-        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
     }
 
-    private var signedInComposer: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            TextField("Message", text: $draft, axis: .vertical)
-                .lineLimit(1...5)
-                .textFieldStyle(.roundedBorder)
-                .disabled(isSending)
-                .accessibilityIdentifier("room-message-composer")
-
-            Button(action: submit) {
-                if isSending {
-                    ProgressView()
-                } else {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title2)
-                }
-            }
-            .disabled(ChatComposerState.message(from: draft) == nil || isSending)
-            .accessibilityLabel("Send message")
-            .accessibilityIdentifier("room-message-send")
-        }
+    private var canSubmit: Bool {
+        ChatComposerState.message(from: draft) != nil
     }
 
     private func submit() {
