@@ -62,6 +62,18 @@ final class RoomTimelineModel {
         NIP29ViewProjection.people(members: members, activities: activities)
     }
 
+    var composerRecipients: [ComposerRecipient] {
+        RoomComposerProjection.recipients(
+            from: people,
+            profiles: profiles,
+            excluding: recipient
+        )
+    }
+
+    func composerReply(to message: RoomMessage) -> ComposerReply {
+        RoomComposerProjection.reply(to: message, people: people, profiles: profiles)
+    }
+
     /// Management backends present in this room, resolved from kind:0 across
     /// members, admins, and live-session authors.
     var backends: [RoomBackend] {
@@ -213,8 +225,11 @@ final class RoomTimelineModel {
     /// Send a normal room message through NMP's typed NIP-29 composition.
     /// The timeline receives the canonical accepted event through `observeContent`;
     /// it does not create an app-owned pending message.
-    func sendMessage(_ content: String, author: String) async -> String? {
-        await sendGroupMessage(content, extraTags: [], author: author)
+    func sendMessage(_ request: ComposerRequest, author: String) async -> String? {
+        guard request.recipients.isEmpty, request.reply == nil else {
+            return "Mentions and replies require the pending NMP group-message API."
+        }
+        return await sendGroupMessage(request.content, extraTags: [], author: author)
     }
 
     /// Send a tenex-edge management command as a room message p-tagging the

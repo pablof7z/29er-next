@@ -74,6 +74,7 @@ struct ChatTimelineView: View {
     let mentionIDs: Set<String>
     let reads: MentionReads?
     let focusMessageID: String?
+    let onReply: (RoomMessage) -> Void
 
     private var presentation: ChatTimelinePresentation {
         ChatTimelinePresentation.make(
@@ -107,7 +108,8 @@ struct ChatTimelineView: View {
                 profiles: profiles,
                 mentionIDs: mentionIDs,
                 reads: reads,
-                focusMessageID: focusMessageID
+                focusMessageID: focusMessageID,
+                onReply: onReply
             )
             .safeAreaInset(edge: .top, spacing: 0) {
                 if let profileNotice {
@@ -134,6 +136,7 @@ private struct MessageTimelineView: View {
     let mentionIDs: Set<String>
     let reads: MentionReads?
     let focusMessageID: String?
+    let onReply: (RoomMessage) -> Void
 
     @State private var isPinnedToBottom = true
     @State private var visibleIndices: Set<Int> = []
@@ -178,9 +181,14 @@ private struct MessageTimelineView: View {
                                 DaySeparatorRow(label: label)
                                     .id(entry.id)
                             case .message(let message, let showsHeader):
-                                MessageRow(message: message, showsHeader: showsHeader, profiles: profiles)
-                                    .id(entry.id)
-                                    .background(visibilityReporter(for: message, viewportHeight: viewport.size.height))
+                                MessageRow(
+                                    message: message,
+                                    showsHeader: showsHeader,
+                                    profiles: profiles,
+                                    onReply: { onReply(message) }
+                                )
+                                .id(entry.id)
+                                .background(visibilityReporter(for: message, viewportHeight: viewport.size.height))
                             }
                         }
 

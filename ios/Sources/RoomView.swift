@@ -9,6 +9,7 @@ struct RoomView: View {
     let focusMessageID: String?
     let onOpen: (() -> Void)?
     @State private var model: RoomTimelineModel
+    @State private var replyTarget: ComposerReply?
 
     init(
         group: GroupSummary,
@@ -78,11 +79,14 @@ struct RoomView: View {
             profileError: model.profileError,
             mentionIDs: model.mentionIDs,
             reads: reads,
-            focusMessageID: focusMessageID
+            focusMessageID: focusMessageID,
+            onReply: beginReply
         )
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ChatComposer(
                 canSend: activePubkey != nil,
+                recipients: model.composerRecipients,
+                reply: $replyTarget,
                 send: sendMessage
             )
         }
@@ -119,8 +123,12 @@ struct RoomView: View {
         )
     }
 
-    private func sendMessage(_ content: String) async -> String? {
+    private func sendMessage(_ request: ComposerRequest) async -> String? {
         guard let activePubkey else { return "Sign in to write in this room." }
-        return await model.sendMessage(content, author: activePubkey)
+        return await model.sendMessage(request, author: activePubkey)
+    }
+
+    private func beginReply(_ message: RoomMessage) {
+        replyTarget = model.composerReply(to: message)
     }
 }
