@@ -21,11 +21,12 @@ struct RootView: View {
                 case .starting:
                     ProgressView("Starting NMP…")
                 case .failed(let message):
-                    ContentUnavailableView(
-                        "NMP Couldn’t Start",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text(message)
-                    )
+                    DatabaseRecoveryView(
+                        message: message,
+                        canReset: model.canResetLocalDatabase
+                    ) {
+                        model.resetLocalDatabase()
+                    }
                 case .observing:
                     roomContent
                 }

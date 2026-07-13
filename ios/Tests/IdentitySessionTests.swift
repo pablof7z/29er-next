@@ -61,6 +61,38 @@ final class IdentitySessionTests: XCTestCase {
         try FileManager.default.removeItem(at: root)
     }
 
+    func testDatabaseResetRecoversStartupAndPreservesSavedAccount() async throws {
+        let root = try makeRoot()
+        var model: AppModel? = makeModel(root: root)
+        await model?.signIn(secretKey: secretOne)
+        XCTAssertEqual(model?.activePubkey, publicOne)
+
+        let appDirectory = root.appendingPathComponent("29er-next", isDirectory: true)
+        let database = appDirectory.appendingPathComponent("nmp.redb")
+        let checkpoint = appDirectory.appendingPathComponent("local-account.nsec")
+        let savedAccount = try Data(contentsOf: checkpoint)
+
+        model?.engine?.shutdown()
+        model = nil
+        try Data("incompatible-store".utf8).write(to: database, options: .atomic)
+
+        var failed: AppModel? = makeModel(root: root)
+        guard case .failed = failed?.state else {
+            return XCTFail("an invalid persistent store must fail construction")
+        }
+        XCTAssertNil(failed?.engine)
+
+        XCTAssertTrue(failed?.resetLocalDatabase() ?? false)
+        XCTAssertEqual(failed?.state, .starting)
+        XCTAssertEqual(failed?.activePubkey, publicOne)
+        XCTAssertNotNil(failed?.engine)
+        XCTAssertEqual(try Data(contentsOf: checkpoint), savedAccount)
+
+        failed?.engine?.shutdown()
+        failed = nil
+        try FileManager.default.removeItem(at: root)
+    }
+
     private func makeRoot() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
