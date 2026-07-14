@@ -7,8 +7,7 @@ enum RoomComposerProjection {
         excluding excludedPubkey: String?
     ) -> [ComposerRecipient] {
         var seen = Set<String>()
-        let activePeople = (people.members + people.activeHere).filter { $0.activity != nil }
-        return activePeople
+        return (people.members + people.activeHere)
             .filter {
                 $0.pubkey != excludedPubkey &&
                     profiles.profile(for: $0.pubkey)?.isBackend != true &&

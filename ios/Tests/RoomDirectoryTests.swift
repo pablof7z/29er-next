@@ -92,10 +92,24 @@ final class RoomDirectoryTests: XCTestCase {
         let defaults = try XCTUnwrap(
             UserDefaults(suiteName: "directory-tests-\(UUID().uuidString)")
         )
-        let store = DirectoryReadStore(defaults: defaults)
+        let store = DirectoryReadStore(defaults: defaults, hostRelay: "wss://one.example.com")
         store.save(["general": 1_000, "random": 2_000])
 
         XCTAssertEqual(store.load(), ["general": 1_000, "random": 2_000])
+    }
+
+    func testReadBaselinesAreNamespacedBySelectedHost() throws {
+        let defaults = try XCTUnwrap(
+            UserDefaults(suiteName: "directory-host-tests-\(UUID().uuidString)")
+        )
+        let first = DirectoryReadStore(defaults: defaults, hostRelay: "wss://one.example.com")
+        let second = DirectoryReadStore(defaults: defaults, hostRelay: "wss://two.example.com")
+
+        first.save(["general": 1_000])
+        second.save(["general": 2_000])
+
+        XCTAssertEqual(first.load(), ["general": 1_000])
+        XCTAssertEqual(second.load(), ["general": 2_000])
     }
 
     func testBaselineHistoryKeepsNewestBoundedRooms() {

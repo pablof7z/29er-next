@@ -11,9 +11,9 @@ struct ComposerRecipientPicker: View {
             Group {
                 if recipients.isEmpty {
                     ContentUnavailableView(
-                        "No Agents Available",
+                        "No People Available",
                         systemImage: "at",
-                        description: Text("Agents appear here when their room status is available.")
+                        description: Text("People appear here from the room's durable member roster.")
                     )
                 } else {
                     List(recipients) { recipient in

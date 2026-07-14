@@ -16,7 +16,7 @@ final class RoomComposerProjectionTests: XCTestCase {
         )
     }
 
-    func testPickerIncludesLiveAgentsSortedBySlugAndExcludesCurrentAccount() {
+    func testPickerIncludesCompleteRosterAndLiveStatusOnlyPeople() {
         let current = RoomPerson(
             member: nil,
             activity: activity(pubkey: "current", slug: "me"),
@@ -45,8 +45,8 @@ final class RoomComposerProjectionTests: XCTestCase {
             excluding: "current"
         )
 
-        XCTAssertEqual(recipients.map(\.pubkey), ["alpha", "zeta"])
-        XCTAssertEqual(recipients.map(\.mentionLabel), ["@alpha", "@zeta"])
+        XCTAssertEqual(recipients.map(\.pubkey), ["alpha", "human", "zeta"])
+        XCTAssertEqual(recipients.map(\.mentionLabel), ["@alpha", "@human", "@zeta"])
     }
 
     func testPickerExcludesBackendIdentities() {
