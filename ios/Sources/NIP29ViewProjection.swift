@@ -54,6 +54,11 @@ struct RoomPerson: Identifiable, Hashable, Sendable {
 struct RoomPeople: Hashable, Sendable {
     let members: [RoomPerson]
     let activeHere: [RoomPerson]
+
+    func activity(for pubkey: String) -> AgentActivity? {
+        members.first(where: { $0.pubkey == pubkey })?.activity
+            ?? activeHere.first(where: { $0.pubkey == pubkey })?.activity
+    }
 }
 
 enum NIP29ViewProjection {

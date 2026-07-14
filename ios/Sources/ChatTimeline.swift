@@ -3,6 +3,7 @@ import SwiftUI
 struct ChatTimelineView: View {
     let items: [RoomTimelineItem]
     let profiles: ProfileBook
+    let people: RoomPeople
     let hasReceivedSnapshot: Bool
     let error: String?
     let profileError: String?
@@ -41,6 +42,7 @@ struct ChatTimelineView: View {
             MessageTimelineView(
                 items: items,
                 profiles: profiles,
+                people: people,
                 mentionIDs: mentionIDs,
                 reads: reads,
                 focusMessageID: focusMessageID,
@@ -68,6 +70,7 @@ private struct VisibleRowIndicesKey: PreferenceKey {
 private struct MessageTimelineView: View {
     let items: [RoomTimelineItem]
     let profiles: ProfileBook
+    let people: RoomPeople
     let mentionIDs: Set<String>
     let reads: MentionReads?
     let focusMessageID: String?
@@ -122,6 +125,7 @@ private struct MessageTimelineView: View {
                                     message: message,
                                     showsHeader: showsHeader,
                                     profiles: profiles,
+                                    agentActivity: people.activity(for: message.author),
                                     onReply: { onReply(message) }
                                 )
                                 .id(entry.id)

@@ -134,6 +134,7 @@ final class NIP29ViewProjectionTests: XCTestCase {
         XCTAssertEqual(people.members.count, 1)
         XCTAssertEqual(people.members.first?.pubkey, "member-a")
         XCTAssertEqual(people.members.first?.activity?.eventID, "status-200")
+        XCTAssertEqual(people.activity(for: "member-a")?.eventID, "status-200")
         XCTAssertTrue(people.activeHere.isEmpty)
     }
 
@@ -154,6 +155,8 @@ final class NIP29ViewProjectionTests: XCTestCase {
 
         XCTAssertEqual(people.activeHere.count, 1)
         XCTAssertEqual(people.activeHere.first?.activity?.eventID, "status-200")
+        XCTAssertEqual(people.activity(for: "session-pubkey")?.eventID, "status-200")
+        XCTAssertNil(people.activity(for: "someone-else"))
     }
 
     private func makeActivity(pubkey: String, createdAt: UInt64) -> AgentActivity? {
