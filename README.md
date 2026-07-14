@@ -36,6 +36,8 @@ xcodebuildmcp simulator build-and-run \
   --scheme TwentyNinerNext
 ```
 
+Pull requests run the same generated project through a pinned macOS simulator-test gate. See [Continuous integration](docs/continuous-integration.md) for its toolchain pins, expected runner cost, and caching tradeoffs.
+
 The iOS preview bundle identifier is `io.f7z.app29er.next`, so it installs beside the existing 29er app. The native macOS bundle identifier is `io.f7z.app29er.next.macos`.
 
 ## Current slice

@@ -1,0 +1,79 @@
+name: iOS CI
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  simulator-tests:
+    name: TwentyNinerNext simulator tests
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      XCODEGEN_VERSION: 2.45.4
+      XCODEGEN_SHA256: 090ec29491aad50aec10631bf6e62253fed733c50f3aab0f5ffc86bc170bdbef
+
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install pinned XcodeGen
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/xcodegen.zip"
+          curl --fail --location --silent --show-error \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" \
+            --output "$archive"
+          echo "${XCODEGEN_SHA256}  ${archive}" | shasum --algorithm 256 --check
+          unzip -q "$archive" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Record pinned toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sw_vers
+          xcodebuild -version
+          xcodegen --version
+
+      - name: Install NMP Rust targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup +nightly show active-toolchain
+          rustup +nightly target add \
+            aarch64-apple-ios-sim \
+            x86_64-apple-ios \
+            aarch64-apple-ios
+
+      - name: Bootstrap pinned NMP SDK
+        shell: bash
+        run: scripts/bootstrap-nmp.sh
+
+      - name: Generate Xcode project
+        shell: bash
+        run: scripts/generate-project.sh
+
+      - name: Run iOS simulator tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project ios/TwentyNinerNext.xcodeproj \
+            -scheme TwentyNinerNext \
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
+            -derivedDataPath ios/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            test
