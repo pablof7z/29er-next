@@ -92,8 +92,10 @@ struct ZoomableRemoteImage: View {
                     }
                 }
             }
+            #if os(iOS)
             .toolbarBackground(.black, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }

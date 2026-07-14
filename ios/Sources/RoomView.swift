@@ -2,7 +2,6 @@ import NMP
 import SwiftUI
 
 struct RoomView: View {
-    @Environment(AudioPlaybackController.self) private var audioPlayback
     let group: GroupSummary
     let allGroups: [GroupSummary]
     let engine: NMPEngine
@@ -86,9 +85,6 @@ struct RoomView: View {
             roomOpenProbe.recordFirstFrame(groupID: group.localID)
             onOpen?()
         }
-        .onDisappear {
-            audioPlayback.pauseForRoomExit()
-        }
         .safeAreaInset(edge: .bottom) {
             if roomOpenProbe.isEnabled {
                 Text(roomOpenProbe.report)
@@ -100,12 +96,17 @@ struct RoomView: View {
                     .accessibilityIdentifier("room-open-proof")
             }
         }
+        #if os(iOS)
         .fullScreenCover(item: $presentedImage) { item in
             ZoomableRemoteImage(url: item.url)
         }
-        #if os(iOS)
         .fullScreenCover(item: $presentedBrowser) { item in
             NIP07BrowserView(url: item.url, engine: engine)
+        }
+        #else
+        .sheet(item: $presentedImage) { item in
+            ZoomableRemoteImage(url: item.url)
+                .frame(minWidth: 640, minHeight: 480)
         }
         #endif
     }

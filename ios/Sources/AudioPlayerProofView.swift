@@ -17,6 +17,16 @@ struct AudioPlayerProofView: View {
                     Text("The source URL is replaced by the player and remains available from More.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                    NavigationLink("Navigate away from this channel") {
+                        ContentUnavailableView(
+                            "Another Channel",
+                            systemImage: "number",
+                            description: Text("The active audio player should remain above this screen.")
+                        )
+                        .accessibilityIdentifier("audio-player-away-screen")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("audio-player-navigate-away")
                 }
                 .padding(20)
             }

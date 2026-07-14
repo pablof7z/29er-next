@@ -44,14 +44,13 @@ struct MessageBody: View {
                             PlatformSupport.performLightImpact()
                             onReply()
                         }
-                case .audio(let display, let url):
+                case .audio(_, let url):
                     AudioAttachmentView(
                         id: AudioAttachmentID(
                             messageID: messageID,
                             ordinal: index,
                             url: url
                         ),
-                        displayURL: display,
                         url: url
                     )
                 case .image(_, let url):
