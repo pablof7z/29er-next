@@ -2,13 +2,18 @@ import XCTest
 @testable import TwentyNinerNext
 
 final class RoomComposerProjectionTests: XCTestCase {
-    private func activity(pubkey: String, slug: String, busy: Bool = false) -> AgentActivity {
+    private func activity(
+        pubkey: String,
+        slug: String,
+        title: String = "",
+        busy: Bool = false
+    ) -> AgentActivity {
         AgentActivity(
             id: "activity-\(pubkey)",
             eventID: "event-\(pubkey)",
             author: pubkey,
             createdAt: 1,
-            title: "",
+            title: title,
             activity: "Available",
             isBusy: busy,
             host: "laptop",
@@ -29,7 +34,7 @@ final class RoomComposerProjectionTests: XCTestCase {
         )
         let alpha = RoomPerson(
             member: nil,
-            activity: activity(pubkey: "alpha", slug: "alpha"),
+            activity: activity(pubkey: "alpha", slug: "alpha", title: "Ship profile sheets"),
             pubkey: "alpha"
         )
         let inactive = RoomPerson(
@@ -47,6 +52,7 @@ final class RoomComposerProjectionTests: XCTestCase {
 
         XCTAssertEqual(recipients.map(\.pubkey), ["alpha", "human", "zeta"])
         XCTAssertEqual(recipients.map(\.mentionLabel), ["@alpha", "@human", "@zeta"])
+        XCTAssertEqual(recipients.first?.activitySummary, "Ship profile sheets")
     }
 
     func testPickerExcludesBackendIdentities() {

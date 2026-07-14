@@ -44,7 +44,8 @@ enum RoomComposerProjection {
         return ComposerRecipient(
             pubkey: pubkey,
             displayName: displayName,
-            pictureURL: profiles.pictureURL(for: pubkey)
+            pictureURL: profiles.pictureURL(for: pubkey),
+            activity: person?.activity
         )
     }
 }

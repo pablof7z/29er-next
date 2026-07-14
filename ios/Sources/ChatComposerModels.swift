@@ -6,6 +6,7 @@ struct ComposerRecipient: Identifiable, Hashable, Sendable {
     let pubkey: String
     let displayName: String
     let pictureURL: URL?
+    let activity: AgentActivity?
 
     var id: String { pubkey }
 
@@ -13,6 +14,14 @@ struct ComposerRecipient: Identifiable, Hashable, Sendable {
         let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         let label = trimmed.drop(while: { $0 == "@" })
         return "@\(label.isEmpty ? PubkeyDisplay.shortHex(pubkey) : String(label))"
+    }
+
+    var activitySummary: String? {
+        guard let activity else { return nil }
+        let title = activity.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !title.isEmpty { return title }
+        let detail = activity.activity.trimmingCharacters(in: .whitespacesAndNewlines)
+        return detail.isEmpty ? activity.activityLabel : detail
     }
 }
 
