@@ -56,7 +56,7 @@ struct RootView: View {
                     path: $path
                 )
                 .navigationTitle(route.parent.name)
-                .navigationBarTitleDisplayMode(.inline)
+                .platformInlineNavigationTitle()
             }
             .navigationDestination(for: InboxRoute.self) { _ in
                 if let inbox {
@@ -80,7 +80,7 @@ struct RootView: View {
                 // One group with a @ViewBuilder body: a conditional first item
                 // inserts reliably when the account signs in, which a
                 // conditional standalone ToolbarItem does not.
-                ToolbarItemGroup(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: PlatformSupport.trailingToolbarPlacement) {
                     if model.activePubkey != nil {
                         Button {
                             path.append(InboxRoute())

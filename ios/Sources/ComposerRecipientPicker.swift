@@ -23,14 +23,14 @@ struct ComposerRecipientPicker: View {
                 }
             }
             .navigationTitle("Mention an Agent")
-            .navigationBarTitleDisplayMode(.inline)
+            .platformInlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .platformRecipientPickerPresentation()
     }
 
     private func recipientButton(_ recipient: ComposerRecipient) -> some View {

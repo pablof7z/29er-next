@@ -62,9 +62,9 @@ struct BackendCommandsSheet: View {
                 }
             }
             .navigationTitle(backend.label)
-            .navigationBarTitleDisplayMode(.inline)
+            .platformInlineNavigationTitle()
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: PlatformSupport.trailingToolbarPlacement) {
                     Button("Done") { dismiss() }
                 }
             }
@@ -156,6 +156,6 @@ private struct AddAgentView: View {
             }
         }
         .navigationTitle("Add Agent")
-        .navigationBarTitleDisplayMode(.inline)
+        .platformInlineNavigationTitle()
     }
 }

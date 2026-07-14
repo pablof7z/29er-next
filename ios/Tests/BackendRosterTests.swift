@@ -9,6 +9,7 @@ final class BackendRosterTests: XCTestCase {
             tags: [
                 ["backend"],
                 ["host", "laptop"],
+                ["workspace", "29er-next"],
                 ["p", "owner-pubkey"],
                 ["agent", "claude", "general coding agent"],
                 ["agent", "writer", ""],
@@ -18,6 +19,7 @@ final class BackendRosterTests: XCTestCase {
 
         XCTAssertTrue(profile.isBackend)
         XCTAssertEqual(profile.host, "laptop")
+        XCTAssertEqual(profile.workspace, "29er-next")
         XCTAssertEqual(profile.agents.map(\.slug), ["claude", "writer"])
         XCTAssertEqual(profile.agents.first?.description, "general coding agent")
         XCTAssertEqual(profile.agents.last?.description, "")
@@ -44,6 +46,7 @@ final class BackendRosterTests: XCTestCase {
             pictureURL: nil,
             isBackend: true,
             host: "laptop",
+            workspace: nil,
             agents: [BackendAgent(slug: "claude", description: "coding")]
         )
         let human = RoomProfile(
@@ -52,6 +55,7 @@ final class BackendRosterTests: XCTestCase {
             pictureURL: nil,
             isBackend: false,
             host: nil,
+            workspace: nil,
             agents: []
         )
         let book = ProfileBook([backend.pubkey: backend, human.pubkey: human])
@@ -105,6 +109,7 @@ final class BackendRosterTests: XCTestCase {
             pictureURL: nil,
             isBackend: true,
             host: host,
+            workspace: nil,
             agents: []
         )
     }

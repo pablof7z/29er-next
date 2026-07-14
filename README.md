@@ -20,7 +20,15 @@ scripts/bootstrap-nmp.sh
 scripts/generate-project.sh
 ```
 
-Open `ios/TwentyNinerNext.xcodeproj`, or use XcodeBuildMCP:
+Open `ios/TwentyNinerNext.xcodeproj`, or use XcodeBuildMCP. For the native macOS app:
+
+```bash
+xcodebuildmcp macos build-and-run \
+  --project-path ios/TwentyNinerNext.xcodeproj \
+  --scheme TwentyNinerNextMac
+```
+
+For the iOS app:
 
 ```bash
 xcodebuildmcp simulator build-and-run \
@@ -28,10 +36,11 @@ xcodebuildmcp simulator build-and-run \
   --scheme TwentyNinerNext
 ```
 
-The preview bundle identifier is `io.f7z.app29er.next`, so it installs beside the existing 29er app.
+The iOS preview bundle identifier is `io.f7z.app29er.next`, so it installs beside the existing 29er app. The native macOS bundle identifier is `io.f7z.app29er.next.macos`.
 
 ## Current slice
 
+- Native macOS split view with an always-visible, expandable channel hierarchy and room content in the detail pane.
 - Persistent NMP cache in Application Support.
 - App-owned indexer and NIP-29 operator relay configuration.
 - Live room metadata query (`kind:39000`) with group identity keyed by host relay plus local group id.

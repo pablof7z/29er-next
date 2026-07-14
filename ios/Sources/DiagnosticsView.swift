@@ -59,7 +59,7 @@ struct DiagnosticsView: View {
                 }
             }
             .navigationTitle("NMP Diagnostics")
-            .navigationBarTitleDisplayMode(.inline)
+            .platformInlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }

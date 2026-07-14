@@ -22,6 +22,13 @@ struct GroupSummary: Identifiable, Hashable, Sendable {
     }
 }
 
+struct GroupTreeNode: Identifiable, Hashable, Sendable {
+    let group: GroupSummary
+    let children: [GroupTreeNode]
+
+    var id: GroupCoordinate { group.id }
+}
+
 enum GroupDirectoryProjection {
     static func groups(from rows: [Row], hostRelay: String) -> [GroupSummary] {
         rows.compactMap { row in
@@ -71,6 +78,22 @@ enum GroupDirectoryProjection {
             group.hostRelay == parent.hostRelay && group.parentLocalID == parent.localID
         }
         .sorted(by: groupNameFirst)
+    }
+
+    static func tree(in groups: [GroupSummary]) -> [GroupTreeNode] {
+        roots(in: groups).map { treeNode(for: $0, in: groups) }
+    }
+
+    private static func treeNode(
+        for group: GroupSummary,
+        in groups: [GroupSummary]
+    ) -> GroupTreeNode {
+        GroupTreeNode(
+            group: group,
+            children: directChildren(of: group, in: groups).map {
+                treeNode(for: $0, in: groups)
+            }
+        )
     }
 
     private static func authoritativeParent(

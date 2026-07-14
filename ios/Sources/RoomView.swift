@@ -46,15 +46,17 @@ struct RoomView: View {
             }
         }
         .navigationTitle(group.name)
-        .navigationBarTitleDisplayMode(.inline)
+        .platformInlineNavigationTitle()
         .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: PlatformSupport.trailingToolbarPlacement) {
+                #if os(iOS)
                 if !childGroups.isEmpty {
                     NavigationLink(value: SubchannelsRoute(parent: group)) {
                         Label("Subchannels", systemImage: "rectangle.stack")
                     }
                     .accessibilityIdentifier("room-subchannels-button")
                 }
+                #endif
 
                 NavigationLink {
                     peopleView
@@ -92,9 +94,11 @@ struct RoomView: View {
         }
     }
 
+    #if os(iOS)
     private var childGroups: [GroupSummary] {
         GroupDirectoryProjection.directChildren(of: group, in: allGroups)
     }
+    #endif
 
     private var peopleView: some View {
         RoomPeopleView(
@@ -111,7 +115,7 @@ struct RoomView: View {
             sendCommand: sendCommand
         )
         .navigationTitle("People")
-        .navigationBarTitleDisplayMode(.inline)
+        .platformInlineNavigationTitle()
     }
 
     private func sendCommand(_ command: String, to backendPubkey: String) async -> String? {

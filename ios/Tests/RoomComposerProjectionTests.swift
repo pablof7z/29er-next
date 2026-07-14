@@ -66,6 +66,7 @@ final class RoomComposerProjectionTests: XCTestCase {
             pictureURL: nil,
             isBackend: true,
             host: "laptop",
+            workspace: nil,
             agents: []
         )
 

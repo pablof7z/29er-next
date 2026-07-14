@@ -71,7 +71,7 @@ struct RoomPeopleView: View {
             .padding(.top, 18)
             .padding(.bottom, 20)
         }
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background(PlatformSupport.groupedBackground)
         .sheet(item: $selectedBackend) { backend in
             BackendCommandsSheet(
                 backend: backend,
@@ -134,7 +134,7 @@ struct RoomPeopleView: View {
                     }
                 }
             }
-            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            .background(PlatformSupport.secondaryGroupedBackground)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
     }
@@ -195,7 +195,7 @@ private struct PersonSection: View {
                     }
                 }
             }
-            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            .background(PlatformSupport.secondaryGroupedBackground)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
     }
@@ -261,7 +261,12 @@ private struct PersonRow: View {
                 Circle()
                     .fill(activity.isBusy ? Color.green : Color.secondary)
                     .frame(width: 12, height: 12)
-                    .overlay { Circle().stroke(Color(uiColor: .secondarySystemGroupedBackground), lineWidth: 2) }
+                    .overlay {
+                        Circle().stroke(
+                            PlatformSupport.secondaryGroupedBackground,
+                            lineWidth: 2
+                        )
+                    }
             }
         }
     }
