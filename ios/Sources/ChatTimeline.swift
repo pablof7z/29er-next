@@ -148,8 +148,11 @@ private struct MessageTimelineView: View {
                         Color.clear
                             .frame(height: 1)
                             .id(bottomAnchorID)
-                            .onAppear { isPinnedToBottom = true }
-                            .onDisappear { isPinnedToBottom = false }
+                            .anchorPreference(
+                                key: BottomAnchorBoundsKey.self,
+                                value: .bounds,
+                                transform: { $0 }
+                            )
                     }
                 }
                 .coordinateSpace(name: scrollSpace)
@@ -165,6 +168,23 @@ private struct MessageTimelineView: View {
                 }
                 .onChange(of: messages.count) { _, _ in focusIfNeeded(proxy) }
                 .onAppear { focusIfNeeded(proxy) }
+                .overlayPreferenceValue(BottomAnchorBoundsKey.self) { anchor in
+                    if let anchor {
+                        GeometryReader { geometry in
+                            let frame = geometry[anchor]
+                            let isVisible = ChatTimelineViewport.bottomAnchorIsVisible(
+                                frame: frame,
+                                viewportHeight: geometry.size.height
+                            )
+                            Color.clear
+                                .onAppear { isPinnedToBottom = isVisible }
+                                .onChange(of: isVisible) { _, visible in
+                                    isPinnedToBottom = visible
+                                }
+                        }
+                        .allowsHitTesting(false)
+                    }
+                }
                 .overlay(alignment: .bottomTrailing) {
                     VStack(spacing: 10) {
                         if !unreadMentionsAbove.isEmpty {
@@ -239,5 +259,13 @@ private struct MessageTimelineView: View {
         withAnimation(.easeOut(duration: 0.2)) {
             proxy.scrollTo(bottomAnchorID, anchor: .bottom)
         }
+    }
+}
+
+private struct BottomAnchorBoundsKey: PreferenceKey {
+    static let defaultValue: Anchor<CGRect>? = nil
+
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
     }
 }
