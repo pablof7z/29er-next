@@ -25,6 +25,44 @@ final class NIP29ViewProjectionTests: XCTestCase {
         XCTAssertEqual(message.authorLabel, "01234567…89abcdef")
     }
 
+    func testKind9000BecomesJoinedMembershipEvent() throws {
+        let event = try XCTUnwrap(
+            NIP29ViewProjection.membershipEvent(
+                eventID: "joined-1",
+                createdAt: 1_700_000_000,
+                kind: 9_000,
+                tags: [["h", "29er-next"], ["p", "member-pubkey"]]
+            )
+        )
+
+        XCTAssertEqual(event.pubkey, "member-pubkey")
+        XCTAssertEqual(event.change, .joined)
+    }
+
+    func testKind9001BecomesLeftMembershipEvent() throws {
+        let event = try XCTUnwrap(
+            NIP29ViewProjection.membershipEvent(
+                eventID: "left-1",
+                createdAt: 1_700_000_100,
+                kind: 9_001,
+                tags: [["p", "member-pubkey"]]
+            )
+        )
+
+        XCTAssertEqual(event.change, .left)
+    }
+
+    func testMembershipEventRequiresNonemptyPTag() {
+        XCTAssertNil(
+            NIP29ViewProjection.membershipEvent(
+                eventID: "malformed",
+                createdAt: 1_700_000_000,
+                kind: 9_000,
+                tags: [["p", ""], ["h", "29er-next"]]
+            )
+        )
+    }
+
     func testKind30315BecomesLiveAgentActivity() throws {
         let activity = try XCTUnwrap(
             NIP29ViewProjection.activity(

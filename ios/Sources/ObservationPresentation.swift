@@ -77,14 +77,14 @@ enum ChatTimelinePresentation: Equatable {
     case messages(profileNotice: NoticeContent?)
 
     static func make(
-        messageCount: Int,
+        itemCount: Int,
         hasReceivedSnapshot: Bool,
         error: String?,
         profileError: String?
     ) -> ChatTimelinePresentation {
         if let error { return .unavailable(error) }
         if !hasReceivedSnapshot { return .loading }
-        if messageCount == 0 { return .empty }
+        if itemCount == 0 { return .empty }
         let notice = profileError.map { NoticeContent.profilesUnavailable($0) }
         return .messages(profileNotice: notice)
     }

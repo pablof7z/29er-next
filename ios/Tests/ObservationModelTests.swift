@@ -26,6 +26,21 @@ private actor QueryOpeningProbe {
 
 @MainActor
 final class ObservationModelTests: XCTestCase {
+    func testRoomTimelineDemandIncludesMembershipEventsOnTheNMPGroupDemand() throws {
+        let demand = try roomTimelineDemand(
+            host: "wss://nip29.f7z.io",
+            groupID: "29er-next"
+        )
+
+        XCTAssertEqual(demand.selection.kinds, [9, 9_000, 9_001, 30_315])
+        XCTAssertEqual(demand.selection.limit, 200)
+        XCTAssertEqual(demand.selection.tags["h"], .literal(["29er-next"]))
+        guard case .pinned(let relays) = demand.source else {
+            return XCTFail("Room timeline demand must retain NMP's pinned host authority")
+        }
+        XCTAssertEqual(relays, ["wss://nip29.f7z.io"])
+    }
+
     func testDirectoryReportsQueryOpeningFailure() async throws {
         let engine = try NMPEngine(config: .init())
         let model = RoomDirectoryModel(
