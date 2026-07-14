@@ -48,6 +48,16 @@ jobs:
           xcodebuild -version
           xcodegen --version
 
+      - name: Install NMP Rust targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup +nightly show active-toolchain
+          rustup +nightly target add \
+            aarch64-apple-ios-sim \
+            x86_64-apple-ios \
+            aarch64-apple-ios
+
       - name: Bootstrap pinned NMP SDK
         shell: bash
         run: scripts/bootstrap-nmp.sh
