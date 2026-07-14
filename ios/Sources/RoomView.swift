@@ -76,6 +76,7 @@ struct RoomView: View {
         ChatTimelineView(
             items: model.timelineItems,
             profiles: model.profiles,
+            people: model.people,
             hasReceivedSnapshot: model.hasReceivedContent,
             error: model.contentError,
             profileError: model.profileError,

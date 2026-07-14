@@ -10,6 +10,7 @@ struct MessageRow: View {
     let message: RoomMessage
     let showsHeader: Bool
     let profiles: ProfileBook
+    let agentActivity: AgentActivity?
     let onReply: () -> Void
 
     private var displayContent: String {
@@ -33,11 +34,15 @@ struct MessageRow: View {
     }
 
     private var authorColor: Color {
-#if os(macOS)
         authorWorkspace.map(WorkspaceTint.color) ?? .primary
-#else
-        .primary
-#endif
+    }
+
+    private var activityTitle: String? {
+        guard let title = agentActivity?.title.trimmingCharacters(in: .whitespacesAndNewlines),
+              !title.isEmpty else {
+            return nil
+        }
+        return title
     }
 
     var body: some View {
@@ -96,14 +101,29 @@ struct MessageRow: View {
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(displayName)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(authorColor)
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(displayName)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(authorColor)
+                    if let agentActivity {
+                        AgentStateBadge(isBusy: agentActivity.isBusy)
+                    }
+                }
+                if let activityTitle {
+                    Text(activityTitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .help(activityTitle)
+                }
+            }
             Spacer()
             Text(message.createdAt.messageClockTime)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+                .padding(.top, 2)
         }
     }
 
@@ -122,7 +142,32 @@ struct MessageRow: View {
     }
 
     private var accessibilityText: String {
-        "\(displayName), \(message.createdAt.messageClockTime): \(displayContent)"
+        let status = agentActivity.map { $0.isBusy ? "busy" : "idle" }
+        let activity = [activityTitle, status].compactMap { $0 }.joined(separator: ", ")
+        let author = activity.isEmpty ? displayName : "\(displayName), \(activity)"
+        return "\(author), \(message.createdAt.messageClockTime): \(displayContent)"
+    }
+}
+
+private struct AgentStateBadge: View {
+    let isBusy: Bool
+
+    private var color: Color { isBusy ? .orange : .green }
+    private var label: String { isBusy ? "Busy" : "Idle" }
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Circle()
+                .fill(color)
+                .frame(width: 5, height: 5)
+            Text(label)
+                .font(.caption2.weight(.medium))
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(color.opacity(0.12), in: Capsule())
+        .accessibilityLabel("Agent status: \(label)")
     }
 }
 

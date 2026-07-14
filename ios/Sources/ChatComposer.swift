@@ -16,13 +16,7 @@ struct ChatComposer: View {
     @FocusState private var isEditorFocused: Bool
 
     var body: some View {
-        Group {
-            if #available(iOS 26.0, macOS 26.0, *) {
-                liquidGlassContent
-            } else {
-                fallbackContent
-            }
-        }
+        content
         .sheet(isPresented: $isRecipientPickerPresented) {
             ComposerRecipientPicker(
                 recipients: pickerRecipients,
@@ -35,98 +29,85 @@ struct ChatComposer: View {
         }
     }
 
-    @available(iOS 26.0, macOS 26.0, *)
-    private var liquidGlassContent: some View {
+    private var content: some View {
         VStack(alignment: .leading, spacing: 8) {
             if canSend {
-                GlassEffectContainer(spacing: 8) {
-                    HStack(alignment: .bottom, spacing: 10) {
-                        liquidMentionButton
-                        editorPanel
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .frame(minHeight: 48)
-                            .glassEffect(in: .rect(cornerRadius: 22))
-                        liquidSendButton
-                    }
-                }
+                composerBar
             } else {
                 signedOutComposer
-                    .glassEffect(in: .capsule)
+                    .background(
+                        PlatformSupport.secondaryGroupedBackground,
+                        in: RoundedRectangle(cornerRadius: 18)
+                    )
+                    .overlay(composerBorder)
             }
             ComposerDeliveryStatus(isSending: isSending, errorMessage: errorMessage)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 12)
         .padding(.top, 8)
         .padding(.bottom, 6)
     }
 
-    @available(iOS 26.0, macOS 26.0, *)
-    private var liquidMentionButton: some View {
+    private var composerBar: some View {
+        HStack(alignment: .bottom, spacing: 6) {
+            mentionButton
+            editorPanel
+                .padding(.vertical, 8)
+                .frame(minHeight: 40)
+            sendButton
+        }
+        .padding(.leading, 6)
+        .padding(.trailing, 5)
+        .padding(.vertical, 5)
+        .background(
+            PlatformSupport.secondaryGroupedBackground,
+            in: RoundedRectangle(cornerRadius: 21)
+        )
+        .overlay(composerBorder)
+    }
+
+    private var mentionButton: some View {
         Button { isRecipientPickerPresented = true } label: {
             Image(systemName: "at")
-                .font(.title3.weight(.semibold))
-                .frame(width: 52, height: 52)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(
+                    visibleRecipients.isEmpty ? Color.secondary : Color.accentColor
+                )
+                .frame(width: 30, height: 30)
+                .background(
+                    visibleRecipients.isEmpty
+                        ? Color.secondary.opacity(0.08)
+                        : Color.accentColor.opacity(0.14),
+                    in: .circle
+                )
         }
-        .contentShape(Circle())
-        .buttonStyle(.glass)
+        .frame(width: 36, height: 36)
+        .contentShape(Rectangle())
+        .buttonStyle(.plain)
         .disabled(isSending)
+        .help("Mention an agent")
         .accessibilityLabel("Mention an agent")
         .accessibilityIdentifier("room-message-mention")
     }
 
-    @available(iOS 26.0, macOS 26.0, *)
-    private var liquidSendButton: some View {
+    private var sendButton: some View {
         Button(action: submit) { sendButtonLabel }
-            .frame(width: 56, height: 56)
-            .contentShape(Circle())
-            .buttonStyle(.glassProminent)
-            .tint(canSubmit ? .blue : .gray)
+            .frame(width: 36, height: 36)
+            .contentShape(Rectangle())
+            .background(
+                Color.accentColor.opacity(canSubmit ? 1 : 0.12),
+                in: .circle
+            )
+            .buttonStyle(.plain)
             .disabled(!canSubmit || isSending)
+            .help("Send message")
             .accessibilityLabel("Send message")
             .accessibilityIdentifier("room-message-send")
     }
 
-    private var fallbackContent: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if canSend {
-                HStack(alignment: .bottom, spacing: 10) {
-                    Button { isRecipientPickerPresented = true } label: {
-                        Image(systemName: "at")
-                            .font(.title3.weight(.semibold))
-                            .frame(width: 52, height: 52)
-                    }
-                    .contentShape(Circle())
-                    .background(.thinMaterial, in: .circle)
-                    .buttonStyle(.plain)
-                    .disabled(isSending)
-                    .accessibilityLabel("Mention an agent")
-                    .accessibilityIdentifier("room-message-mention")
-
-                    editorPanel
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .frame(minHeight: 48)
-                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 22))
-
-                    Button(action: submit) { sendButtonLabel }
-                        .frame(width: 56, height: 56)
-                        .contentShape(Circle())
-                        .background(Color.accentColor.opacity(canSubmit ? 0.9 : 0.2), in: .circle)
-                        .buttonStyle(.plain)
-                        .disabled(!canSubmit || isSending)
-                        .accessibilityLabel("Send message")
-                        .accessibilityIdentifier("room-message-send")
-                }
-            } else {
-                signedOutComposer
-                    .background(.thinMaterial, in: .capsule)
-            }
-            ComposerDeliveryStatus(isSending: isSending, errorMessage: errorMessage)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 6)
+    private var composerBorder: some View {
+        RoundedRectangle(cornerRadius: 21)
+            .stroke(PlatformSupport.separator.opacity(0.55), lineWidth: 0.5)
     }
 
     private var editorPanel: some View {
@@ -138,6 +119,7 @@ struct ChatComposer: View {
                 recipientChips
             }
             TextField("Message", text: $draft, axis: .vertical)
+                .textFieldStyle(.plain)
                 .lineLimit(1...5)
                 .focused($isEditorFocused)
                 .disabled(isSending)
@@ -177,7 +159,7 @@ struct ChatComposer: View {
             ProgressView()
         } else {
             Image(systemName: "arrow.up")
-                .font(.headline.weight(.semibold))
+                .font(.subheadline.weight(.bold))
                 .foregroundStyle(canSubmit ? .white : .secondary)
         }
     }
