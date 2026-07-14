@@ -1,3 +1,4 @@
+import Kingfisher
 import SwiftUI
 
 struct AuthorAvatar: View {
@@ -17,12 +18,11 @@ struct AuthorAvatar: View {
             }
             .overlay {
                 if let pictureURL {
-                    AsyncImage(url: pictureURL) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
-                        Color.clear
-                    }
-                    .clipShape(Circle())
+                    KFImage(pictureURL)
+                        .placeholder { Color.clear }
+                        .resizable()
+                        .scaledToFill()
+                        .clipShape(Circle())
                 }
             }
     }

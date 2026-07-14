@@ -10,6 +10,9 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     CODE_SIGN_STYLE: Automatic
 packages:
+  Kingfisher:
+    url: https://github.com/onevcat/Kingfisher.git
+    from: 8.0.0
   NMP:
     path: ../Dependencies/nmp/Packages/NMP
 targets:
@@ -19,6 +22,8 @@ targets:
     sources:
       - path: Sources
     dependencies:
+      - package: Kingfisher
+        product: Kingfisher
       - package: NMP
         product: NMP
       - package: NMP
@@ -53,6 +58,8 @@ targets:
     sources:
       - path: Sources
     dependencies:
+      - package: Kingfisher
+        product: Kingfisher
       - package: NMP
         product: NMP
       - package: NMP
@@ -103,6 +110,8 @@ targets:
     sources:
       - path: Sources
     dependencies:
+      - package: Kingfisher
+        product: Kingfisher
       - package: NMP
         product: NMP
       - package: NMP
