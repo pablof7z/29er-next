@@ -5,6 +5,7 @@ struct RoomView: View {
     @Environment(AudioPlaybackController.self) private var audioPlayback
     let group: GroupSummary
     let allGroups: [GroupSummary]
+    let engine: NMPEngine
     let activePubkey: String?
     let reads: MentionReads?
     let focusMessageID: String?
@@ -12,6 +13,9 @@ struct RoomView: View {
     @State private var model: RoomTimelineModel
     @State private var replyTarget: ComposerReply?
     @State private var roomOpenProbe = RoomOpenProbe.shared
+    @State private var presentedImage: PresentedURL?
+    @State private var presentedBrowser: PresentedURL?
+    @Environment(\.openURL) private var openURL
 
     init(
         group: GroupSummary,
@@ -24,6 +28,7 @@ struct RoomView: View {
     ) {
         self.group = group
         self.allGroups = allGroups
+        self.engine = engine
         self.activePubkey = activePubkey
         self.reads = reads
         self.focusMessageID = focusMessageID
@@ -95,6 +100,14 @@ struct RoomView: View {
                     .accessibilityIdentifier("room-open-proof")
             }
         }
+        .fullScreenCover(item: $presentedImage) { item in
+            ZoomableRemoteImage(url: item.url)
+        }
+        #if os(iOS)
+        .fullScreenCover(item: $presentedBrowser) { item in
+            NIP07BrowserView(url: item.url, engine: engine)
+        }
+        #endif
     }
 
     private var roomContent: some View {
@@ -108,6 +121,8 @@ struct RoomView: View {
             mentionIDs: model.mentionIDs,
             reads: reads,
             focusMessageID: focusMessageID,
+            onOpenLink: openLink,
+            onOpenImage: { presentedImage = PresentedURL($0) },
             onReply: beginReply
         )
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -159,5 +174,13 @@ struct RoomView: View {
 
     private func beginReply(_ message: RoomMessage) {
         replyTarget = model.composerReply(to: message)
+    }
+
+    private func openLink(_ url: URL) {
+        #if os(iOS)
+        presentedBrowser = PresentedURL(url)
+        #else
+        openURL(url)
+        #endif
     }
 }

@@ -10,6 +10,8 @@ struct ChatTimelineView: View {
     let mentionIDs: Set<String>
     let reads: MentionReads?
     let focusMessageID: String?
+    let onOpenLink: (URL) -> Void
+    let onOpenImage: (URL) -> Void
     let onReply: (RoomMessage) -> Void
 
     private var presentation: ChatTimelinePresentation {
@@ -46,6 +48,8 @@ struct ChatTimelineView: View {
                 mentionIDs: mentionIDs,
                 reads: reads,
                 focusMessageID: focusMessageID,
+                onOpenLink: onOpenLink,
+                onOpenImage: onOpenImage,
                 onReply: onReply
             )
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -74,6 +78,8 @@ private struct MessageTimelineView: View {
     let mentionIDs: Set<String>
     let reads: MentionReads?
     let focusMessageID: String?
+    let onOpenLink: (URL) -> Void
+    let onOpenImage: (URL) -> Void
     let onReply: (RoomMessage) -> Void
 
     @State private var isPinnedToBottom = true
@@ -126,6 +132,8 @@ private struct MessageTimelineView: View {
                                     showsHeader: showsHeader,
                                     profiles: profiles,
                                     agentActivity: people.activity(for: message.author),
+                                    onOpenLink: onOpenLink,
+                                    onOpenImage: onOpenImage,
                                     onReply: { onReply(message) }
                                 )
                                 .id(entry.id)

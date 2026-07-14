@@ -21,6 +21,7 @@ enum MessageContent {
     enum Block: Equatable {
         case inline([Segment])
         case audio(display: String, url: URL)
+        case image(display: String, url: URL)
     }
 
     static func attributed(_ raw: String) -> AttributedString {
@@ -44,15 +45,33 @@ enum MessageContent {
         }
 
         for segment in segments(of: raw) {
-            if case .audio(let display, let url) = segment {
+            switch segment {
+            case .audio(let display, let url):
                 flushInline()
                 blocks.append(.audio(display: display, url: url))
-            } else {
+            case .link(let display, let url) where isImageURL(url):
+                flushInline()
+                blocks.append(.image(display: display, url: url))
+            default:
                 inline.append(segment)
             }
         }
         flushInline()
         return blocks
+    }
+
+    static func imageURLs(in raw: String) -> [URL] {
+        var seen = Set<URL>()
+        return segments(of: raw).compactMap { segment in
+            guard case .link(_, let url) = segment, isImageURL(url), seen.insert(url).inserted else {
+                return nil
+            }
+            return url
+        }
+    }
+
+    static func isImageURL(_ url: URL) -> Bool {
+        imageExtensions.contains(url.pathExtension.lowercased())
     }
 
     // MARK: - Tokenizing
@@ -139,6 +158,9 @@ enum MessageContent {
         return supportedAudioExtensions.contains(url.pathExtension.lowercased())
     }
 
+    private static let imageExtensions: Set<String> = [
+        "avif", "gif", "heic", "heif", "jpeg", "jpg", "png", "webp"
+    ]
     /// Shortens a `nostr:npub1abc…xyz` token to `npub1abc…6w6` for inline
     /// display. The `nostr:` scheme prefix is dropped; short tokens are shown
     /// whole.

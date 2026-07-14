@@ -115,6 +115,18 @@ final class MessageContentTests: XCTestCase {
         XCTAssertTrue(hasLink)
     }
 
+    func testImageLinksAreClassifiedForInlinePresentation() {
+        let raw = "look https://cdn.example.com/photo.webp?width=1200"
+        XCTAssertEqual(
+            MessageContent.imageURLs(in: raw).map(\.absoluteString),
+            ["https://cdn.example.com/photo.webp?width=1200"]
+        )
+    }
+
+    func testOrdinaryLinksAreNotClassifiedAsImages() {
+        XCTAssertFalse(MessageContent.isImageURL(URL(string: "https://example.com/app")!))
+    }
+
     func testShortEntityShownWhole() {
         XCTAssertEqual(MessageContent.entityLabel(for: "nostr:note1abc"), "note1abc")
     }
