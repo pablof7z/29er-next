@@ -1,7 +1,9 @@
 import Foundation
 import NMP
 import Observation
+#if canImport(UIKit)
 import UIKit
+#endif
 
 /// Debug-only evidence for the physical-device room-open gate. Production
 /// query ownership is unchanged: this probe timestamps the existing seams and
@@ -23,22 +25,36 @@ final class RoomOpenProbe: NSObject {
 
     static let shared = RoomOpenProbe()
 
-    let isEnabled = ProcessInfo.processInfo.arguments.contains("--nmp-room-open-proof")
+    let isEnabled: Bool = {
+        #if NMP_DEVICE_PROOF && os(iOS)
+        ProcessInfo.processInfo.arguments.contains("--nmp-room-open-proof")
+        #else
+        false
+        #endif
+    }()
     let targetGroupID: String? = {
+        #if NMP_DEVICE_PROOF && os(iOS)
         let arguments = ProcessInfo.processInfo.arguments
         guard
             let flag = arguments.firstIndex(of: "--nmp-room-open-proof-group"),
             arguments.indices.contains(flag + 1)
         else { return nil }
         return arguments[flag + 1]
+        #else
+        return nil
+        #endif
     }()
     let offlineRelay: String? = {
+        #if NMP_DEVICE_PROOF && os(iOS)
         let arguments = ProcessInfo.processInfo.arguments
         guard
             let flag = arguments.firstIndex(of: "--nmp-room-open-proof-offline-relay"),
             arguments.indices.contains(flag + 1)
         else { return nil }
         return arguments[flag + 1]
+        #else
+        return nil
+        #endif
     }()
     private(set) var groupID: String?
     private(set) var report = "idle"
@@ -53,7 +69,9 @@ final class RoomOpenProbe: NSObject {
     private var firstSnapshotMilliseconds: Double?
     private var maximumMainGapMilliseconds = 0.0
     private var previousFrame: ContinuousClock.Instant?
+    #if canImport(UIKit)
     private var displayLink: CADisplayLink?
+    #endif
 
     private override init() {
         super.init()
@@ -61,7 +79,9 @@ final class RoomOpenProbe: NSObject {
 
     func begin(groupID: String) {
         guard isEnabled else { return }
+        #if canImport(UIKit)
         displayLink?.invalidate()
+        #endif
         self.groupID = groupID
         started = clock.now
         firstFrameMilliseconds = nil
@@ -74,9 +94,11 @@ final class RoomOpenProbe: NSObject {
         previousFrame = clock.now
         report = "running group=\(groupID)"
 
-        let displayLink = CADisplayLink(target: self, selector: #selector(displayFrame))
-        displayLink.add(to: .main, forMode: .common)
-        self.displayLink = displayLink
+        #if canImport(UIKit)
+        let link = CADisplayLink(target: self, selector: #selector(displayFrame))
+        link.add(to: .main, forMode: .common)
+        displayLink = link
+        #endif
     }
 
     func recordFirstFrame(groupID: String) {
@@ -103,6 +125,7 @@ final class RoomOpenProbe: NSObject {
         publish()
     }
 
+    #if canImport(UIKit)
     @objc private func displayFrame() {
         let now = clock.now
         if let previousFrame {
@@ -113,14 +136,17 @@ final class RoomOpenProbe: NSObject {
         }
         previousFrame = now
     }
+    #endif
 
     private func publish() {
         let complete = firstFrameMilliseconds != nil
             && firstSnapshotMilliseconds != nil
             && Query.allCases.allSatisfy { observeMilliseconds[$0] != nil && snapshots[$0] != nil }
         if complete {
+            #if canImport(UIKit)
             displayLink?.invalidate()
             displayLink = nil
+            #endif
         }
 
         let timings = Query.allCases.map { query in

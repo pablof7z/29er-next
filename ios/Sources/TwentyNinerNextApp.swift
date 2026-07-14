@@ -5,8 +5,7 @@ struct TwentyNinerNextApp: App {
     var body: some Scene {
         #if os(macOS)
         WindowGroup {
-            MacRootView(model: model)
-                .frame(minWidth: 720, minHeight: 520)
+            MacAppRootView()
         }
         .defaultSize(width: 980, height: 720)
         #else
@@ -20,6 +19,17 @@ struct TwentyNinerNextApp: App {
         #endif
     }
 }
+
+#if os(macOS)
+private struct MacAppRootView: View {
+    @State private var model = AppModel()
+
+    var body: some View {
+        MacRootView(model: model)
+            .frame(minWidth: 720, minHeight: 520)
+    }
+}
+#endif
 
 private struct AppRootView: View {
     @State private var model = AppModel()
