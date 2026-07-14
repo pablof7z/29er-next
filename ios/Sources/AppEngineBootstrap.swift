@@ -17,7 +17,8 @@ enum AppEngineBootstrap {
     static func resources(
         fileManager: FileManager,
         operatorConfiguration: OperatorConfiguration,
-        applicationSupportURL: URL?
+        applicationSupportURL: URL?,
+        relayOverride: String? = nil
     ) throws -> AppEngineResources {
         let support = try applicationSupportURL ?? fileManager.url(
             for: .applicationSupportDirectory,
@@ -28,10 +29,13 @@ enum AppEngineBootstrap {
         let appDirectory = support.appendingPathComponent("29er-next", isDirectory: true)
         try fileManager.createDirectory(at: appDirectory, withIntermediateDirectories: true)
 
+        let storePath = try NMPStoreEpoch(fileManager: fileManager)
+            .prepare(appDirectory: appDirectory)
+        let groupRelay = relayOverride ?? operatorConfiguration.groupRelay
         let config = NMPConfig(
-            storePath: appDirectory.appendingPathComponent("nmp.redb").path,
-            indexerRelays: operatorConfiguration.indexerRelays,
-            appRelays: [operatorConfiguration.groupRelay]
+            storePath: storePath,
+            indexerRelays: relayOverride == nil ? operatorConfiguration.indexerRelays : [],
+            appRelays: [groupRelay]
         )
         let accountStore = NMPInsecureFileAccountStore(
             fileURL: appDirectory.appendingPathComponent("local-account.nsec")

@@ -47,6 +47,9 @@ final class RoomTimelineModel {
         self.hostRelay = hostRelay
         self.recipient = recipient
         self.queryOpening = queryOpening
+        if RoomOpenProbe.shared.isEnabled, RoomOpenProbe.shared.groupID != groupID {
+            RoomOpenProbe.shared.begin(groupID: groupID)
+        }
     }
 
     var timelineItems: [RoomTimelineItem] {
@@ -115,7 +118,13 @@ final class RoomTimelineModel {
     private func observeChat() async {
         do {
             let demand = try roomChatDemand(host: hostRelay, groupID: groupID)
+            let clock = ContinuousClock()
+            let started = clock.now
             let query = try await queryOpening.demand(engine, demand)
+            RoomOpenProbe.shared.recordObserve(
+                .content,
+                duration: started.duration(to: clock.now)
+            )
             defer { query.cancel() }
 
             for await batch in query {
@@ -123,6 +132,7 @@ final class RoomTimelineModel {
                 chatRows = batch.rows
                 chatError = nil
                 hasReceivedChat = true
+                recordContentProofSnapshotIfReady()
             }
         } catch {
             guard !Task.isCancelled else { return }
@@ -133,14 +143,22 @@ final class RoomTimelineModel {
     private func observeActivities() async {
         do {
             let demand = try roomActivityDemand(host: hostRelay, groupID: groupID)
+            let clock = ContinuousClock()
+            let started = clock.now
             let query = try await queryOpening.demand(engine, demand)
+            RoomOpenProbe.shared.recordObserve(
+                .activity,
+                duration: started.duration(to: clock.now)
+            )
             defer { query.cancel() }
 
             for await batch in query {
                 guard !Task.isCancelled else { return }
+                RoomOpenProbe.shared.recordSnapshot(.activity, rows: batch.rows)
                 activityRows = batch.rows
                 activityError = nil
                 hasReceivedActivities = true
+                recordContentProofSnapshotIfReady()
             }
         } catch {
             guard !Task.isCancelled else { return }
@@ -150,9 +168,15 @@ final class RoomTimelineModel {
 
     private func observeMembership() async {
         do {
+            let clock = ContinuousClock()
+            let started = clock.now
             let query = try await queryOpening.demand(
                 engine,
                 roomMembershipDemand(host: hostRelay, groupID: groupID)
+            )
+            RoomOpenProbe.shared.recordObserve(
+                .membership,
+                duration: started.duration(to: clock.now)
             )
             defer { query.cancel() }
 
@@ -160,6 +184,7 @@ final class RoomTimelineModel {
                 guard !Task.isCancelled else { return }
                 membershipRows = batch.rows
                 members = NIP29ViewProjection.members(from: membershipRows)
+                RoomOpenProbe.shared.recordSnapshot(.membership, rows: batch.rows)
                 membershipError = nil
                 hasReceivedMembership = true
                 hasMembershipMetadata = batch.rows.contains { $0.kind == 39_002 }
@@ -172,14 +197,21 @@ final class RoomTimelineModel {
 
     private func observeAdmins() async {
         do {
+            let clock = ContinuousClock()
+            let started = clock.now
             let query = try await queryOpening.demand(
                 engine,
                 roomAdminDemand(host: hostRelay, groupID: groupID)
+            )
+            RoomOpenProbe.shared.recordObserve(
+                .admins,
+                duration: started.duration(to: clock.now)
             )
             defer { query.cancel() }
 
             for await batch in query {
                 guard !Task.isCancelled else { return }
+                RoomOpenProbe.shared.recordSnapshot(.admins, rows: batch.rows)
                 admins = NIP29ViewProjection.admins(from: batch.rows)
                 adminError = nil
             }
@@ -228,14 +260,21 @@ final class RoomTimelineModel {
         ])
 
         do {
+            let clock = ContinuousClock()
+            let started = clock.now
             let query = try await queryOpening.filter(
                 engine,
                 NMPFilter(kinds: [0], authors: authors, limit: 500)
+            )
+            RoomOpenProbe.shared.recordObserve(
+                .profiles,
+                duration: started.duration(to: clock.now)
             )
             defer { query.cancel() }
 
             for await batch in query {
                 guard !Task.isCancelled else { return }
+                RoomOpenProbe.shared.recordSnapshot(.profiles, rows: batch.rows)
                 profiles = RoomProfileProjection.profiles(from: batch.rows)
                 profileError = nil
             }
@@ -243,6 +282,11 @@ final class RoomTimelineModel {
             guard !Task.isCancelled else { return }
             profileError = error.localizedDescription
         }
+    }
+
+    private func recordContentProofSnapshotIfReady() {
+        guard hasReceivedChat, hasReceivedActivities else { return }
+        RoomOpenProbe.shared.recordSnapshot(.content, rows: chatRows + activityRows)
     }
 
 }
