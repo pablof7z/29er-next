@@ -3,7 +3,7 @@ import XCTest
 
 final class ChatComposerTests: XCTestCase {
     private func recipient(_ pubkey: String, name: String) -> ComposerRecipient {
-        ComposerRecipient(pubkey: pubkey, displayName: name, pictureURL: nil)
+        ComposerRecipient(pubkey: pubkey, displayName: name, pictureURL: nil, activity: nil)
     }
 
     func testWhitespaceOnlyDraftHasNoMessage() {

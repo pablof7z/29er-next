@@ -14,6 +14,7 @@ struct MessageRow: View {
     let onOpenLink: (URL) -> Void
     let onOpenImage: (URL) -> Void
     let onReply: () -> Void
+    @State private var isShowingAgentProfile = false
 
     private var displayContent: String {
         message.content.isEmpty ? "Empty message" : message.content
@@ -71,6 +72,15 @@ struct MessageRow: View {
         .accessibilityElement(children: hasAudio ? .contain : .combine)
         .accessibilityLabel(hasAudio ? accessibilityAudioLabel : accessibilityText)
         .accessibilityAction(named: "Reply") { onReply() }
+        .sheet(isPresented: $isShowingAgentProfile) {
+            AgentProfileSheet(
+                pubkey: message.author,
+                displayName: displayName,
+                pictureURL: avatarURL,
+                profile: profiles.profile(for: message.author),
+                activity: agentActivity
+            )
+        }
     }
 
     @ViewBuilder
@@ -97,13 +107,19 @@ struct MessageRow: View {
     @ViewBuilder
     private var gutter: some View {
         if showsHeader {
-            AuthorAvatar(
-                pubkey: message.author,
-                displayName: displayName,
-                pictureURL: avatarURL,
-                size: avatarWidth
-            )
-            .accessibilityHidden(true)
+            Button {
+                PlatformSupport.performLightImpact()
+                isShowingAgentProfile = true
+            } label: {
+                AuthorAvatar(
+                    pubkey: message.author,
+                    displayName: displayName,
+                    pictureURL: avatarURL,
+                    size: avatarWidth
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("View \(displayName) information")
         } else {
             Color.clear.frame(width: avatarWidth, height: 1)
         }

@@ -55,6 +55,17 @@ struct ComposerRecipientPicker: View {
                     Text(recipient.mentionLabel)
                         .font(.body.weight(.medium))
                         .foregroundStyle(.primary)
+                    if let summary = recipient.activitySummary {
+                        HStack(spacing: 5) {
+                            Circle()
+                                .fill(recipient.activity?.isBusy == true ? Color.orange : Color.green)
+                                .frame(width: 6, height: 6)
+                            Text(summary)
+                                .lineLimit(2)
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
                     if isRequired {
                         Text("Reply recipient")
                             .font(.caption)
