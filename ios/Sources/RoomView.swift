@@ -2,6 +2,7 @@ import NMP
 import SwiftUI
 
 struct RoomView: View {
+    @Environment(AudioPlaybackController.self) private var audioPlayback
     let group: GroupSummary
     let allGroups: [GroupSummary]
     let activePubkey: String?
@@ -79,6 +80,9 @@ struct RoomView: View {
             }
             roomOpenProbe.recordFirstFrame(groupID: group.localID)
             onOpen?()
+        }
+        .onDisappear {
+            audioPlayback.pauseForRoomExit()
         }
         .safeAreaInset(edge: .bottom) {
             if roomOpenProbe.isEnabled {

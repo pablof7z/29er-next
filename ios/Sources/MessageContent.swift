@@ -12,15 +12,47 @@ enum MessageContent {
     enum Segment: Equatable {
         case text(String)
         case link(display: String, url: URL)
+        case audio(display: String, url: URL)
         /// A `nostr:` entity. `token` is the full `nostr:npub1…` source;
         /// `label` is the shortened form shown inline.
         case entity(token: String, label: String)
     }
 
+    enum Block: Equatable {
+        case inline([Segment])
+        case audio(display: String, url: URL)
+    }
+
     static func attributed(_ raw: String) -> AttributedString {
-        segments(of: raw).reduce(into: AttributedString()) { result, segment in
+        attributed(segments(of: raw))
+    }
+
+    static func attributed(_ segments: [Segment]) -> AttributedString {
+        segments.reduce(into: AttributedString()) { result, segment in
             result.append(rendered(segment))
         }
+    }
+
+    static func blocks(of raw: String) -> [Block] {
+        var blocks: [Block] = []
+        var inline: [Segment] = []
+
+        func flushInline() {
+            let normalized = normalizedInline(inline)
+            if !normalized.isEmpty { blocks.append(.inline(normalized)) }
+            inline.removeAll(keepingCapacity: true)
+        }
+
+        for segment in segments(of: raw) {
+            if case .audio(let display, let url) = segment {
+                flushInline()
+                blocks.append(.audio(display: display, url: url))
+            } else {
+                inline.append(segment)
+            }
+        }
+        flushInline()
+        return blocks
     }
 
     // MARK: - Tokenizing
@@ -65,7 +97,11 @@ enum MessageContent {
             guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) else {
                 return nil
             }
-            return Span(range: range, segment: .link(display: String(raw[range]), url: url))
+            let display = String(raw[range])
+            let segment: Segment = isSupportedAudioURL(url)
+                ? .audio(display: display, url: url)
+                : .link(display: display, url: url)
+            return Span(range: range, segment: segment)
         }
     }
 
@@ -92,6 +128,17 @@ enum MessageContent {
         try! NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
     }()
 
+    private static let supportedAudioExtensions: Set<String> = [
+        "aac", "aif", "aiff", "caf", "flac", "m4a", "m4b", "mp3", "wav"
+    ]
+
+    static func isSupportedAudioURL(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) else {
+            return false
+        }
+        return supportedAudioExtensions.contains(url.pathExtension.lowercased())
+    }
+
     /// Shortens a `nostr:npub1abc…xyz` token to `npub1abc…6w6` for inline
     /// display. The `nostr:` scheme prefix is dropped; short tokens are shown
     /// whole.
@@ -114,11 +161,36 @@ enum MessageContent {
             attributed.link = url
             attributed.foregroundColor = .accentColor
             return attributed
+        case .audio:
+            return AttributedString()
         case .entity(_, let label):
             var attributed = AttributedString(label)
             attributed.foregroundColor = .accentColor
             attributed.font = .body.weight(.medium)
             return attributed
         }
+    }
+
+    private static func normalizedInline(_ segments: [Segment]) -> [Segment] {
+        var result = segments
+        while case .text(let value)? = result.first {
+            let trimmed = value.drop(while: \.isWhitespace)
+            if trimmed.isEmpty {
+                result.removeFirst()
+            } else {
+                result[0] = .text(String(trimmed))
+                break
+            }
+        }
+        while case .text(let value)? = result.last {
+            let trimmed = value.reversed().drop(while: \.isWhitespace).reversed()
+            if trimmed.isEmpty {
+                result.removeLast()
+            } else {
+                result[result.count - 1] = .text(String(trimmed))
+                break
+            }
+        }
+        return result
     }
 }

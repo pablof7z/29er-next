@@ -17,10 +17,6 @@ struct MessageRow: View {
         message.content.isEmpty ? "Empty message" : message.content
     }
 
-    private var attributedContent: AttributedString {
-        MessageContent.attributed(message.content)
-    }
-
     private var displayName: String {
         profiles.displayName(for: message.author, fallback: message.authorLabel)
     }
@@ -45,6 +41,13 @@ struct MessageRow: View {
         return title
     }
 
+    private var hasAudio: Bool {
+        MessageContent.segments(of: message.content).contains {
+            if case .audio = $0 { return true }
+            return false
+        }
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: avatarSpacing) {
             gutter
@@ -55,7 +58,6 @@ struct MessageRow: View {
                 }
                 content
                     .font(.body)
-                    .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -63,25 +65,24 @@ struct MessageRow: View {
         .padding(.top, showsHeader ? 10 : 2)
         .padding(.bottom, 2)
         .background(PlatformSupport.windowBackground)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            PlatformSupport.performLightImpact()
-            onReply()
-        }
         .contextMenu { contextActions }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityText)
+        .accessibilityElement(children: hasAudio ? .contain : .combine)
+        .accessibilityLabel(hasAudio ? accessibilityAudioLabel : accessibilityText)
         .accessibilityAction(named: "Reply") { onReply() }
     }
 
     @ViewBuilder
     private var content: some View {
         if message.content.isEmpty {
-            Text(displayContent).foregroundStyle(.tertiary)
+            Text(displayContent)
+                .foregroundStyle(.tertiary)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    PlatformSupport.performLightImpact()
+                    onReply()
+                }
         } else {
-            // Links open in the system browser; entity tokens are styled but
-            // inert until NMP exposes a bech32 decoder for name resolution.
-            Text(attributedContent).foregroundStyle(.primary).tint(.accentColor)
+            MessageBody(raw: message.content, messageID: message.id, onReply: onReply)
         }
     }
 
@@ -146,6 +147,10 @@ struct MessageRow: View {
         let activity = [activityTitle, status].compactMap { $0 }.joined(separator: ", ")
         let author = activity.isEmpty ? displayName : "\(displayName), \(activity)"
         return "\(author), \(message.createdAt.messageClockTime): \(displayContent)"
+    }
+
+    private var accessibilityAudioLabel: String {
+        "\(displayName), \(message.createdAt.messageClockTime), audio message"
     }
 }
 
