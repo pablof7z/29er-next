@@ -11,6 +11,8 @@ struct MessageRow: View {
     let showsHeader: Bool
     let profiles: ProfileBook
     let agentActivity: AgentActivity?
+    let onOpenLink: (URL) -> Void
+    let onOpenImage: (URL) -> Void
     let onReply: () -> Void
 
     private var displayContent: String {
@@ -82,7 +84,13 @@ struct MessageRow: View {
                     onReply()
                 }
         } else {
-            MessageBody(raw: message.content, messageID: message.id, onReply: onReply)
+            MessageBody(
+                raw: message.content,
+                messageID: message.id,
+                onOpenLink: onOpenLink,
+                onOpenImage: onOpenImage,
+                onReply: onReply
+            )
         }
     }
 
