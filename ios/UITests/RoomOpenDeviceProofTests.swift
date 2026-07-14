@@ -7,6 +7,10 @@ final class RoomOpenDeviceProofTests: XCTestCase {
     private let expectedMessageRows = "200"
     private let expectedActivityRows = "0"
     private let expectedContentNewestID = "4718e3ccdff3511ade3b5b96b3a2f8561afc888f7b78ed2ff2c698e910743cc8"
+    private let expectedStoreSize = "2155876352"
+    private let expectedStoreSHA256 = "81361224ae95eefed42ab4fe9b437742c1a91012e12ab8905994039f05d24ff5"
+    private let expectedEpochHex = "360a"
+    private let expectedEpoch = "6"
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -17,6 +21,9 @@ final class RoomOpenDeviceProofTests: XCTestCase {
     }
 
     func testColdAndWarmBusyRoomDistributions() throws {
+        try assertInertDefaultMode()
+        try assertCorpusPreflightMode()
+
         let groupID = try proofGroupID()
         print(
             "NMP_ROOM_OPEN_PROOF_CONFIG group=\(groupID) expectedContentRows=\(expectedContentRows) "
@@ -47,6 +54,50 @@ final class RoomOpenDeviceProofTests: XCTestCase {
             try assertProofReport(report, mode: "warm", run: run, groupID: groupID)
             print("NMP_ROOM_OPEN_PROOF mode=warm run=\(run) \(report)")
         }
+    }
+
+    private func assertInertDefaultMode() throws {
+        let app = XCUIApplication()
+        app.launch()
+        defer { app.terminate() }
+
+        let inert = app.descendants(matching: .any)["nmp-proof-inert"]
+        XCTAssertTrue(inert.waitForExistence(timeout: 10), "proof app did not stay inert by default")
+        XCTAssertTrue(inert.label.contains("engine=not-started"), "proof inert report changed")
+        XCTAssertFalse(
+            app.buttons["room-open-proof-shortcut"].exists,
+            "proof app reached room UI without an explicit proof mode"
+        )
+        print("NMP_PROOF_INERT \(inert.label)")
+    }
+
+    private func assertCorpusPreflightMode() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--nmp-corpus-preflight"]
+        app.launch()
+        defer { app.terminate() }
+
+        let preflight = app.descendants(matching: .any)["nmp-corpus-preflight"]
+        XCTAssertTrue(preflight.waitForExistence(timeout: 300), "corpus preflight report missing")
+        let completed = NSPredicate(format: "label BEGINSWITH 'complete '")
+        let expectation = XCTNSPredicateExpectation(predicate: completed, object: preflight)
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [expectation], timeout: 300),
+            .completed,
+            "corpus preflight did not complete"
+        )
+
+        let report = preflight.label
+        let fields = proofFields(from: report)
+        XCTAssertEqual(fields["size"], expectedStoreSize, "corpus preflight size")
+        XCTAssertEqual(fields["sha256"], expectedStoreSHA256, "corpus preflight SHA-256")
+        XCTAssertEqual(fields["epochHex"], expectedEpochHex, "corpus preflight epoch bytes")
+        XCTAssertEqual(fields["epoch"], expectedEpoch, "corpus preflight epoch value")
+        XCTAssertFalse(
+            app.buttons["room-open-proof-shortcut"].exists,
+            "corpus preflight constructed the room UI"
+        )
+        print("NMP_CORPUS_PREFLIGHT \(report)")
     }
 
     private func proofGroupID() throws -> String {
