@@ -58,11 +58,9 @@ struct ChannelListView: View {
     /// opens the same directory value without depending on viewport position.
     @ViewBuilder
     private var proofRoomShortcut: some View {
-        if
-            RoomOpenProbe.shared.isEnabled,
-            let groupID = RoomOpenProbe.shared.targetGroupID,
-            let group = channels.first(where: { $0.localID == groupID })
-        {
+        if RoomOpenProbe.shared.isEnabled,
+           let groupID = RoomOpenProbe.shared.targetGroupID,
+           let group = channels.first(where: { $0.localID == groupID }) {
             Button {
                 RoomOpenProbe.shared.begin(groupID: group.localID)
                 path.append(group)

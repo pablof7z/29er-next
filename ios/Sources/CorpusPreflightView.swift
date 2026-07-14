@@ -36,12 +36,14 @@ enum CorpusPreflightReport {
                 let size = try fileSize(store)
                 let hash = try sha256(store)
                 let epoch = try Data(contentsOf: marker)
+                let epochValue = String(bytes: epoch, encoding: .utf8)?
+                    .trimmingCharacters(in: .newlines) ?? "invalid-utf8"
                 return [
                     "complete",
                     "size=\(size)",
                     "sha256=\(hash)",
                     "epochHex=\(epoch.hexString)",
-                    "epoch=\(epoch.utf8String)"
+                    "epoch=\(epochValue)"
                 ].joined(separator: " ")
             } catch {
                 return "failed error=\(sanitize(error.localizedDescription))"
@@ -80,11 +82,6 @@ enum CorpusPreflightReport {
 private extension Data {
     var hexString: String {
         map { String(format: "%02x", $0) }.joined()
-    }
-
-    var utf8String: String {
-        String(decoding: self, as: UTF8.self)
-            .trimmingCharacters(in: .newlines)
     }
 }
 #endif

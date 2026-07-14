@@ -96,6 +96,7 @@ final class IdentitySessionTests: XCTestCase {
     func testLegacyStoreEpochIsResetBeforeCurrentEngineConstruction() throws {
         let root = try makeRoot()
         let appDirectory = root.appendingPathComponent("29er-next", isDirectory: true)
+        try FileManager.default.createDirectory(at: appDirectory, withIntermediateDirectories: true)
         let store = appDirectory.appendingPathComponent("nmp.redb")
         let marker = appDirectory.appendingPathComponent("nmp-store-epoch")
         let unrelated = appDirectory.appendingPathComponent("identity-state")
