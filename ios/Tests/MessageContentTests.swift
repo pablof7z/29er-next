@@ -48,6 +48,60 @@ final class MessageContentTests: XCTestCase {
         XCTAssertEqual(links.count, 2)
     }
 
+    func testAudioURLWithQueryBecomesAnAttachmentSegment() throws {
+        let url = try XCTUnwrap(URL(string: "https://cdn.example.com/episode.mp3?token=abc"))
+        let segments = MessageContent.segments(of: "listen \(url.absoluteString) now")
+        XCTAssertEqual(
+            segments,
+            [.text("listen "), .audio(display: url.absoluteString, url: url), .text(" now")]
+        )
+    }
+
+    func testAudioExtensionMatchingIgnoresCaseAndFragment() throws {
+        let url = try XCTUnwrap(URL(string: "https://cdn.example.com/Mix.FLAC#chapter"))
+        XCTAssertTrue(MessageContent.isSupportedAudioURL(url))
+    }
+
+    func testSupportedAppleAudioExtensions() throws {
+        for extensionName in ["aac", "aif", "aiff", "caf", "flac", "m4a", "m4b", "mp3", "wav"] {
+            let url = try XCTUnwrap(URL(string: "https://cdn.example.com/audio.\(extensionName)"))
+            XCTAssertTrue(MessageContent.isSupportedAudioURL(url), extensionName)
+        }
+    }
+
+    func testAmbiguousAndUnsupportedMediaRemainLinks() throws {
+        for extensionName in ["mp4", "m3u8", "ogg", "opus"] {
+            let url = try XCTUnwrap(URL(string: "https://cdn.example.com/media.\(extensionName)"))
+            XCTAssertEqual(
+                MessageContent.segments(of: url.absoluteString),
+                [.link(display: url.absoluteString, url: url)]
+            )
+        }
+    }
+
+    func testBlocksPreserveTextAndMultipleAudioAttachmentsInOrder() throws {
+        let first = try XCTUnwrap(URL(string: "https://a.example/one.mp3"))
+        let second = try XCTUnwrap(URL(string: "https://b.example/two.m4a"))
+        XCTAssertEqual(
+            MessageContent.blocks(of: "Intro \(first) middle \(second) outro"),
+            [
+                .inline([.text("Intro")]),
+                .audio(display: first.absoluteString, url: first),
+                .inline([.text("middle")]),
+                .audio(display: second.absoluteString, url: second),
+                .inline([.text("outro")])
+            ]
+        )
+    }
+
+    func testAudioOnlyMessageHasNoVisibleURLTextBlock() throws {
+        let url = try XCTUnwrap(URL(string: "https://cdn.example/audio.wav"))
+        XCTAssertEqual(
+            MessageContent.blocks(of: "  \(url.absoluteString)\n"),
+            [.audio(display: url.absoluteString, url: url)]
+        )
+    }
+
     func testNonWebURLIsNotLinked() {
         XCTAssertEqual(
             MessageContent.segments(of: "download ftp://example.com/file"),

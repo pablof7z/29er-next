@@ -2,19 +2,25 @@ import SwiftUI
 
 @main
 struct TwentyNinerNextApp: App {
+    @State private var audioPlayback = AudioPlaybackController()
+
     var body: some Scene {
         #if os(macOS)
         WindowGroup {
             MacAppRootView()
+                .environment(audioPlayback)
         }
         .defaultSize(width: 980, height: 720)
         #else
         WindowGroup {
-            #if NMP_DEVICE_PROOF
-            ProofLaunchRootView()
-            #else
-            AppRootView()
-            #endif
+            Group {
+                #if NMP_DEVICE_PROOF
+                ProofLaunchRootView()
+                #else
+                AppRootView()
+                #endif
+            }
+            .environment(audioPlayback)
         }
         #endif
     }
@@ -51,6 +57,8 @@ private struct ProofLaunchRootView: View {
             CorpusPreflightView()
         case .roomOpenProof:
             AppRootView()
+        case .audioPlayer:
+            AudioPlayerProofView()
         }
     }
 }
@@ -59,11 +67,14 @@ private enum ProofLaunchMode {
     case inert
     case corpusPreflight
     case roomOpenProof
+    case audioPlayer
 
     static let current = ProofLaunchMode(arguments: ProcessInfo.processInfo.arguments)
 
     init(arguments: [String]) {
-        if arguments.contains("--nmp-room-open-proof") {
+        if arguments.contains("--audio-player-proof") {
+            self = .audioPlayer
+        } else if arguments.contains("--nmp-room-open-proof") {
             self = .roomOpenProof
         } else if arguments.contains("--nmp-corpus-preflight") {
             self = .corpusPreflight
