@@ -143,11 +143,18 @@ final class RoomTimelineModel {
     private func observeActivities() async {
         do {
             let demand = try roomActivityDemand(host: hostRelay, groupID: groupID)
+            let clock = ContinuousClock()
+            let started = clock.now
             let query = try await queryOpening.demand(engine, demand)
+            RoomOpenProbe.shared.recordObserve(
+                .activity,
+                duration: started.duration(to: clock.now)
+            )
             defer { query.cancel() }
 
             for await batch in query {
                 guard !Task.isCancelled else { return }
+                RoomOpenProbe.shared.recordSnapshot(.activity, rows: batch.rows)
                 activityRows = batch.rows
                 activityError = nil
                 hasReceivedActivities = true

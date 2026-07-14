@@ -13,9 +13,18 @@ import UIKit
 final class RoomOpenProbe: NSObject {
     enum Query: String, CaseIterable {
         case content
+        case activity
         case membership
         case admins
         case profiles
+
+        var observeField: String {
+            "\(rawValue)ObserveMs"
+        }
+
+        var snapshotFieldPrefix: String {
+            self == .activity ? "activityQuery" : rawValue
+        }
     }
 
     struct Snapshot {
@@ -151,13 +160,14 @@ final class RoomOpenProbe: NSObject {
 
         let timings = Query.allCases.map { query in
             let observe = observeMilliseconds[query].map(format) ?? "pending"
-            return "\(query.rawValue)ObserveMs=\(observe)"
+            return "\(query.observeField)=\(observe)"
         }
         let snapshotEvidence = Query.allCases.map { query in
+            let prefix = query.snapshotFieldPrefix
             guard let snapshot = snapshots[query] else {
-                return "\(query.rawValue)Rows=pending \(query.rawValue)Newest=pending"
+                return "\(prefix)Rows=pending \(prefix)Newest=pending"
             }
-            return "\(query.rawValue)Rows=\(snapshot.rows) \(query.rawValue)Newest=\(snapshot.newestID)"
+            return "\(prefix)Rows=\(snapshot.rows) \(prefix)Newest=\(snapshot.newestID)"
         }
         report = ([
             complete ? "complete" : "running",
