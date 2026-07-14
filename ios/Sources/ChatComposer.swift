@@ -17,7 +17,7 @@ struct ChatComposer: View {
 
     var body: some View {
         Group {
-            if #available(iOS 26.0, *) {
+            if #available(iOS 26.0, macOS 26.0, *) {
                 liquidGlassContent
             } else {
                 fallbackContent
@@ -35,7 +35,7 @@ struct ChatComposer: View {
         }
     }
 
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     private var liquidGlassContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             if canSend {
@@ -61,7 +61,7 @@ struct ChatComposer: View {
         .padding(.bottom, 6)
     }
 
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     private var liquidMentionButton: some View {
         Button { isRecipientPickerPresented = true } label: {
             Image(systemName: "at")
@@ -75,7 +75,7 @@ struct ChatComposer: View {
         .accessibilityIdentifier("room-message-mention")
     }
 
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     private var liquidSendButton: some View {
         Button(action: submit) { sendButtonLabel }
             .frame(width: 56, height: 56)

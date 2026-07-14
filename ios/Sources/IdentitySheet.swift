@@ -6,6 +6,22 @@ struct IdentitySheet: View {
     @State private var secretKey = ""
 
     var body: some View {
+        Group {
+            #if os(macOS)
+            macContent
+            #else
+            mobileContent
+            #endif
+        }
+        .platformIdentityPresentation()
+        .interactiveDismissDisabled(model.isSigningIn)
+        .onDisappear {
+            secretKey.removeAll(keepingCapacity: false)
+            model.clearIdentityError()
+        }
+    }
+
+    private var mobileContent: some View {
         NavigationStack {
             Form {
                 if let pubkey = model.activePubkey {
@@ -15,21 +31,145 @@ struct IdentitySheet: View {
                 }
             }
             .navigationTitle(model.activePubkey == nil ? "Sign In" : "Account")
-            .navigationBarTitleDisplayMode(.inline)
+            .platformInlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
                 }
             }
         }
-        .presentationDetents([.medium])
-        .presentationDragIndicator(.visible)
-        .interactiveDismissDisabled(model.isSigningIn)
-        .onDisappear {
-            secretKey.removeAll(keepingCapacity: false)
-            model.clearIdentityError()
-        }
     }
+
+    #if os(macOS)
+    private var macContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            macHeader
+
+            Divider()
+
+            if let pubkey = model.activePubkey {
+                macSignedInContent(pubkey: pubkey)
+            } else {
+                macSignedOutContent
+            }
+        }
+        .background(PlatformSupport.windowBackground)
+    }
+
+    private var macHeader: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: model.activePubkey == nil ? "key.fill" : "person.crop.circle.fill")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(.tint)
+                .frame(width: 42, height: 42)
+                .background(.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(model.activePubkey == nil ? "Sign in to 29er Next" : "Your account")
+                    .font(.title2.weight(.semibold))
+                Text(
+                    model.activePubkey == nil
+                        ? "Use your Nostr secret key to send messages."
+                        : "This account is available when the app starts."
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(24)
+    }
+
+    private var macSignedOutContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text("Nostr secret key")
+                    .font(.headline)
+                SecureField("nsec1… or 64-character secret hex", text: $secretKey)
+                    .textFieldStyle(.roundedBorder)
+                    .privacySensitive()
+                    .disabled(model.isSigningIn)
+                    .onSubmit { Task { await submit() } }
+                    .accessibilityIdentifier("identity-secret-field")
+            }
+
+            Label {
+                Text(
+                    "NMP stores this key as plaintext in the app sandbox for automatic sign-in. "
+                        + "It is not protected by Keychain or hardware-backed encryption."
+                )
+                .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "lock.open.fill")
+                    .foregroundStyle(.orange)
+            }
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .padding(12)
+            .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+
+            if let identityError = model.identityError {
+                Label(identityError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.red)
+            }
+
+            Divider()
+
+            HStack {
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityIdentifier("identity-close-button")
+                Spacer()
+                Button {
+                    Task { await submit() }
+                } label: {
+                    if model.isSigningIn {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Text("Sign In")
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canSubmit)
+                .accessibilityIdentifier("identity-sign-in-button")
+            }
+        }
+        .padding(24)
+    }
+
+    private func macSignedInContent(pubkey: String) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 7) {
+                Label("Signed in", systemImage: "checkmark.circle.fill")
+                    .font(.headline)
+                    .foregroundStyle(.green)
+                Text("Public key")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(pubkey.shortIdentity)
+                    .monospaced()
+                    .textSelection(.enabled)
+            }
+
+            Divider()
+
+            HStack {
+                Button("Close") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Sign Out", role: .destructive) {
+                    if model.signOut() {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .padding(24)
+    }
+    #endif
 
     @ViewBuilder
     private func signedInContent(pubkey: String) -> some View {
@@ -60,9 +200,7 @@ struct IdentitySheet: View {
     private var signedOutContent: some View {
         Section {
             SecureField("nsec1… or secret hex", text: $secretKey)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .textContentType(.password)
+                .platformSecretEntry()
                 .privacySensitive()
                 .disabled(model.isSigningIn)
         } header: {
@@ -107,6 +245,10 @@ struct IdentitySheet: View {
         if model.activePubkey != nil {
             dismiss()
         }
+    }
+
+    private var canSubmit: Bool {
+        !secretKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !model.isSigningIn
     }
 }
 

@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 struct ChatTimelineView: View {
     let items: [RoomTimelineItem]
@@ -158,7 +157,7 @@ private struct MessageTimelineView: View {
                     VStack(spacing: 10) {
                         if !unreadMentionsAbove.isEmpty {
                             JumpToMentionButton(count: unreadMentionsAbove.count) {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                PlatformSupport.performLightImpact()
                                 if let target = unreadMentionsAbove.max() {
                                     scrollTo(messages[target].id, proxy: proxy)
                                 }
@@ -167,7 +166,7 @@ private struct MessageTimelineView: View {
                         }
                         if !isPinnedToBottom {
                             ScrollToBottomButton {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                PlatformSupport.performLightImpact()
                                 scrollToBottom(proxy)
                             }
                             .transition(.scale.combined(with: .opacity))

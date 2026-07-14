@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 struct MembershipEventRow: View {
     let event: RoomMembershipEvent
@@ -36,7 +35,7 @@ struct MembershipEventRow: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(Color(uiColor: .systemBackground))
+        .background(PlatformSupport.windowBackground)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(displayName) \(detail), \(event.createdAt.formattedMembershipTime)")
     }

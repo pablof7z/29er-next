@@ -60,7 +60,7 @@ struct InboxView: View {
             }
         }
         .navigationTitle("Inbox")
-        .navigationBarTitleDisplayMode(.inline)
+        .platformInlineNavigationTitle()
     }
 
     private func group(for mention: Mention) -> GroupSummary? {

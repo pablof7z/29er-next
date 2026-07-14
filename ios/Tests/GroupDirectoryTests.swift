@@ -115,6 +115,29 @@ final class GroupDirectoryTests: XCTestCase {
         XCTAssertTrue(GroupDirectoryProjection.directChildren(of: parent, in: groups).isEmpty)
     }
 
+    func testTreePreservesNestedHierarchy() {
+        let root = group(host: "wss://groups.example.com", localID: "root")
+        let child = group(
+            host: "wss://groups.example.com",
+            localID: "child",
+            parent: "root"
+        )
+        let grandchild = group(
+            host: "wss://groups.example.com",
+            localID: "grandchild",
+            parent: "child"
+        )
+        let otherRoot = group(host: "wss://groups.example.com", localID: "other")
+
+        let tree = GroupDirectoryProjection.tree(
+            in: [grandchild, child, otherRoot, root]
+        )
+
+        XCTAssertEqual(tree.map(\.group), [otherRoot, root])
+        XCTAssertEqual(tree[1].children.map(\.group), [child])
+        XCTAssertEqual(tree[1].children[0].children.map(\.group), [grandchild])
+    }
+
     private func group(
         host: String,
         localID: String,

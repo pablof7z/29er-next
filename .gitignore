@@ -6,6 +6,7 @@ ios/DerivedData/
 ios/.derivedData/
 ios/DerivedData-*/
 ios/Generated-Info.plist
+ios/Generated-Mac-Info.plist
 ios/TwentyNinerNext.xcodeproj/
 *.xcresult
 *.xcuserstate

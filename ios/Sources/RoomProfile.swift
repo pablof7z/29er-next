@@ -21,6 +21,9 @@ struct RoomProfile: Hashable, Sendable {
     let isBackend: Bool
     /// The backend's host label (`["host", "laptop"]`), when present.
     let host: String?
+    /// Top-level workspace channel (`["workspace", root]`) published by an
+    /// agent session. Used only to render consistent workspace color.
+    let workspace: String?
     /// Agents this backend manages (`["agent", slug, description]`).
     let agents: [BackendAgent]
 }
@@ -42,6 +45,10 @@ struct ProfileBook: Hashable, Sendable {
 
     func pictureURL(for pubkey: String) -> URL? {
         profiles[pubkey]?.pictureURL
+    }
+
+    func workspace(for pubkey: String) -> String? {
+        profiles[pubkey]?.workspace
     }
 
     func profile(for pubkey: String) -> RoomProfile? {
@@ -69,12 +76,15 @@ enum RoomProfileProjection {
         let metadata = Metadata(json: content)
         let hostTag = tags.first { $0.first == "host" && $0.count > 1 }
         let host = hostTag.map { $0[1] }.flatMap { $0.isEmpty ? nil : $0 }
+        let workspaceTag = tags.first { $0.first == "workspace" && $0.count > 1 }
+        let workspace = workspaceTag.map { $0[1] }.flatMap { $0.isEmpty ? nil : $0 }
         return RoomProfile(
             pubkey: pubkey,
             displayName: metadata.displayName,
             pictureURL: metadata.pictureURL,
             isBackend: tags.contains { $0.first == "backend" },
             host: host,
+            workspace: workspace,
             agents: backendAgents(from: tags)
         )
     }

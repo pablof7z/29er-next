@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 let avatarWidth: CGFloat = 34
 let avatarSpacing: CGFloat = 10
@@ -29,6 +28,18 @@ struct MessageRow: View {
         profiles.pictureURL(for: message.author)
     }
 
+    private var authorWorkspace: String? {
+        profiles.workspace(for: message.author)
+    }
+
+    private var authorColor: Color {
+#if os(macOS)
+        authorWorkspace.map(WorkspaceTint.color) ?? .primary
+#else
+        .primary
+#endif
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: avatarSpacing) {
             gutter
@@ -46,10 +57,10 @@ struct MessageRow: View {
         .padding(.horizontal, 16)
         .padding(.top, showsHeader ? 10 : 2)
         .padding(.bottom, 2)
-        .background(Color(uiColor: .systemBackground))
+        .background(PlatformSupport.windowBackground)
         .contentShape(Rectangle())
         .onTapGesture {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            PlatformSupport.performLightImpact()
             onReply()
         }
         .contextMenu { contextActions }
@@ -88,6 +99,7 @@ struct MessageRow: View {
         HStack(alignment: .firstTextBaseline) {
             Text(displayName)
                 .font(.subheadline.weight(.semibold))
+                .foregroundStyle(authorColor)
             Spacer()
             Text(message.createdAt.messageClockTime)
                 .font(.caption2)
@@ -99,7 +111,7 @@ struct MessageRow: View {
     private var contextActions: some View {
         if !message.content.isEmpty {
             Button {
-                UIPasteboard.general.string = message.content
+                PlatformSupport.copyToPasteboard(message.content)
             } label: {
                 Label("Copy", systemImage: "doc.on.doc")
             }

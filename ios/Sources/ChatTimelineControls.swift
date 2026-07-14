@@ -68,7 +68,7 @@ struct DaySeparatorRow: View {
 
     private var line: some View {
         Rectangle()
-            .fill(Color(uiColor: .separator))
+            .fill(PlatformSupport.separator)
             .frame(height: 0.5)
     }
 }
