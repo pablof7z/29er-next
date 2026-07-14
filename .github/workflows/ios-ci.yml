@@ -15,10 +15,10 @@ concurrency:
 jobs:
   simulator-tests:
     name: TwentyNinerNext simulator tests
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 60
     env:
-      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       XCODEGEN_VERSION: 2.45.4
       XCODEGEN_SHA256: 090ec29491aad50aec10631bf6e62253fed733c50f3aab0f5ffc86bc170bdbef
 
@@ -73,7 +73,7 @@ jobs:
           xcodebuild \
             -project ios/TwentyNinerNext.xcodeproj \
             -scheme TwentyNinerNext \
-            -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=18.5' \
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
             -derivedDataPath ios/DerivedData \
             CODE_SIGNING_ALLOWED=NO \
             test
