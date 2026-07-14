@@ -4,13 +4,15 @@ import Observation
 
 /// Persists the newest message timestamp each room was read up to. Unread is
 /// defined relative to this baseline: the app owns read state as product state,
-/// NMP owns the messages. Keyed by local group id (one group relay per app).
+/// NMP owns the messages. Stores are namespaced by selected host, then keyed by
+/// local group id so identical ids at different hosts never share read state.
 struct DirectoryReadStore {
     private let defaults: UserDefaults
-    private let key = "directory.lastRead.v1"
+    private let key: String
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, hostRelay: String) {
         self.defaults = defaults
+        key = "directory.lastRead.v2.\(hostRelay)"
     }
 
     func load() -> [String: UInt64] {
@@ -23,9 +25,9 @@ struct DirectoryReadStore {
     }
 }
 
-/// Directory-wide projection of the most recent `kind:9` message per room and
-/// the unread count since each room's read baseline. One live query buckets all
-/// rooms by their `h` tag, so newly discovered rooms need no re-subscription.
+/// Selected-host projection of the most recent `kind:9` message per room and
+/// the unread count since each room's read baseline. Its pinned handle is
+/// replaced with the selected-host task, while account-scoped demand remains.
 @MainActor
 @Observable
 final class RoomDirectoryModel {
@@ -33,6 +35,7 @@ final class RoomDirectoryModel {
     private(set) var observationError: String?
 
     private let engine: NMPEngine
+    private let hostRelay: String
     private let store: DirectoryReadStore
     private let queryOpening: NMPQueryOpening
     private var baselines: [String: UInt64]
@@ -41,10 +44,13 @@ final class RoomDirectoryModel {
 
     init(
         engine: NMPEngine,
-        store: DirectoryReadStore = DirectoryReadStore(),
+        hostRelay: String,
+        store: DirectoryReadStore? = nil,
         queryOpening: NMPQueryOpening = .live
     ) {
         self.engine = engine
+        self.hostRelay = hostRelay
+        let store = store ?? DirectoryReadStore(hostRelay: hostRelay)
         self.store = store
         self.queryOpening = queryOpening
         let stored = store.load()
@@ -55,9 +61,9 @@ final class RoomDirectoryModel {
 
     func observe() async {
         do {
-            let query = try await queryOpening.filter(
+            let query = try await queryOpening.demand(
                 engine,
-                NMPFilter(kinds: [9], limit: 500)
+                roomDirectoryDemand(host: hostRelay)
             )
             defer { query.cancel() }
 

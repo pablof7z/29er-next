@@ -13,9 +13,16 @@ final class AppModel {
     }
 
     private(set) var state: State = .starting
-    private(set) var groups: [GroupSummary] = []
-    private(set) var diagnostics = DiagnosticsSnapshot()
-    private(set) var diagnosticsError: String?
+    var groups: [GroupSummary] = []
+    var hasReceivedGroups = false
+    var groupsError: String?
+    var remembered = RememberedGroupSnapshot.empty
+    var hasReceivedRememberedGroups = false
+    var rememberedGroupsError: String?
+    var selectedHost: String?
+    var selectedGroup: GroupCoordinate?
+    var diagnostics = DiagnosticsSnapshot()
+    var diagnosticsError: String?
     private(set) var activePubkey: String?
     private(set) var isSigningIn = false
     private(set) var identityError: String?
@@ -55,36 +62,18 @@ final class AppModel {
 
         groupRelay = configuration.groupRelay
         do {
-            let support: URL
-            if let applicationSupportURL {
-                support = applicationSupportURL
-            } else {
-                support = try fileManager.url(
-                    for: .applicationSupportDirectory,
-                    in: .userDomainMask,
-                    appropriateFor: nil,
-                    create: true
-                )
-            }
-            let appDirectory = support.appendingPathComponent("29er-next", isDirectory: true)
-            try fileManager.createDirectory(at: appDirectory, withIntermediateDirectories: true)
-            let engineConfig = NMPConfig(
-                storePath: appDirectory.appendingPathComponent("nmp.redb").path,
-                indexerRelays: configuration.indexerRelays,
-                appRelays: [configuration.groupRelay]
+            let resources = try AppEngineBootstrap.resources(
+                fileManager: fileManager,
+                operatorConfiguration: configuration,
+                applicationSupportURL: applicationSupportURL
             )
-            let localAccountStore = NMPInsecureFileAccountStore(
-                fileURL: appDirectory.appendingPathComponent("local-account.nsec")
-            )
-            self.engineConfig = engineConfig
-            self.localAccountStore = localAccountStore
-            let engine = try NMPEngine(
-                config: engineConfig,
-                localAccountStore: localAccountStore
-            )
-            self.engine = engine
-            contentClient = NMPContentClient(engine: engine)
-            activePubkey = try engine.activeAccount()
+            engineConfig = resources.config
+            localAccountStore = resources.accountStore
+            let session = try AppEngineBootstrap.start(resources)
+            engine = session.engine
+            contentClient = session.contentClient
+            activePubkey = session.activePubkey
+            selectedHost = session.activePubkey == nil ? configuration.groupRelay : nil
         } catch {
             engine = nil
             contentClient = nil
@@ -118,6 +107,13 @@ final class AppModel {
             contentClient = NMPContentClient(engine: engine)
             activePubkey = try engine.activeAccount()
             groups = []
+            hasReceivedGroups = false
+            groupsError = nil
+            remembered = .empty
+            hasReceivedRememberedGroups = false
+            rememberedGroupsError = nil
+            selectedHost = activePubkey == nil ? groupRelay : nil
+            selectedGroup = nil
             diagnostics = DiagnosticsSnapshot()
             diagnosticsError = nil
             state = .starting
@@ -139,7 +135,7 @@ final class AppModel {
 
         await withTaskGroup(of: Void.self) { group in
             group.addTask { [weak self] in
-                await self?.observeGroups(using: engine, generation: generation)
+                await self?.observeRememberedGroups(using: engine, generation: generation)
             }
             group.addTask { [weak self] in
                 await self?.observeDiagnostics(using: engine, generation: generation)
@@ -163,6 +159,11 @@ final class AppModel {
             do {
                 try engine.setActiveAccount(pubkey)
                 activePubkey = pubkey
+                remembered = .empty
+                hasReceivedRememberedGroups = false
+                rememberedGroupsError = nil
+                selectedHost = nil
+                selectedGroup = nil
             } catch {
                 let message = Self.identityMessage(for: error)
                 do {
@@ -198,48 +199,19 @@ final class AppModel {
         identityError = nil
     }
 
-    private func observeGroups(using engine: NMPEngine, generation: Int) async {
-        do {
-            var demand = try groupDiscoveryDemand(host: groupRelay)
-            demand.selection.limit = 250
-            let query = try await openNMPQuery(
-                engine: engine,
-                demand: demand
-            )
-            defer { query.cancel() }
-
-            for await batch in query {
-                guard !Task.isCancelled, generation == engineGeneration else { return }
-                groups = GroupDirectoryProjection.groups(from: batch.rows, hostRelay: groupRelay)
-            }
-        } catch {
-            if generation == engineGeneration {
-                state = .failed(error.localizedDescription)
-            }
-        }
-    }
-
-    private func observeDiagnostics(using engine: NMPEngine, generation: Int) async {
-        do {
-            let observation = try engine.observeDiagnostics()
-            defer { observation.cancel() }
-
-            for await snapshot in observation {
-                guard !Task.isCancelled, generation == engineGeneration else { return }
-                diagnostics = snapshot
-                diagnosticsError = nil
-            }
-        } catch {
-            guard !Task.isCancelled, generation == engineGeneration else { return }
-            diagnosticsError = error.localizedDescription
-        }
-    }
-
     private func replaceWithReadOnlyEngine(identityError: String?) {
         let oldEngine = engine
         engine = nil
         contentClient = nil
         activePubkey = nil
+        remembered = .empty
+        hasReceivedRememberedGroups = false
+        rememberedGroupsError = nil
+        selectedHost = groupRelay
+        selectedGroup = nil
+        groups = []
+        hasReceivedGroups = false
+        groupsError = nil
         self.identityError = identityError
         state = .starting
         oldEngine?.shutdown()

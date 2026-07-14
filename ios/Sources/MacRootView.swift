@@ -30,11 +30,17 @@ struct MacRootView: View {
         .task(id: model.engineGeneration) {
             await model.run()
         }
-        .task(id: model.engineGeneration) {
-            guard let engine = model.engine else { return }
-            let directory = RoomDirectoryModel(engine: engine)
+        .task(id: HostContext(generation: model.engineGeneration, host: model.selectedHost)) {
+            guard let engine = model.engine, let host = model.selectedHost else {
+                directory = nil
+                return
+            }
+            let directory = RoomDirectoryModel(engine: engine, hostRelay: host)
             self.directory = directory
-            await directory.observe()
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await model.observeGroups(host: host) }
+                group.addTask { await directory.observe() }
+            }
         }
         .task(id: InboxContext(generation: model.engineGeneration, pubkey: model.activePubkey)) {
             guard let engine = model.engine, let pubkey = model.activePubkey else {
@@ -65,16 +71,29 @@ struct MacRootView: View {
     }
 
     private var desktopContent: some View {
-        NavigationSplitView {
-            MacChannelSidebar(
-                groups: model.groups,
-                directory: directory,
-                selection: $selectedGroup
+        VStack(spacing: 0) {
+            HostGroupSelector(
+                activePubkey: model.activePubkey,
+                bootstrapHost: model.groupRelay,
+                remembered: model.remembered,
+                hasReceivedRemembered: model.hasReceivedRememberedGroups,
+                rememberedError: model.rememberedGroupsError,
+                selectedHost: model.selectedHost,
+                selectedGroup: model.selectedGroup,
+                selectHost: selectHost,
+                openGroup: openRememberedGroup
             )
-            .navigationTitle("Channels")
-            .navigationSplitViewColumnWidth(min: 240, ideal: 300, max: 420)
-        } detail: {
-            roomDetail
+            NavigationSplitView {
+                MacChannelSidebar(
+                    groups: model.groups,
+                    directory: directory,
+                    selection: $selectedGroup
+                )
+                .navigationTitle("Channels")
+                .navigationSplitViewColumnWidth(min: 240, ideal: 300, max: 420)
+            } detail: {
+                roomDetail
+            }
         }
         .toolbar {
             ToolbarItemGroup(placement: PlatformSupport.trailingToolbarPlacement) {
@@ -144,9 +163,24 @@ struct MacRootView: View {
         selectedGroup = GroupDirectoryProjection.roots(in: groups).first ?? groups.first
     }
 
+    private func selectHost(_ host: String) {
+        selectedGroup = nil
+        model.selectHost(host)
+    }
+
+    private func openRememberedGroup(_ group: RememberedGroupChoice) {
+        model.selectGroup(group)
+        selectedGroup = model.summary(for: group)
+    }
+
     private struct InboxContext: Hashable {
         let generation: Int
         let pubkey: String?
+    }
+
+    private struct HostContext: Hashable {
+        let generation: Int
+        let host: String?
     }
 
     private struct RoomContext: Hashable {
@@ -156,116 +190,4 @@ struct MacRootView: View {
     }
 }
 
-private struct MacChannelSidebar: View {
-    let groups: [GroupSummary]
-    let directory: RoomDirectoryModel?
-    @Binding var selection: GroupSummary?
-    @State private var expanded: Set<GroupCoordinate> = []
-    @State private var knownParents: Set<GroupCoordinate> = []
-
-    private var tree: [GroupTreeNode] {
-        GroupDirectoryProjection.tree(in: groups)
-    }
-
-    private var parentIDs: Set<GroupCoordinate> {
-        Set(tree.flatMap(collectParentIDs))
-    }
-
-    private var visibleRows: [SidebarTreeRow] {
-        flatten(tree, depth: 0)
-    }
-
-    var body: some View {
-        List(selection: $selection) {
-            if let notice = ChannelListPresentation.activityNotice(
-                error: directory?.observationError
-            ) {
-                Section {
-                    DegradedStateNotice(notice)
-                }
-            }
-
-            Section("Channels") {
-                ForEach(visibleRows) { row in
-                    HStack(spacing: 6) {
-                        disclosureButton(for: row)
-                        Image(systemName: row.hasChildren ? "folder" : "number")
-                            .foregroundStyle(.secondary)
-                            .frame(width: 18)
-                        Text(row.group.name)
-                            .lineLimit(1)
-                            .foregroundStyle(
-                                row.depth == 0
-                                    ? WorkspaceTint.color(for: row.group.localID)
-                                    : .primary
-                            )
-                        Spacer(minLength: 8)
-                        if let unread = directory?.entries[row.group.localID]?.unread,
-                           unread > 0 {
-                            UnreadBadge(count: unread)
-                        }
-                    }
-                    .padding(.leading, CGFloat(row.depth) * 14)
-                    .contentShape(Rectangle())
-                    .tag(row.group)
-                    .accessibilityIdentifier("sidebar-channel-\(row.group.localID)")
-                }
-            }
-        }
-        .listStyle(.sidebar)
-        .onChange(of: parentIDs, initial: true) { _, currentParents in
-            let newParents = currentParents.subtracting(knownParents)
-            expanded.formUnion(newParents)
-            expanded.formIntersection(currentParents)
-            knownParents = currentParents
-        }
-    }
-
-    @ViewBuilder
-    private func disclosureButton(for row: SidebarTreeRow) -> some View {
-        if row.hasChildren {
-            Button {
-                if expanded.contains(row.id) {
-                    expanded.remove(row.id)
-                } else {
-                    expanded.insert(row.id)
-                }
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .rotationEffect(.degrees(expanded.contains(row.id) ? 90 : 0))
-                    .frame(width: 14, height: 18)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(expanded.contains(row.id) ? "Collapse" : "Expand")
-        } else {
-            Color.clear.frame(width: 14, height: 18)
-        }
-    }
-
-    private func flatten(_ nodes: [GroupTreeNode], depth: Int) -> [SidebarTreeRow] {
-        nodes.flatMap { node in
-            let row = SidebarTreeRow(
-                group: node.group,
-                depth: depth,
-                hasChildren: !node.children.isEmpty
-            )
-            guard expanded.contains(node.id) else { return [row] }
-            return [row] + flatten(node.children, depth: depth + 1)
-        }
-    }
-
-    private func collectParentIDs(_ node: GroupTreeNode) -> [GroupCoordinate] {
-        guard !node.children.isEmpty else { return [] }
-        return [node.id] + node.children.flatMap(collectParentIDs)
-    }
-}
-
-private struct SidebarTreeRow: Identifiable {
-    let group: GroupSummary
-    let depth: Int
-    let hasChildren: Bool
-
-    var id: GroupCoordinate { group.id }
-}
 #endif

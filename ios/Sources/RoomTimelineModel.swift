@@ -11,23 +11,27 @@ final class RoomTimelineModel {
     }
 
     private(set) var state: State = .loading
-    private(set) var contentRows: [Row] = []
+    private(set) var chatRows: [Row] = []
+    private(set) var membershipRows: [Row] = []
+    private(set) var activityRows: [Row] = []
     private(set) var members: [RoomMember] = []
     private(set) var admins: [String] = []
     private(set) var profiles = ProfileBook()
 
-    private(set) var contentError: String?
+    private(set) var chatError: String?
     private(set) var membershipError: String?
+    private(set) var activityError: String?
     private(set) var adminError: String?
     private(set) var profileError: String?
 
-    private(set) var hasReceivedContent = false
+    private(set) var hasReceivedChat = false
     private(set) var hasReceivedMembership = false
+    private(set) var hasReceivedActivities = false
     private(set) var hasMembershipMetadata = false
 
-    private let engine: NMPEngine
-    private let groupID: String
-    private let hostRelay: String
+    let engine: NMPEngine
+    let groupID: String
+    let hostRelay: String
     private let recipient: String?
     private let queryOpening: NMPQueryOpening
 
@@ -46,16 +50,16 @@ final class RoomTimelineModel {
     }
 
     var timelineItems: [RoomTimelineItem] {
-        NIP29ViewProjection.timelineItems(from: contentRows)
+        NIP29ViewProjection.timelineItems(from: chatRows)
     }
 
     var mentionIDs: Set<String> {
         guard let recipient else { return [] }
-        return MentionProjection.mentionIDs(from: contentRows, recipient: recipient)
+        return MentionProjection.mentionIDs(from: chatRows, recipient: recipient)
     }
 
     var activities: [AgentActivity] {
-        NIP29ViewProjection.activities(from: contentRows)
+        NIP29ViewProjection.activities(from: activityRows)
     }
 
     var people: RoomPeople {
@@ -87,7 +91,11 @@ final class RoomTimelineModel {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { [weak self] in
                 guard let self else { return }
-                await self.observeContent()
+                await self.observeChat()
+            }
+            group.addTask { [weak self] in
+                guard let self else { return }
+                await self.observeActivities()
             }
             group.addTask { [weak self] in
                 guard let self else { return }
@@ -104,39 +112,54 @@ final class RoomTimelineModel {
         }
     }
 
-    private func observeContent() async {
+    private func observeChat() async {
         do {
-            let demand = try roomTimelineDemand(host: hostRelay, groupID: groupID)
+            let demand = try roomChatDemand(host: hostRelay, groupID: groupID)
             let query = try await queryOpening.demand(engine, demand)
             defer { query.cancel() }
 
             for await batch in query {
                 guard !Task.isCancelled else { return }
-                contentRows = batch.rows
-                contentError = nil
-                hasReceivedContent = true
+                chatRows = batch.rows
+                chatError = nil
+                hasReceivedChat = true
             }
         } catch {
             guard !Task.isCancelled else { return }
-            contentError = error.localizedDescription
+            chatError = error.localizedDescription
+        }
+    }
+
+    private func observeActivities() async {
+        do {
+            let demand = try roomActivityDemand(host: hostRelay, groupID: groupID)
+            let query = try await queryOpening.demand(engine, demand)
+            defer { query.cancel() }
+
+            for await batch in query {
+                guard !Task.isCancelled else { return }
+                activityRows = batch.rows
+                activityError = nil
+                hasReceivedActivities = true
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            activityError = error.localizedDescription
         }
     }
 
     private func observeMembership() async {
         do {
-            let query = try await queryOpening.filter(
+            let query = try await queryOpening.demand(
                 engine,
-                NMPFilter(
-                    kinds: [39_002],
-                    tags: ["d": .literal([groupID])],
-                    limit: 20
-                )
+                roomMembershipDemand(host: hostRelay, groupID: groupID)
             )
             defer { query.cancel() }
 
             for await batch in query {
                 guard !Task.isCancelled else { return }
-                members = NIP29ViewProjection.members(from: batch.rows)
+                membershipRows = batch.rows
+                members = NIP29ViewProjection.members(from: membershipRows)
                 membershipError = nil
                 hasReceivedMembership = true
                 hasMembershipMetadata = batch.rows.contains { $0.kind == 39_002 }
@@ -149,13 +172,9 @@ final class RoomTimelineModel {
 
     private func observeAdmins() async {
         do {
-            let query = try await queryOpening.filter(
+            let query = try await queryOpening.demand(
                 engine,
-                NMPFilter(
-                    kinds: [39_001],
-                    tags: ["d": .literal([groupID])],
-                    limit: 20
-                )
+                roomAdminDemand(host: hostRelay, groupID: groupID)
             )
             defer { query.cancel() }
 
@@ -226,74 +245,4 @@ final class RoomTimelineModel {
         }
     }
 
-    /// Send a normal room message through NMP's typed NIP-29 composition.
-    /// The timeline receives the canonical accepted event through `observeContent`;
-    /// it does not create an app-owned pending message.
-    func sendMessage(_ request: ComposerRequest) async -> String? {
-        await sendGroupMessage(
-            request.content,
-            recipientPubkeys: request.recipients.map(\.pubkey),
-            reply: request.reply
-        )
-    }
-
-    /// Send a tenex-edge management command as a room message p-tagging the
-    /// selected backend. This shares the normal typed NIP-29 write path.
-    func sendManagementCommand(_ command: String, backendPubkey: String) async -> String? {
-        await sendGroupMessage(command, recipientPubkeys: [backendPubkey], reply: nil)
-    }
-
-    private func sendGroupMessage(
-        _ content: String,
-        recipientPubkeys: [String],
-        reply: ComposerReply?
-    ) async -> String? {
-        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return "Messages cannot be empty."
-        }
-
-        do {
-            let replyParent = reply.map {
-                GroupReplyParent(eventID: $0.eventID, authorPubkey: $0.author.pubkey)
-            }
-            let intent = try engine.groupMessageIntent(
-                host: hostRelay,
-                groupID: groupID,
-                content: content,
-                recipients: recipientPubkeys,
-                reply: replyParent
-            )
-            let receipt = try await engine.publishComposed(intent)
-            for await status in receipt.status {
-                if let failure = deliveryFailure(for: status) {
-                    return failure
-                }
-                if case .acked = status {
-                    return nil
-                }
-            }
-            return "Message delivery ended without relay acknowledgement."
-        } catch {
-            return error.localizedDescription
-        }
-    }
-
-    private func deliveryFailure(for status: WriteStatus) -> String? {
-        switch status {
-        case .rejected(_, let reason):
-            return "The relay rejected the message: \(reason)"
-        case .failed(let reason):
-            return reason
-        case .gaveUp(let relay):
-            return "Could not deliver the message to \(relay)."
-        case .persistenceBlocked(let relay):
-            return "Could not persist the message for \(relay)."
-        case .routePersistenceBlocked(let relay):
-            return "Could not persist message routing for \(relay)."
-        case .outcomeUnknown(let relay):
-            return "Message delivery outcome for \(relay) is unknown."
-        default:
-            return nil
-        }
-    }
 }
