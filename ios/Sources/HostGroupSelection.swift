@@ -36,7 +36,7 @@ struct RememberedGroupSnapshot: Equatable, Sendable {
         self.groups = groups.filter { seenGroups.insert($0.coordinate).inserted }
 
         var seenHosts = Set<String>()
-        self.hosts = (hosts + self.groups.map(\.host)).filter {
+        self.hosts = hosts.filter {
             !$0.isEmpty && seenHosts.insert($0).inserted
         }
         self.hasPrivateContent = hasPrivateContent

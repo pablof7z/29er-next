@@ -22,6 +22,17 @@ final class HostGroupSelectionTests: XCTestCase {
         XCTAssertTrue(snapshot.hasPrivateContent)
     }
 
+    func testGroupHostsDoNotBecomeRelayFavoritesWithoutAnRTag() {
+        let snapshot = RememberedGroupSnapshot(
+            groups: [choice(host: firstHost, group: "a", name: "Alpha")],
+            hosts: [secondHost],
+            hasPrivateContent: false
+        )
+
+        XCTAssertEqual(snapshot.hosts, [secondHost])
+        XCTAssertEqual(snapshot.groups.map(\.host), [firstHost])
+    }
+
     func testLoggedOutSelectionUsesOnlyOperatorBootstrap() {
         let snapshot = rememberedSnapshot()
 
@@ -95,6 +106,53 @@ final class HostGroupSelectionTests: XCTestCase {
                 snapshot: .empty,
                 selectedHost: bootstrap
             )
+        )
+    }
+
+    func testFavoriteRelayChoicesPreserveHostOrderAndCountRememberedRooms() {
+        let snapshot = RememberedGroupSnapshot(
+            groups: [
+                choice(host: firstHost, group: "a", name: "Alpha"),
+                choice(host: firstHost, group: "b", name: "Beta"),
+                choice(host: secondHost, group: "c", name: nil)
+            ],
+            hosts: [secondHost, firstHost],
+            hasPrivateContent: false
+        )
+
+        XCTAssertEqual(
+            FavoriteRelayChoice.favorites(from: snapshot),
+            [
+                FavoriteRelayChoice(url: secondHost, roomCount: 1),
+                FavoriteRelayChoice(url: firstHost, roomCount: 2)
+            ]
+        )
+    }
+
+    func testBootstrapRelayIsPresentedWithoutPretendingItIsAnAccountFavorite() {
+        XCTAssertEqual(
+            FavoriteRelayChoice.bootstrap(host: bootstrap),
+            [FavoriteRelayChoice(url: bootstrap, roomCount: nil)]
+        )
+        XCTAssertTrue(FavoriteRelayChoice.bootstrap(host: "").isEmpty)
+    }
+
+    @MainActor
+    func testFavoriteRelayEditorExplainsInvalidRelayAndAtomicConflict() {
+        XCTAssertEqual(
+            AppModel.favoriteRelayFailureMessage(
+                for: .failed(.invalidRelay("not-a-relay"))
+            ),
+            "Enter a valid WebSocket relay URL, such as wss://relay.example."
+        )
+        XCTAssertEqual(
+            AppModel.favoriteRelayFailureMessage(
+                for: .receipt(
+                    id: 1,
+                    status: .replaceableConflict(expected: "old", actual: "new")
+                )
+            ),
+            "Your relay list changed during this update. Review it and try again."
         )
     }
 
