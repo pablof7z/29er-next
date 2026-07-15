@@ -276,7 +276,7 @@ private extension NMPSignedEvent {
             "kind": NSNumber(value: kind),
             "tags": tags,
             "content": content,
-            "sig": sig
+            "sig": signature
         ]
     }
 }
