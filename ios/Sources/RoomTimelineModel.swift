@@ -88,15 +88,19 @@ final class RoomTimelineModel {
         do {
             var demand = try groupContentDemand(host: hostRelay, groupId: groupID)
             demand.selection.limit = 200
+            let clock = ContinuousClock()
+            let started = clock.now
             let query = try await openNMPQuery(
                 engine: engine,
                 demand: demand
             )
+            RoomOpenProbe.shared.recordObserve(.content, duration: started.duration(to: clock.now))
             defer { query.cancel() }
 
             for await batch in query {
                 guard !Task.isCancelled else { return }
                 contentRows = batch.rows
+                RoomOpenProbe.shared.recordSnapshot(.content, rows: batch.rows)
                 messageError = nil
                 activityError = nil
                 hasReceivedMessages = true
@@ -111,6 +115,8 @@ final class RoomTimelineModel {
 
     private func observeMembership() async {
         do {
+            let clock = ContinuousClock()
+            let started = clock.now
             let query = try await openNMPQuery(
                 engine: engine,
                 filter: NMPFilter(
@@ -119,11 +125,13 @@ final class RoomTimelineModel {
                     limit: 20
                 )
             )
+            RoomOpenProbe.shared.recordObserve(.membership, duration: started.duration(to: clock.now))
             defer { query.cancel() }
 
             for await batch in query {
                 guard !Task.isCancelled else { return }
                 members = NIP29ViewProjection.members(from: batch.rows)
+                RoomOpenProbe.shared.recordSnapshot(.membership, rows: batch.rows)
                 membershipError = nil
                 hasReceivedMembership = true
                 hasMembershipMetadata = batch.rows.contains { $0.kind == 39_002 }
@@ -136,6 +144,8 @@ final class RoomTimelineModel {
 
     private func observeAdmins() async {
         do {
+            let clock = ContinuousClock()
+            let started = clock.now
             let query = try await openNMPQuery(
                 engine: engine,
                 filter: NMPFilter(
@@ -144,11 +154,13 @@ final class RoomTimelineModel {
                     limit: 20
                 )
             )
+            RoomOpenProbe.shared.recordObserve(.admins, duration: started.duration(to: clock.now))
             defer { query.cancel() }
 
             for await batch in query {
                 guard !Task.isCancelled else { return }
                 admins = NIP29ViewProjection.admins(from: batch.rows)
+                RoomOpenProbe.shared.recordSnapshot(.admins, rows: batch.rows)
             }
         } catch {
             // Admin discovery is enrichment for the backend affordance; on
@@ -191,15 +203,19 @@ final class RoomTimelineModel {
         ])
 
         do {
+            let clock = ContinuousClock()
+            let started = clock.now
             let query = try await openNMPQuery(
                 engine: engine,
                 filter: NMPFilter(kinds: [0], authors: authors, limit: 500)
             )
+            RoomOpenProbe.shared.recordObserve(.profiles, duration: started.duration(to: clock.now))
             defer { query.cancel() }
 
             for await batch in query {
                 guard !Task.isCancelled else { return }
                 profiles = RoomProfileProjection.profiles(from: batch.rows)
+                RoomOpenProbe.shared.recordSnapshot(.profiles, rows: batch.rows)
             }
         } catch {
             // Identity is enrichment; on failure the timeline still renders

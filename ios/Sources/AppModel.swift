@@ -45,7 +45,8 @@ final class AppModel {
             }
         }
 
-        groupRelay = configuration.groupRelay
+        let proofRelay = RoomOpenProbe.shared.offlineRelay
+        groupRelay = proofRelay ?? configuration.groupRelay
         do {
             let support: URL
             if let applicationSupportURL {
@@ -62,8 +63,8 @@ final class AppModel {
             try fileManager.createDirectory(at: appDirectory, withIntermediateDirectories: true)
             let engineConfig = NMPConfig(
                 storePath: appDirectory.appendingPathComponent("nmp.redb").path,
-                indexerRelays: configuration.indexerRelays,
-                appRelays: [configuration.groupRelay]
+                indexerRelays: proofRelay == nil ? configuration.indexerRelays : [],
+                appRelays: [groupRelay]
             )
             self.engineConfig = engineConfig
             engine = try NMPEngine(config: engineConfig)

@@ -25,6 +25,28 @@ struct ChannelListView: View {
             channelRows
         }
         .listStyle(.plain)
+        .overlay(alignment: .bottomTrailing) {
+            proofRoomShortcut
+        }
+    }
+
+    @ViewBuilder
+    private var proofRoomShortcut: some View {
+        if RoomOpenProbe.shared.isEnabled,
+           let groupID = RoomOpenProbe.shared.targetGroupID,
+           let group = channels.first(where: { $0.localID == groupID }) {
+            Button {
+                RoomOpenProbe.shared.begin(groupID: group.localID)
+                path.append(group)
+            } label: {
+                Image(systemName: "stopwatch.fill")
+                    .padding(12)
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(8)
+            .accessibilityLabel("Open room performance proof")
+            .accessibilityIdentifier("room-open-proof-shortcut")
+        }
     }
 
     @ViewBuilder

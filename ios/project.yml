@@ -41,6 +41,36 @@ targets:
         PRODUCT_NAME: TwentyNinerNext
         DEVELOPMENT_TEAM: 456SHKPP26
         TARGETED_DEVICE_FAMILY: "1"
+  TwentyNinerNextProof:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    dependencies:
+      - package: NMP
+        product: NMP
+    info:
+      path: Generated-Proof-Info.plist
+      properties:
+        UILaunchScreen: {}
+        CFBundleDisplayName: 29er Legacy Proof
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        NMPIndexerRelays:
+          - wss://purplepag.es
+        NMPGroupRelay: wss://nip29.f7z.io
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.f7z.app29er.next.pre-nostrdb-proof
+        PRODUCT_MODULE_NAME: TwentyNinerNextPreNostrdbProof
+        PRODUCT_NAME: TwentyNinerNextPreNostrdbProof
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) NMP_DEVICE_PROOF"
+        DEVELOPMENT_TEAM: 456SHKPP26
+        TARGETED_DEVICE_FAMILY: "1"
   TwentyNinerNextTests:
     type: bundle.unit-test
     platform: iOS
@@ -53,6 +83,18 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: io.f7z.app29er.next.tests
         GENERATE_INFOPLIST_FILE: YES
         DEVELOPMENT_TEAM: 456SHKPP26
+  TwentyNinerNextProofUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: TwentyNinerNextProof
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.f7z.app29er.next.pre-nostrdb-proof.ui-tests
+        GENERATE_INFOPLIST_FILE: YES
+        DEVELOPMENT_TEAM: 456SHKPP26
 schemes:
   TwentyNinerNext:
     build:
@@ -62,3 +104,14 @@ schemes:
     test:
       targets:
         - TwentyNinerNextTests
+  TwentyNinerNextPreNostrdbDeviceProof:
+    build:
+      targets:
+        TwentyNinerNextProof: all
+        TwentyNinerNextProofUITests: [test]
+    test:
+      environmentVariables:
+        NMP_DEVICE_PROOF: "1"
+        NMP_DEVICE_PROOF_GROUP: nmp-scale-hot-room
+      targets:
+        - TwentyNinerNextProofUITests

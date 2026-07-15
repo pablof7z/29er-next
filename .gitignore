@@ -4,6 +4,7 @@
 DerivedData/
 ios/DerivedData/
 ios/Generated-Info.plist
+ios/Generated-Proof-Info.plist
 ios/TwentyNinerNext.xcodeproj/
 *.xcresult
 *.xcuserstate
