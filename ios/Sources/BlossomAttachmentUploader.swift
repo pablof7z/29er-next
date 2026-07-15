@@ -147,7 +147,7 @@ private struct BlossomAuthorizationEvent: Encodable {
         kind = event.kind
         tags = event.tags
         content = event.content
-        sig = event.sig
+        sig = event.signature
     }
 
     enum CodingKeys: String, CodingKey {
