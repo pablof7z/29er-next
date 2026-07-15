@@ -1,3 +1,4 @@
+import Kingfisher
 import SwiftUI
 
 struct PresentedURL: Identifiable {
@@ -15,33 +16,28 @@ struct InlineRemoteImage: View {
 
     var body: some View {
         Button(action: open) {
-            AsyncImage(url: url, transaction: Transaction(animation: .easeOut)) { phase in
-                switch phase {
-                case .empty:
+            KFImage(url)
+                .placeholder {
                     ZStack {
                         Color.secondary.opacity(0.08)
                         ProgressView()
                     }
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                case .failure:
+                }
+                .onFailureView {
                     Label("Open image", systemImage: "photo")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Color.secondary.opacity(0.08))
-                @unknown default:
-                    Color.secondary.opacity(0.08)
                 }
-            }
-            .frame(maxWidth: 440)
-            .frame(height: 220)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: 440)
+                .frame(height: 220)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Open image")
@@ -64,33 +60,28 @@ struct ZoomableRemoteImage: View {
         NavigationStack {
             ZStack {
                 Color.black.ignoresSafeArea()
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
+                KFImage(url)
+                    .placeholder {
                         ProgressView().tint(.white)
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFit()
-                            .scaleEffect(effectiveScale)
-                            .offset(
-                                x: offset.width + dragOffset.width,
-                                y: offset.height + dragOffset.height
-                            )
-                            .gesture(zoomGesture)
-                            .simultaneousGesture(panGesture)
-                            .onTapGesture(count: 2, perform: toggleZoom)
-                    case .failure:
+                    }
+                    .onFailureView {
                         ContentUnavailableView(
                             "Image Unavailable",
                             systemImage: "photo.badge.exclamationmark",
                             description: Text(url.absoluteString)
                         )
                         .foregroundStyle(.white)
-                    @unknown default:
-                        EmptyView()
                     }
-                }
+                    .resizable()
+                    .scaledToFit()
+                    .scaleEffect(effectiveScale)
+                    .offset(
+                        x: offset.width + dragOffset.width,
+                        y: offset.height + dragOffset.height
+                    )
+                    .gesture(zoomGesture)
+                    .simultaneousGesture(panGesture)
+                    .onTapGesture(count: 2, perform: toggleZoom)
             }
             .toolbarBackground(.black, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
