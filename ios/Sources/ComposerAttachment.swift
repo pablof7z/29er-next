@@ -8,17 +8,20 @@ struct ComposerAttachment: Identifiable, Hashable, Sendable {
     let filename: String
     let contentType: String
     let data: Data
+    let localDraftURL: URL?
 
     init(
         id: UUID = UUID(),
         filename: String,
         contentType: String,
-        data: Data
+        data: Data,
+        localDraftURL: URL? = nil
     ) {
         self.id = id
         self.filename = filename
         self.contentType = contentType
         self.data = data
+        self.localDraftURL = localDraftURL
     }
 
     static func load(from url: URL) throws -> ComposerAttachment {
@@ -52,6 +55,15 @@ struct ComposerAttachment: Identifiable, Hashable, Sendable {
 
     var isImage: Bool {
         UTType(mimeType: contentType)?.conforms(to: .image) == true
+    }
+
+    var isAudio: Bool {
+        UTType(mimeType: contentType)?.conforms(to: .audio) == true
+    }
+
+    func removeLocalDraft() {
+        guard let localDraftURL else { return }
+        try? FileManager.default.removeItem(at: localDraftURL)
     }
 }
 

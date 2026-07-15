@@ -73,4 +73,19 @@ final class ChatComposerTests: XCTestCase {
     func testMentionLabelRemovesAnExistingAtPrefix() {
         XCTAssertEqual(recipient("agent", name: "@agent1").mentionLabel, "@agent1")
     }
+
+    func testVoiceActionAppearsWithoutSubstantiveText() {
+        XCTAssertTrue(ChatComposerState.showsVoiceAction(draft: " \n ", attachments: []))
+    }
+
+    func testVoiceActionYieldsToTextOrAttachments() {
+        let attachment = ComposerAttachment(
+            filename: "draft.m4a",
+            contentType: "audio/mp4",
+            data: Data("audio".utf8)
+        )
+
+        XCTAssertFalse(ChatComposerState.showsVoiceAction(draft: "hello", attachments: []))
+        XCTAssertFalse(ChatComposerState.showsVoiceAction(draft: "", attachments: [attachment]))
+    }
 }

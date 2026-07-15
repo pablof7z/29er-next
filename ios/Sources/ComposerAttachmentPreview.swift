@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 #if os(iOS)
@@ -31,13 +32,11 @@ struct ComposerAttachmentPreviewStrip: View {
 private struct ComposerAttachmentPreview: View {
     let attachment: ComposerAttachment
     let remove: () -> Void
+    @State private var audioPlayer: AVAudioPlayer?
 
     var body: some View {
         HStack(spacing: 8) {
-            thumbnail
-                .frame(width: 38, height: 38)
-                .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+            preview
             VStack(alignment: .leading, spacing: 2) {
                 Text(attachment.filename)
                     .font(.caption.weight(.medium))
@@ -58,6 +57,29 @@ private struct ComposerAttachmentPreview: View {
         .frame(maxWidth: 230)
         .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
         .accessibilityIdentifier("composer-attachment-\(attachment.id)")
+        .onDisappear { audioPlayer?.stop() }
+    }
+
+    @ViewBuilder
+    private var preview: some View {
+        Group {
+            if attachment.isAudio {
+                Button(action: toggleAudioPreview) {
+                    thumbnail
+                        .overlay {
+                            Image(systemName: audioPlayer?.isPlaying == true ? "pause.fill" : "play.fill")
+                                .font(.caption.weight(.bold))
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Preview \(attachment.filename)")
+            } else {
+                thumbnail
+            }
+        }
+        .frame(width: 38, height: 38)
+        .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     @ViewBuilder
@@ -78,8 +100,24 @@ private struct ComposerAttachmentPreview: View {
     }
 
     private var fileIcon: some View {
-        Image(systemName: "doc.fill")
+        Image(systemName: attachment.isAudio ? "waveform" : "doc.fill")
             .font(.title3)
             .foregroundStyle(.secondary)
+    }
+
+    private func toggleAudioPreview() {
+        if let audioPlayer, audioPlayer.isPlaying {
+            audioPlayer.stop()
+            self.audioPlayer = nil
+            return
+        }
+        do {
+            let player = try AVAudioPlayer(data: attachment.data)
+            player.prepareToPlay()
+            player.play()
+            audioPlayer = player
+        } catch {
+            audioPlayer = nil
+        }
     }
 }
