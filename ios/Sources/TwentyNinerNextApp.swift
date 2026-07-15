@@ -63,6 +63,8 @@ private struct ProofLaunchRootView: View {
             AppRootView()
         case .audioPlayer:
             AudioPlayerProofView()
+        case .attachmentComposer:
+            AttachmentComposerProofView()
         }
     }
 }
@@ -72,12 +74,15 @@ private enum ProofLaunchMode {
     case corpusPreflight
     case roomOpenProof
     case audioPlayer
+    case attachmentComposer
 
     static let current = ProofLaunchMode(arguments: ProcessInfo.processInfo.arguments)
 
     init(arguments: [String]) {
         if arguments.contains("--audio-player-proof") {
             self = .audioPlayer
+        } else if arguments.contains("--attachment-composer-proof") {
+            self = .attachmentComposer
         } else if arguments.contains("--nmp-room-open-proof") {
             self = .roomOpenProof
         } else if arguments.contains("--nmp-corpus-preflight") {

@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Bottom-of-room composer. Display names and unsent state stay in SwiftUI;
 /// NMP owns materializing recipients/replies into the published group event.
@@ -10,10 +11,26 @@ struct ChatComposer: View {
 
     @State private var draft = ""
     @State private var selectedRecipients: [ComposerRecipient] = []
+    @State private var attachments: [ComposerAttachment] = []
     @State private var isSending = false
     @State private var errorMessage: String?
     @State private var isRecipientPickerPresented = false
+    @State private var isAttachmentPickerPresented = false
     @FocusState private var isEditorFocused: Bool
+
+    init(
+        canSend: Bool,
+        recipients: [ComposerRecipient],
+        reply: Binding<ComposerReply?>,
+        initialAttachments: [ComposerAttachment] = [],
+        send: @escaping (ComposerRequest) async -> String?
+    ) {
+        self.canSend = canSend
+        self.recipients = recipients
+        _reply = reply
+        _attachments = State(initialValue: initialAttachments)
+        self.send = send
+    }
 
     var body: some View {
         content
@@ -24,6 +41,12 @@ struct ChatComposer: View {
                 selectedRecipients: $selectedRecipients
             )
         }
+        .fileImporter(
+            isPresented: $isAttachmentPickerPresented,
+            allowedContentTypes: [.data],
+            allowsMultipleSelection: true,
+            onCompletion: handlePickedFiles
+        )
         .onChange(of: reply?.id) { _, eventID in
             if eventID != nil { isEditorFocused = true }
         }
@@ -41,7 +64,11 @@ struct ChatComposer: View {
                     )
                     .overlay(composerBorder)
             }
-            ComposerDeliveryStatus(isSending: isSending, errorMessage: errorMessage)
+            ComposerDeliveryStatus(
+                isSending: isSending,
+                progressMessage: attachments.isEmpty ? "Sending…" : "Uploading attachments…",
+                errorMessage: errorMessage
+            )
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
@@ -50,6 +77,7 @@ struct ChatComposer: View {
 
     private var composerBar: some View {
         HStack(alignment: .bottom, spacing: 6) {
+            attachmentButton
             mentionButton
             editorPanel
                 .padding(.vertical, 8)
@@ -64,6 +92,28 @@ struct ChatComposer: View {
             in: RoundedRectangle(cornerRadius: 21)
         )
         .overlay(composerBorder)
+    }
+
+    private var attachmentButton: some View {
+        Button { isAttachmentPickerPresented = true } label: {
+            Image(systemName: "paperclip")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(attachments.isEmpty ? Color.secondary : Color.accentColor)
+                .frame(width: 30, height: 30)
+                .background(
+                    attachments.isEmpty
+                        ? Color.secondary.opacity(0.08)
+                        : Color.accentColor.opacity(0.14),
+                    in: .circle
+                )
+        }
+        .frame(width: 36, height: 36)
+        .contentShape(Rectangle())
+        .buttonStyle(.plain)
+        .disabled(isSending)
+        .help("Attach files")
+        .accessibilityLabel("Attach files")
+        .accessibilityIdentifier("room-message-attach")
     }
 
     private var mentionButton: some View {
@@ -118,6 +168,14 @@ struct ChatComposer: View {
             if !visibleRecipients.isEmpty {
                 recipientChips
             }
+            if !attachments.isEmpty {
+                ComposerAttachmentPreviewStrip(
+                    attachments: attachments,
+                    isDisabled: isSending
+                ) { id in
+                    attachments.removeAll { $0.id == id }
+                }
+            }
             TextField("Message", text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(1...5)
@@ -152,7 +210,9 @@ struct ChatComposer: View {
             .padding(.vertical, 12)
             .accessibilityIdentifier("room-composer-signed-out")
     }
+}
 
+extension ChatComposer {
     @ViewBuilder
     private var sendButtonLabel: some View {
         if isSending {
@@ -176,18 +236,21 @@ struct ChatComposer: View {
     }
 
     private var canSubmit: Bool {
-        canSend && ChatComposerState.message(from: draft) != nil
+        canSend && (ChatComposerState.message(from: draft) != nil || !attachments.isEmpty)
     }
 
     private func submit() {
         guard let request = ChatComposerState.request(
             draft: draft,
             selectedRecipients: selectedRecipients,
-            reply: reply
+            reply: reply,
+            attachments: attachments
         ), !isSending else { return }
 
         let submittedRecipients = selectedRecipients
         let submittedReply = reply
+        let submittedAttachments = attachments
+        let submittedDraft = draft
         isSending = true
         errorMessage = nil
         Task {
@@ -199,9 +262,33 @@ struct ChatComposer: View {
                 errorMessage = error
                 return
             }
-            if ChatComposerState.message(from: draft) == request.content { draft = "" }
+            if draft == submittedDraft { draft = "" }
             if selectedRecipients == submittedRecipients { selectedRecipients = [] }
             if reply == submittedReply { reply = nil }
+            if attachments == submittedAttachments { attachments = [] }
+        }
+    }
+
+    private func handlePickedFiles(_ result: Result<[URL], Error>) {
+        do {
+            let urls = try result.get()
+            guard attachments.count + urls.count <= 10 else {
+                errorMessage = "You can attach up to 10 files to one message."
+                return
+            }
+            Task {
+                do {
+                    let loaded = try await Task.detached(priority: .userInitiated) {
+                        try urls.map(ComposerAttachment.load(from:))
+                    }.value
+                    attachments.append(contentsOf: loaded)
+                    errorMessage = nil
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }

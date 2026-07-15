@@ -41,6 +41,7 @@ struct ComposerRequest: Equatable, Sendable {
     let content: String
     let recipients: [ComposerRecipient]
     let reply: ComposerReply?
+    let attachments: [ComposerAttachment]
 }
 
 enum ChatComposerState {
@@ -52,15 +53,27 @@ enum ChatComposerState {
     static func request(
         draft: String,
         selectedRecipients: [ComposerRecipient],
-        reply: ComposerReply?
+        reply: ComposerReply?,
+        attachments: [ComposerAttachment] = []
     ) -> ComposerRequest? {
-        guard let content = message(from: draft) else { return nil }
+        let content = message(from: draft) ?? ""
+        guard !content.isEmpty || !attachments.isEmpty else { return nil }
 
         return ComposerRequest(
             content: content,
             recipients: recipients(selectedRecipients: selectedRecipients, reply: reply),
-            reply: reply
+            reply: reply,
+            attachments: attachments
         )
+    }
+
+    static func messageContent(draft: String, attachmentURLs: [URL]) -> String? {
+        let content = message(from: draft)
+        let urls = attachmentURLs.map(\.absoluteString)
+        guard content != nil || !urls.isEmpty else { return nil }
+        guard let content else { return urls.joined(separator: "\n") }
+        guard !urls.isEmpty else { return content }
+        return content + "\n\n" + urls.joined(separator: "\n")
     }
 
     static func recipients(
