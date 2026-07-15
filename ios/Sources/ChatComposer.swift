@@ -16,19 +16,26 @@ struct ChatComposer: View {
     @State private var errorMessage: String?
     @State private var isRecipientPickerPresented = false
     @State private var isAttachmentPickerPresented = false
+    @State private var didRestoreVoiceDrafts = false
+    @StateObject private var voiceRecorder: VoiceMessageRecorder
     @FocusState private var isEditorFocused: Bool
+    @Environment(\.scenePhase) private var scenePhase
 
     init(
         canSend: Bool,
         recipients: [ComposerRecipient],
         reply: Binding<ComposerReply?>,
         initialAttachments: [ComposerAttachment] = [],
+        voiceDraftScope: String = "default",
         send: @escaping (ComposerRequest) async -> String?
     ) {
         self.canSend = canSend
         self.recipients = recipients
         _reply = reply
         _attachments = State(initialValue: initialAttachments)
+        _voiceRecorder = StateObject(
+            wrappedValue: VoiceMessageRecorder(store: VoiceDraftStore(scope: voiceDraftScope))
+        )
         self.send = send
     }
 
@@ -50,6 +57,17 @@ struct ChatComposer: View {
         .onChange(of: reply?.id) { _, eventID in
             if eventID != nil { isEditorFocused = true }
         }
+        .onChange(of: voiceRecorder.completedDraft) { _, completed in
+            guard let completed else { return }
+            acceptVoiceDraft(completed)
+        }
+        .onChange(of: voiceRecorder.failureMessage) { _, message in
+            if let message { errorMessage = message }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { voiceRecorder.preserveForBackground() }
+        }
+        .onAppear(perform: restoreVoiceDrafts)
     }
 
     private var content: some View {
@@ -77,12 +95,7 @@ struct ChatComposer: View {
 
     private var composerBar: some View {
         HStack(alignment: .bottom, spacing: 6) {
-            attachmentButton
-            mentionButton
-            editorPanel
-                .padding(.vertical, 8)
-                .frame(minHeight: 40)
-            sendButton
+            composerControls
         }
         .padding(.leading, 6)
         .padding(.trailing, 5)
@@ -92,6 +105,33 @@ struct ChatComposer: View {
             in: RoundedRectangle(cornerRadius: 21)
         )
         .overlay(composerBorder)
+    }
+
+    @ViewBuilder
+    private var composerControls: some View {
+        #if os(iOS)
+        if voiceRecorder.isActive {
+            VoiceRecordingPanel(recorder: voiceRecorder)
+                .padding(.leading, 8)
+                .padding(.vertical, 8)
+                .frame(minHeight: 40)
+            actionButton
+        } else {
+            standardComposerControls
+        }
+        #else
+        standardComposerControls
+        #endif
+    }
+
+    @ViewBuilder
+    private var standardComposerControls: some View {
+        attachmentButton
+        mentionButton
+        editorPanel
+            .padding(.vertical, 8)
+            .frame(minHeight: 40)
+        actionButton
     }
 
     private var attachmentButton: some View {
@@ -155,6 +195,21 @@ struct ChatComposer: View {
             .accessibilityIdentifier("room-message-send")
     }
 
+    @ViewBuilder
+    private var actionButton: some View {
+        #if os(iOS)
+        VoiceComposerActionButton(
+            recorder: voiceRecorder,
+            showsMic: showsVoiceAction,
+            canSubmit: canSubmit,
+            isSending: isSending,
+            submit: submit
+        )
+        #else
+        sendButton
+        #endif
+    }
+
     private var composerBorder: some View {
         RoundedRectangle(cornerRadius: 21)
             .stroke(PlatformSupport.separator.opacity(0.55), lineWidth: 0.5)
@@ -173,7 +228,7 @@ struct ChatComposer: View {
                     attachments: attachments,
                     isDisabled: isSending
                 ) { id in
-                    attachments.removeAll { $0.id == id }
+                    removeAttachment(id)
                 }
             }
             TextField("Message", text: $draft, axis: .vertical)
@@ -239,6 +294,12 @@ extension ChatComposer {
         canSend && (ChatComposerState.message(from: draft) != nil || !attachments.isEmpty)
     }
 
+    private var showsVoiceAction: Bool {
+        canSend
+            && !isSending
+            && ChatComposerState.showsVoiceAction(draft: draft, attachments: attachments)
+    }
+
     private func submit() {
         guard let request = ChatComposerState.request(
             draft: draft,
@@ -265,8 +326,49 @@ extension ChatComposer {
             if draft == submittedDraft { draft = "" }
             if selectedRecipients == submittedRecipients { selectedRecipients = [] }
             if reply == submittedReply { reply = nil }
-            if attachments == submittedAttachments { attachments = [] }
+            let submittedIDs = Set(submittedAttachments.map(\.id))
+            attachments.removeAll { submittedIDs.contains($0.id) }
+            submittedAttachments.forEach { $0.removeLocalDraft() }
         }
+    }
+
+    private func acceptVoiceDraft(_ completed: CompletedVoiceDraft) {
+        defer { voiceRecorder.consumeCompletedDraft() }
+        do {
+            let attachment = try voiceRecorder.store.attachment(from: completed.url)
+            guard !attachments.contains(where: { $0.localDraftURL == completed.url }) else {
+                return
+            }
+            attachments.append(attachment)
+            errorMessage = completed.shouldSend ? nil : voiceRecorder.failureMessage
+            if completed.shouldSend { submit() }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func restoreVoiceDrafts() {
+        guard !didRestoreVoiceDrafts else { return }
+        didRestoreVoiceDrafts = true
+        do {
+            let recovered = try voiceRecorder.recoverPendingAttachments()
+            let existing = Set(attachments.compactMap(\.localDraftURL))
+            attachments.append(contentsOf: recovered.filter { attachment in
+                guard let url = attachment.localDraftURL else { return true }
+                return !existing.contains(url)
+            })
+            if !recovered.isEmpty {
+                errorMessage = "Recovered an unsent voice message."
+            }
+        } catch {
+            errorMessage = "A saved voice message could not be restored: \(error.localizedDescription)"
+        }
+    }
+
+    private func removeAttachment(_ id: UUID) {
+        guard let attachment = attachments.first(where: { $0.id == id }) else { return }
+        attachment.removeLocalDraft()
+        attachments.removeAll { $0.id == id }
     }
 
     private func handlePickedFiles(_ result: Result<[URL], Error>) {

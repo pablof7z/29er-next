@@ -67,6 +67,10 @@ enum ChatComposerState {
         )
     }
 
+    static func showsVoiceAction(draft: String, attachments: [ComposerAttachment]) -> Bool {
+        message(from: draft) == nil && attachments.isEmpty
+    }
+
     static func messageContent(draft: String, attachmentURLs: [URL]) -> String? {
         let content = message(from: draft)
         let urls = attachmentURLs.map(\.absoluteString)
