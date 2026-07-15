@@ -35,6 +35,9 @@ final class RoomTimelineModel {
         self.groupID = groupID
         self.hostRelay = hostRelay
         self.recipient = recipient
+        if RoomOpenProbe.shared.isEnabled, RoomOpenProbe.shared.groupID != groupID {
+            RoomOpenProbe.shared.begin(groupID: groupID)
+        }
     }
 
     var messages: [RoomMessage] {
