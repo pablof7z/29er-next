@@ -4,6 +4,15 @@ struct AudioAttachmentID: Hashable {
     let messageID: String
     let ordinal: Int
     let url: URL
+
+    var displayTitle: String {
+        let filename = url.lastPathComponent.removingPercentEncoding ?? url.lastPathComponent
+        return filename.isEmpty ? "Audio attachment" : filename
+    }
+
+    var displaySource: String {
+        url.host() ?? url.absoluteString
+    }
 }
 
 enum AudioPlaybackPhase: Equatable {

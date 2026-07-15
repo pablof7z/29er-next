@@ -7,18 +7,22 @@ struct TwentyNinerNextApp: App {
     var body: some Scene {
         #if os(macOS)
         WindowGroup {
-            MacAppRootView()
+            PersistentAudioPlayerContainer {
+                MacAppRootView()
+            }
                 .environment(audioPlayback)
         }
         .defaultSize(width: 980, height: 720)
         #else
         WindowGroup {
-            Group {
-                #if NMP_DEVICE_PROOF
-                ProofLaunchRootView()
-                #else
-                AppRootView()
-                #endif
+            PersistentAudioPlayerContainer {
+                Group {
+                    #if NMP_DEVICE_PROOF
+                    ProofLaunchRootView()
+                    #else
+                    AppRootView()
+                    #endif
+                }
             }
             .environment(audioPlayback)
         }

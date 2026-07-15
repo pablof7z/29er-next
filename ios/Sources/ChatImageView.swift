@@ -83,8 +83,10 @@ struct ZoomableRemoteImage: View {
                     .simultaneousGesture(panGesture)
                     .onTapGesture(count: 2, perform: toggleZoom)
             }
+            #if os(iOS)
             .toolbarBackground(.black, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }

@@ -18,7 +18,7 @@ final class AudioPlaybackController {
 
     @ObservationIgnored private let player = AVPlayer()
     @ObservationIgnored private var positions: [AudioAttachmentID: Double] = [:]
-    @ObservationIgnored private var durations: [AudioAttachmentID: Double] = [:]
+    private var durations: [AudioAttachmentID: Double] = [:]
     @ObservationIgnored private var statusObservation: NSKeyValueObservation?
     @ObservationIgnored private var timeControlObservation: NSKeyValueObservation?
     @ObservationIgnored private var itemNotifications: [NSObjectProtocol] = []
@@ -46,6 +46,17 @@ final class AudioPlaybackController {
 
     func duration(for id: AudioAttachmentID) -> Double {
         activeID == id ? duration : durations[id] ?? 0
+    }
+
+    func prepareDuration(for id: AudioAttachmentID, url: URL) async {
+        guard durations[id] == nil else { return }
+        let asset = AVURLAsset(url: url)
+        guard let loaded = try? await asset.load(.duration).seconds,
+              !Task.isCancelled,
+              loaded.isFinite,
+              loaded > 0 else { return }
+        durations[id] = loaded
+        if activeID == id { duration = loaded }
     }
 
     func toggle(id: AudioAttachmentID, url: URL) {
@@ -80,7 +91,22 @@ final class AudioPlaybackController {
         if phase != .ended, !isFailure { phase = .paused }
     }
 
-    func pauseForRoomExit() { pause(); deactivateAudioSession() }
+    func dismiss() {
+        wantsToPlay = false
+        resumeAfterScrub = false
+        resumeAfterInterruption = false
+        isScrubbing = false
+        player.pause()
+        saveActivePosition()
+        clearItemObservers()
+        player.replaceCurrentItem(with: nil)
+        activeID = nil
+        phase = .idle
+        currentTime = 0
+        duration = 0
+        scrubTime = 0
+        deactivateAudioSession()
+    }
 
     func restart(playing: Bool? = nil) {
         guard activeID != nil else { return }
