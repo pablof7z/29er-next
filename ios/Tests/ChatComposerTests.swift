@@ -30,6 +30,44 @@ final class ChatComposerTests: XCTestCase {
         XCTAssertEqual(request.content, "Hello")
         XCTAssertEqual(request.recipients.map(\.pubkey), ["agent", "other"])
         XCTAssertEqual(request.reply, reply)
+        XCTAssertTrue(request.attachments.isEmpty)
+    }
+
+    func testAttachmentOnlyDraftCanBeSubmitted() throws {
+        let attachment = ComposerAttachment(
+            filename: "diagram.png",
+            contentType: "image/png",
+            data: Data("image".utf8)
+        )
+
+        let request = try XCTUnwrap(
+            ChatComposerState.request(
+                draft: " \n ",
+                selectedRecipients: [],
+                reply: nil,
+                attachments: [attachment]
+            )
+        )
+
+        XCTAssertEqual(request.content, "")
+        XCTAssertEqual(request.attachments, [attachment])
+    }
+
+    func testUploadedURLsAreAppendedWithoutChangingDraftSemantics() throws {
+        let first = try XCTUnwrap(URL(string: "https://relay.example/a.png"))
+        let second = try XCTUnwrap(URL(string: "https://relay.example/b.pdf"))
+
+        XCTAssertEqual(
+            ChatComposerState.messageContent(
+                draft: "  Look at these  ",
+                attachmentURLs: [first, second]
+            ),
+            "Look at these\n\nhttps://relay.example/a.png\nhttps://relay.example/b.pdf"
+        )
+        XCTAssertEqual(
+            ChatComposerState.messageContent(draft: "", attachmentURLs: [first]),
+            "https://relay.example/a.png"
+        )
     }
 
     func testMentionLabelRemovesAnExistingAtPrefix() {

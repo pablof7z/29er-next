@@ -65,12 +65,13 @@ struct ComposerMentionChip: View {
 
 struct ComposerDeliveryStatus: View {
     let isSending: Bool
+    let progressMessage: String
     let errorMessage: String?
 
     @ViewBuilder
     var body: some View {
         if isSending {
-            Label("Sending…", systemImage: "arrow.up.circle")
+            Label(progressMessage, systemImage: "arrow.up.circle")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 14)

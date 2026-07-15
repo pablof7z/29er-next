@@ -5,8 +5,24 @@ extension RoomTimelineModel {
     /// The canonical accepted event returns through `observeChat`; this never
     /// creates an app-owned pending-message mirror.
     func sendMessage(_ request: ComposerRequest) async -> String? {
-        await sendGroupMessage(
-            request.content,
+        let uploader = BlossomAttachmentUploader(engine: engine)
+        var attachmentURLs: [URL] = []
+        do {
+            for attachment in request.attachments {
+                try Task.checkCancellation()
+                attachmentURLs.append(try await uploader.upload(attachment, to: hostRelay))
+            }
+        } catch {
+            return error.localizedDescription
+        }
+        guard let content = ChatComposerState.messageContent(
+            draft: request.content,
+            attachmentURLs: attachmentURLs
+        ) else {
+            return "Messages cannot be empty."
+        }
+        return await sendGroupMessage(
+            content,
             recipientPubkeys: request.recipients.map(\.pubkey),
             reply: request.reply
         )
