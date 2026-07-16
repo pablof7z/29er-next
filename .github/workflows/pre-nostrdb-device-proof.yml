@@ -14,8 +14,10 @@ jobs:
         with:
           submodules: recursive
       - name: Install build tools
+        run: brew install xcodegen
+      - name: Install pinned Rust targets
+        working-directory: Dependencies/nmp
         run: |
-          brew install xcodegen
           rustup target add \
             aarch64-apple-ios \
             aarch64-apple-ios-sim \
