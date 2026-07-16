@@ -117,7 +117,7 @@ final class RoomOpenDeviceProofTests: XCTestCase {
         XCTAssertEqual(fields["adminsRows"], "0", "\(mode) run \(run) admins")
     }
 
-    private func requiredEnvironment(_ name: String) throws -> String {
+    nonisolated private func requiredEnvironment(_ name: String) throws -> String {
         let value = try XCTUnwrap(ProcessInfo.processInfo.environment[name], "\(name) is required")
         XCTAssertFalse(value.isEmpty, "\(name) must not be empty")
         return value
