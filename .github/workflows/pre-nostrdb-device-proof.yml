@@ -22,7 +22,8 @@ jobs:
             x86_64-apple-ios \
             aarch64-apple-darwin
       - name: Build NMP simulator framework
-        run: Dependencies/nmp/scripts/build-swift-xcframework.sh --sim-only
+        working-directory: Dependencies/nmp
+        run: scripts/build-swift-xcframework.sh --sim-only
       - name: Generate Xcode project
         run: scripts/generate-project.sh
       - name: Compile isolated proof graph
