@@ -21,7 +21,9 @@ struct VoiceDraftStore: Sendable {
         let digest = SHA256.hash(data: Data(scope.utf8))
             .map { String(format: "%02x", $0) }
             .joined()
-        directory = root.appendingPathComponent(digest, isDirectory: true)
+        directory = Self.canonicalFileURL(
+            root.appendingPathComponent(digest, isDirectory: true)
+        )
     }
 
     func createURL(now: Date = Date(), id: UUID = UUID()) throws -> URL {
@@ -52,6 +54,7 @@ struct VoiceDraftStore: Sendable {
     }
 
     func attachment(from url: URL) throws -> ComposerAttachment {
+        let url = Self.canonicalFileURL(url)
         let data = try Data(contentsOf: url)
         guard !data.isEmpty else {
             throw ComposerAttachmentError.empty(filename: url.lastPathComponent)
@@ -68,6 +71,10 @@ struct VoiceDraftStore: Sendable {
     }
 
     func remove(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+        try? FileManager.default.removeItem(at: Self.canonicalFileURL(url))
+    }
+
+    private static func canonicalFileURL(_ url: URL) -> URL {
+        url.standardizedFileURL.resolvingSymlinksInPath()
     }
 }

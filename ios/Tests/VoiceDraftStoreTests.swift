@@ -16,6 +16,7 @@ final class VoiceDraftStoreTests: XCTestCase {
 
         XCTAssertEqual(recovered.count, 1)
         XCTAssertEqual(recovered.first?.contentType, "audio/mp4")
+        XCTAssertEqual(url, url.standardizedFileURL.resolvingSymlinksInPath())
         XCTAssertEqual(recovered.first?.localDraftURL, url)
         XCTAssertTrue(try second.recoverAttachments().isEmpty)
     }
