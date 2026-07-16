@@ -63,7 +63,8 @@ final class RoomDirectoryModel {
         do {
             let query = try await queryOpening.demand(
                 engine,
-                roomDirectoryDemand(host: hostRelay)
+                roomDirectoryDemand(host: hostRelay),
+                nil
             )
             defer { query.cancel() }
 

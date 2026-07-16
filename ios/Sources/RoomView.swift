@@ -122,6 +122,8 @@ struct RoomView: View {
             mentionIDs: model.mentionIDs,
             reads: reads,
             focusMessageID: focusMessageID,
+            historyState: model.chatHistory.state,
+            onLoadOlder: model.loadOlderMessages,
             onOpenLink: openLink,
             onOpenImage: { presentedImage = PresentedURL($0) },
             onReply: beginReply
@@ -131,6 +133,7 @@ struct RoomView: View {
                 canSend: activePubkey != nil,
                 recipients: model.composerRecipients,
                 reply: $replyTarget,
+                voiceDraftScope: "\(group.hostRelay)|\(group.localID)",
                 send: sendMessage
             )
         }

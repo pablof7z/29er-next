@@ -1,4 +1,4 @@
-import NMPContent
+import NMPUI
 import SwiftUI
 
 /// The one channel list, used for both the root directory and any subchannel
@@ -10,7 +10,7 @@ struct ChannelListView: View {
     let channels: [GroupSummary]
     let allGroups: [GroupSummary]
     let directory: RoomDirectoryModel?
-    let contentClient: NMPContentClient?
+    let contentObservationFactory: NMPReferenceObservationFactory?
     @Binding var path: NavigationPath
 
     var body: some View {
@@ -80,7 +80,7 @@ struct ChannelListView: View {
             group: group,
             childCount: childCount,
             entry: directory?.entries[group.localID],
-            contentClient: contentClient
+            contentObservationFactory: contentObservationFactory
         )
     }
 

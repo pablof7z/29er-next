@@ -59,9 +59,14 @@ extension AppModel {
 
             for await batch in query {
                 guard !Task.isCancelled, generation == engineGeneration else { return }
-                let decoded = batch.rows.first(where: { $0.kind == 10_009 })
-                    .map(decodeRememberedGroups)
-                applyRememberedGroups(decoded.map(RememberedGroupSnapshot.init) ?? .empty)
+                let row = batch.rows.first(where: { $0.kind == 10_009 })
+                let snapshot = row.map {
+                    RememberedGroupSnapshot(
+                        decodeRememberedGroups($0),
+                        sourceEvent: FavoriteRelayListEvent($0)
+                    )
+                } ?? .empty
+                applyRememberedGroups(snapshot)
             }
         } catch {
             guard !Task.isCancelled, generation == engineGeneration else { return }
