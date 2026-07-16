@@ -113,5 +113,7 @@ schemes:
       environmentVariables:
         NMP_DEVICE_PROOF: "1"
         NMP_DEVICE_PROOF_GROUP: nmp-scale-hot-room
+        NMP_DEVICE_PROOF_STORE_SIZE: "2082893824"
+        NMP_DEVICE_PROOF_STORE_SHA256: a03afb760f975a98df43aaae4818b5babf2348cdbae97142e192ad854205da95
       targets:
         - TwentyNinerNextProofUITests

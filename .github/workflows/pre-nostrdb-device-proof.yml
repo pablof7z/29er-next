@@ -1,0 +1,36 @@
+name: Pre-nostrdb device proof build
+
+on:
+  push:
+    branches:
+      - perf/93-pre-nostrdb-device-baseline
+
+jobs:
+  build-proof:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install build tools
+        run: |
+          brew install xcodegen
+          rustup target add \
+            aarch64-apple-ios \
+            aarch64-apple-ios-sim \
+            x86_64-apple-ios \
+            aarch64-apple-darwin
+      - name: Build NMP simulator framework
+        run: Dependencies/nmp/scripts/build-swift-xcframework.sh --sim-only
+      - name: Generate Xcode project
+        run: scripts/generate-project.sh
+      - name: Compile isolated proof graph
+        run: |
+          xcodebuild \
+            -project ios/TwentyNinerNext.xcodeproj \
+            -scheme TwentyNinerNextPreNostrdbDeviceProof \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build-for-testing
