@@ -1,6 +1,5 @@
 import Foundation
 import NMP
-import NMPContent
 
 struct AppEngineResources {
     let config: NMPConfig
@@ -9,7 +8,6 @@ struct AppEngineResources {
 
 struct AppEngineSession {
     let engine: NMPEngine
-    let contentClient: NMPContentClient
     let activePubkey: String?
 }
 
@@ -50,7 +48,6 @@ enum AppEngineBootstrap {
         )
         return AppEngineSession(
             engine: engine,
-            contentClient: NMPContentClient(engine: engine),
             activePubkey: try engine.activeAccount()
         )
     }

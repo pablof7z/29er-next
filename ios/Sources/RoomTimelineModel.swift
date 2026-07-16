@@ -16,13 +16,14 @@ final class RoomTimelineModel {
     private(set) var activityRows: [Row] = []
     private(set) var members: [RoomMember] = []
     private(set) var admins: [String] = []
-    private(set) var profiles = ProfileBook()
+    var profiles = ProfileBook()
+    private(set) var chatHistory = ChatHistoryPaging()
 
     private(set) var chatError: String?
     private(set) var membershipError: String?
     private(set) var activityError: String?
     private(set) var adminError: String?
-    private(set) var profileError: String?
+    var profileError: String?
 
     private(set) var hasReceivedChat = false
     private(set) var hasReceivedMembership = false
@@ -33,7 +34,10 @@ final class RoomTimelineModel {
     let groupID: String
     let hostRelay: String
     private let recipient: String?
-    private let queryOpening: NMPQueryOpening
+    let queryOpening: NMPQueryOpening
+    let profileAuthorUpdates = ProfileAuthorUpdates()
+    var lastProfileAuthors: [String]?
+    private var chatQuery: NMPQuery?
 
     init(
         engine: NMPEngine,
@@ -90,6 +94,8 @@ final class RoomTimelineModel {
 
     func observe() async {
         state = .observing
+        lastProfileAuthors = nil
+        publishProfileAuthors()
 
         await withTaskGroup(of: Void.self) { group in
             group.addTask { [weak self] in
@@ -115,23 +121,44 @@ final class RoomTimelineModel {
         }
     }
 
+    func loadOlderMessages() {
+        guard let query = chatQuery,
+              let target = chatHistory.proposedTarget else { return }
+        do {
+            try query.requestRows(atLeast: target)
+            chatHistory.acceptedRequest(target: target)
+        } catch {
+            chatHistory.fail(error.localizedDescription)
+        }
+    }
+
     private func observeChat() async {
         do {
             let demand = try roomChatDemand(host: hostRelay, groupID: groupID)
             let clock = ContinuousClock()
             let started = clock.now
-            let query = try await queryOpening.demand(engine, demand)
+            let query = try await queryOpening.demand(
+                engine,
+                demand,
+                RoomChatWindow.policy
+            )
+            chatQuery = query
             RoomOpenProbe.shared.recordObserve(
                 .content,
                 duration: started.duration(to: clock.now)
             )
-            defer { query.cancel() }
+            defer {
+                query.cancel()
+                chatQuery = nil
+            }
 
             for await batch in query {
                 guard !Task.isCancelled else { return }
                 chatRows = batch.rows
+                chatHistory.receive(batch.load)
                 chatError = nil
                 hasReceivedChat = true
+                publishProfileAuthors()
                 recordContentProofSnapshotIfReady()
             }
         } catch {
@@ -145,7 +172,7 @@ final class RoomTimelineModel {
             let demand = try roomActivityDemand(host: hostRelay, groupID: groupID)
             let clock = ContinuousClock()
             let started = clock.now
-            let query = try await queryOpening.demand(engine, demand)
+            let query = try await queryOpening.demand(engine, demand, nil)
             RoomOpenProbe.shared.recordObserve(
                 .activity,
                 duration: started.duration(to: clock.now)
@@ -158,6 +185,7 @@ final class RoomTimelineModel {
                 activityRows = batch.rows
                 activityError = nil
                 hasReceivedActivities = true
+                publishProfileAuthors()
                 recordContentProofSnapshotIfReady()
             }
         } catch {
@@ -172,7 +200,8 @@ final class RoomTimelineModel {
             let started = clock.now
             let query = try await queryOpening.demand(
                 engine,
-                roomMembershipDemand(host: hostRelay, groupID: groupID)
+                roomMembershipDemand(host: hostRelay, groupID: groupID),
+                nil
             )
             RoomOpenProbe.shared.recordObserve(
                 .membership,
@@ -188,6 +217,7 @@ final class RoomTimelineModel {
                 membershipError = nil
                 hasReceivedMembership = true
                 hasMembershipMetadata = batch.rows.contains { $0.kind == 39_002 }
+                publishProfileAuthors()
             }
         } catch {
             guard !Task.isCancelled else { return }
@@ -201,7 +231,8 @@ final class RoomTimelineModel {
             let started = clock.now
             let query = try await queryOpening.demand(
                 engine,
-                roomAdminDemand(host: hostRelay, groupID: groupID)
+                roomAdminDemand(host: hostRelay, groupID: groupID),
+                nil
             )
             RoomOpenProbe.shared.recordObserve(
                 .admins,
@@ -214,73 +245,11 @@ final class RoomTimelineModel {
                 RoomOpenProbe.shared.recordSnapshot(.admins, rows: batch.rows)
                 admins = NIP29ViewProjection.admins(from: batch.rows)
                 adminError = nil
+                publishProfileAuthors()
             }
         } catch {
             guard !Task.isCancelled else { return }
             adminError = error.localizedDescription
-        }
-    }
-
-    private func observeProfiles() async {
-        // kind:0 for every pubkey the room can show — message authors, listed
-        // members, admins (the tenex-edge backend surfaces here), membership
-        // event subjects, and live-session authors — via a reactive union
-        // binding so demand grows as new pubkeys appear. NMP owns the routing;
-        // the app only declares which authors it cares about, never a hand-kept
-        // list.
-        //
-        // Each derived inner filter carries the SAME limit as the display query
-        // it mirrors below. Without a limit the engine must materialize the
-        // group's entire kind:9 history just to project its authors — decoding
-        // and signature-parsing thousands of events on entry, which stalls the
-        // room for seconds in a busy channel. Bounding the derivation to the
-        // set we actually render keeps the author demand cheap and correct: we
-        // never resolve a profile for a message the timeline does not show.
-        let authors: NMPBinding = .setOp(.union, [
-            .derived(
-                inner: NMPFilter(kinds: [9], tags: ["h": .literal([groupID])], limit: 200),
-                project: .authors
-            ),
-            .derived(
-                inner: NMPFilter(kinds: [39_002], tags: ["d": .literal([groupID])], limit: 20),
-                project: .tag("p")
-            ),
-            .derived(
-                inner: NMPFilter(kinds: [39_001], tags: ["d": .literal([groupID])], limit: 20),
-                project: .tag("p")
-            ),
-            .derived(
-                inner: NMPFilter(kinds: [30_315], tags: ["h": .literal([groupID])], limit: 100),
-                project: .authors
-            ),
-            .derived(
-                inner: NMPFilter(kinds: [9_000, 9_001], tags: ["h": .literal([groupID])], limit: 200),
-                project: .tag("p")
-            )
-        ])
-
-        do {
-            let clock = ContinuousClock()
-            let started = clock.now
-            let query = try await queryOpening.filter(
-                engine,
-                NMPFilter(kinds: [0], authors: authors, limit: 500)
-            )
-            RoomOpenProbe.shared.recordObserve(
-                .profiles,
-                duration: started.duration(to: clock.now)
-            )
-            defer { query.cancel() }
-
-            for await batch in query {
-                guard !Task.isCancelled else { return }
-                RoomOpenProbe.shared.recordSnapshot(.profiles, rows: batch.rows)
-                profiles = RoomProfileProjection.profiles(from: batch.rows)
-                profileError = nil
-            }
-        } catch {
-            guard !Task.isCancelled else { return }
-            profileError = error.localizedDescription
         }
     }
 

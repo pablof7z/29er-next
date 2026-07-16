@@ -8,25 +8,6 @@ final class ChannelPreviewTests: XCTestCase {
     private let profile = "nprofile1qqsrhuxx8l9ex335q7he0f09aej04zpazpl0ne2cgukyawd24mayt8gpzfmhxue69uhhqatjwpkx2urpvuhx2ucl9q7qz"
     private let article = "naddr1qq3xummnw3ez6atw94shqupdv9kz6emfdaexumedwa5xjar994hx76tnv5pzpqlkerf45wg3uht9d22ym7hdj9xlnklpryzk5px0hd8nc8xu4j6aqvzqqqr4guzrk365"
 
-    func testUnresolvedProfileHasBoundedPubkeyFallback() {
-        XCTAssertEqual(
-            ChannelPreviewText.profileName(pubkey: pubkey, profile: nil),
-            "3bf0c63fcb…fa459d"
-        )
-    }
-
-    func testResolvedProfileRefinesToDisplayName() {
-        let metadata = NostrProfileMetadata(
-            pubkey: pubkey,
-            name: "fiatjaf",
-            displayName: "fiatjaf resolved"
-        )
-        XCTAssertEqual(
-            ChannelPreviewText.profileName(pubkey: pubkey, profile: metadata),
-            "fiatjaf resolved"
-        )
-    }
-
     func testMultipleMentionsUseTheSharedParser() {
         let document = parseNostrContent("nostr:\(profile) met nostr:\(profile)")
         XCTAssertEqual(document.references.count, 2)

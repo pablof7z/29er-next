@@ -28,4 +28,20 @@ final class ChatTimelineViewportTests: XCTestCase {
             )
         )
     }
+
+    func testHistoryPrependAnchorUsesTopVisibleMessage() {
+        XCTAssertEqual(
+            ChatTimelineViewport.topVisibleMessageID(
+                visibleIndices: [3, 4, 5],
+                messageIDs: ["a", "b", "c", "d", "e", "f"]
+            ),
+            "d"
+        )
+        XCTAssertNil(
+            ChatTimelineViewport.topVisibleMessageID(
+                visibleIndices: [],
+                messageIDs: ["a"]
+            )
+        )
+    }
 }
