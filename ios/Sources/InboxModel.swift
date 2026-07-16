@@ -51,7 +51,8 @@ final class InboxModel {
         do {
             let query = try await queryOpening.filter(
                 engine,
-                NMPFilter(kinds: [9], tags: ["p": .literal([recipient])], limit: 500)
+                NMPFilter(kinds: [9], tags: ["p": .literal([recipient])], limit: 500),
+                nil
             )
             defer { query.cancel() }
 
@@ -82,7 +83,8 @@ final class InboxModel {
         do {
             let query = try await queryOpening.filter(
                 engine,
-                NMPFilter(kinds: [0], authors: authors, limit: 500)
+                NMPFilter(kinds: [0], authors: authors, limit: 500),
+                nil
             )
             defer { query.cancel() }
 

@@ -10,6 +10,8 @@ struct ChatTimelineView: View {
     let mentionIDs: Set<String>
     let reads: MentionReads?
     let focusMessageID: String?
+    let historyState: ChatHistoryLoadState
+    let onLoadOlder: () -> Void
     let onOpenLink: (URL) -> Void
     let onOpenImage: (URL) -> Void
     let onReply: (RoomMessage) -> Void
@@ -48,6 +50,8 @@ struct ChatTimelineView: View {
                 mentionIDs: mentionIDs,
                 reads: reads,
                 focusMessageID: focusMessageID,
+                historyState: historyState,
+                onLoadOlder: onLoadOlder,
                 onOpenLink: onOpenLink,
                 onOpenImage: onOpenImage,
                 onReply: onReply
@@ -78,6 +82,8 @@ private struct MessageTimelineView: View {
     let mentionIDs: Set<String>
     let reads: MentionReads?
     let focusMessageID: String?
+    let historyState: ChatHistoryLoadState
+    let onLoadOlder: () -> Void
     let onOpenLink: (URL) -> Void
     let onOpenImage: (URL) -> Void
     let onReply: (RoomMessage) -> Void
@@ -85,6 +91,7 @@ private struct MessageTimelineView: View {
     @State private var isPinnedToBottom = true
     @State private var visibleIndices: Set<Int> = []
     @State private var didFocus = false
+    @State private var pendingHistoryAnchor: String?
 
     private let bottomAnchorID = "chat-bottom-anchor"
     private let scrollSpace = "chat-scroll-space"
@@ -121,6 +128,14 @@ private struct MessageTimelineView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 0) {
+                        ChatHistoryControl(state: historyState) {
+                            pendingHistoryAnchor = ChatTimelineViewport.topVisibleMessageID(
+                                visibleIndices: visibleIndices,
+                                messageIDs: messages.map(\.id)
+                            )
+                            onLoadOlder()
+                        }
+
                         ForEach(entries) { entry in
                             switch entry {
                             case .daySeparator(_, let label):
@@ -166,7 +181,13 @@ private struct MessageTimelineView: View {
                     guard isPinnedToBottom else { return }
                     scrollToBottom(proxy)
                 }
-                .onChange(of: messages.count) { _, _ in focusIfNeeded(proxy) }
+                .onChange(of: messages.count) { previous, current in
+                    if current > previous, let anchor = pendingHistoryAnchor {
+                        proxy.scrollTo(anchor, anchor: .top)
+                        pendingHistoryAnchor = nil
+                    }
+                    focusIfNeeded(proxy)
+                }
                 .onAppear { focusIfNeeded(proxy) }
                 .overlayPreferenceValue(BottomAnchorBoundsKey.self) { anchor in
                     if let anchor {
