@@ -19,6 +19,7 @@ final class AppModel {
     var remembered = RememberedGroupSnapshot.empty
     var hasReceivedRememberedGroups = false
     var rememberedGroupsError: String?
+    var favoriteRelayEditState = FavoriteRelayEditState.idle
     var selectedHost: String?
     var selectedGroup: GroupCoordinate?
     var diagnostics = DiagnosticsSnapshot()
@@ -114,6 +115,7 @@ final class AppModel {
             remembered = .empty
             hasReceivedRememberedGroups = false
             rememberedGroupsError = nil
+            favoriteRelayEditState = .idle
             selectedHost = activePubkey == nil ? groupRelay : nil
             selectedGroup = nil
             diagnostics = DiagnosticsSnapshot()
@@ -165,6 +167,7 @@ final class AppModel {
                 remembered = .empty
                 hasReceivedRememberedGroups = false
                 rememberedGroupsError = nil
+                favoriteRelayEditState = .idle
                 selectedHost = nil
                 selectedGroup = nil
             } catch {
@@ -210,6 +213,7 @@ final class AppModel {
         remembered = .empty
         hasReceivedRememberedGroups = false
         rememberedGroupsError = nil
+        favoriteRelayEditState = .idle
         selectedHost = groupRelay
         selectedGroup = nil
         groups = []

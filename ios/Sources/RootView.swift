@@ -12,6 +12,7 @@ struct RootView: View {
     @State private var reads = MentionReads()
     @State private var showingDiagnostics = false
     @State private var showingIdentity = false
+    @State private var showingRelayBrowser = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -30,7 +31,7 @@ struct RootView: View {
                     roomContent
                 }
             }
-            .navigationTitle("29er")
+            .navigationTitle("Channels")
             .navigationDestination(for: GroupSummary.self) { group in
                 if let engine = model.engine {
                     RoomView(
@@ -76,6 +77,14 @@ struct RootView: View {
                 }
             }
             .toolbar {
+                ToolbarItem(placement: PlatformSupport.leadingToolbarPlacement) {
+                    Button {
+                        showingRelayBrowser = true
+                    } label: {
+                        Label("Favorite Relays", systemImage: "antenna.radiowaves.left.and.right")
+                    }
+                    .accessibilityIdentifier("favorite-relays-button")
+                }
                 // One group with a @ViewBuilder body: a conditional first item
                 // inserts reliably when the account signs in, which a
                 // conditional standalone ToolbarItem does not.
@@ -110,6 +119,21 @@ struct RootView: View {
             }
             .sheet(isPresented: $showingIdentity) {
                 IdentitySheet(model: model)
+            }
+            .sheet(isPresented: $showingRelayBrowser) {
+                FavoriteRelayBrowser(
+                    activePubkey: model.activePubkey,
+                    bootstrapHost: model.groupRelay,
+                    remembered: model.remembered,
+                    hasReceivedRemembered: model.hasReceivedRememberedGroups,
+                    rememberedError: model.rememberedGroupsError,
+                    selectedHost: model.selectedHost,
+                    editState: model.favoriteRelayEditState,
+                    selectHost: selectHost,
+                    addRelay: model.addFavoriteRelay,
+                    removeRelay: model.removeFavoriteRelay,
+                    clearEditError: model.clearFavoriteRelayError
+                )
             }
         }
         .id(model.engineGeneration)
@@ -153,48 +177,35 @@ struct RootView: View {
 
     @ViewBuilder
     private var roomContent: some View {
-        VStack(spacing: 0) {
-            HostGroupSelector(
-                activePubkey: model.activePubkey,
-                bootstrapHost: model.groupRelay,
-                remembered: model.remembered,
-                hasReceivedRemembered: model.hasReceivedRememberedGroups,
-                rememberedError: model.rememberedGroupsError,
-                selectedHost: model.selectedHost,
-                selectedGroup: model.selectedGroup,
-                selectHost: selectHost,
-                openGroup: openRememberedGroup
-            )
-            Group {
-                if let groupsError = model.groupsError {
-                    ContentUnavailableView(
-                        "Rooms unavailable",
-                        systemImage: "antenna.radiowaves.left.and.right.slash",
-                        description: Text(groupsError)
-                    )
-                } else if model.selectedHost == nil {
-                    ContentUnavailableView(
-                        "No remembered host",
-                        systemImage: "sailboat",
-                        description: Text("Choose an account with public remembered NIP-29 rooms.")
-                    )
-                } else if model.groups.isEmpty {
-                    ContentUnavailableView {
-                        Label("Looking for Rooms", systemImage: "sailboat")
-                    } description: {
-                        Text("Public NIP-29 rooms will appear as NMP receives metadata from \(relayHost).")
-                    } actions: {
-                        if !model.hasReceivedGroups { ProgressView() }
-                    }
-                } else {
-                    ChannelListView(
-                        channels: GroupDirectoryProjection.roots(in: model.groups),
-                        allGroups: model.groups,
-                        directory: directory,
-                        contentObservationFactory: model.contentObservationFactory,
-                        path: $path
-                    )
+        Group {
+            if let groupsError = model.groupsError {
+                ContentUnavailableView(
+                    "Rooms unavailable",
+                    systemImage: "antenna.radiowaves.left.and.right.slash",
+                    description: Text(groupsError)
+                )
+            } else if model.selectedHost == nil {
+                ContentUnavailableView(
+                    "No favorite chat relays",
+                    systemImage: "antenna.radiowaves.left.and.right",
+                    description: Text("Open Favorite Relays to choose a relay from your NIP-51 chat list.")
+                )
+            } else if model.groups.isEmpty {
+                ContentUnavailableView {
+                    Label("Looking for Rooms", systemImage: "sailboat")
+                } description: {
+                    Text("Public rooms from \(relayHost) will appear here.")
+                } actions: {
+                    if !model.hasReceivedGroups { ProgressView() }
                 }
+            } else {
+                ChannelListView(
+                    channels: GroupDirectoryProjection.roots(in: model.groups),
+                    allGroups: model.groups,
+                    directory: directory,
+                    contentObservationFactory: model.contentObservationFactory,
+                    path: $path
+                )
             }
         }
     }
@@ -202,11 +213,6 @@ struct RootView: View {
     private func selectHost(_ host: String) {
         path = NavigationPath()
         model.selectHost(host)
-    }
-
-    private func openRememberedGroup(_ group: RememberedGroupChoice) {
-        model.selectGroup(group)
-        path.append(model.summary(for: group))
     }
 
     private var relayHost: String {

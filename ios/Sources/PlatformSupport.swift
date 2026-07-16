@@ -7,6 +7,14 @@ import AppKit
 #endif
 
 enum PlatformSupport {
+    static var leadingToolbarPlacement: ToolbarItemPlacement {
+        #if os(iOS)
+        .topBarLeading
+        #else
+        .navigation
+        #endif
+    }
+
     static var trailingToolbarPlacement: ToolbarItemPlacement {
         #if os(iOS)
         .topBarTrailing
@@ -96,6 +104,16 @@ extension View {
         presentationDetents([.medium, .large])
         #else
         frame(minWidth: 520, minHeight: 480)
+        #endif
+    }
+
+    @ViewBuilder
+    func platformRelayBrowserPresentation() -> some View {
+        #if os(iOS)
+        presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        #else
+        frame(minWidth: 440, minHeight: 480)
         #endif
     }
 
