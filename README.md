@@ -45,7 +45,7 @@ The iOS preview bundle identifier is `io.f7z.app29er.next`, so it installs besid
 - Native macOS split view with an always-visible, expandable channel hierarchy and room content in the detail pane.
 - Persistent NMP cache in Application Support.
 - App-owned indexer configuration plus one explicitly labeled, read-only operator bootstrap host for signed-out browsing.
-- An app-owned host/group selection rendered at the top of the room browser. Signed-in choices come only from NMP's account-scoped `activeAccountDemand` and `decodeRememberedGroups` composition over the canonical NIP-51 kind 10009 winner; the selected host never changes that account demand.
+- An iOS Favorite Relays toolbar browser replaces the permanent host/group selector strip. Signed-in choices come only from NMP's account-scoped `activeAccountDemand` and `decodeRememberedGroups` composition over the canonical NIP-51 kind 10009 winner; the selected host never changes that account demand.
 - Live room metadata (`kind:39000`) and directory previews use selected-host pinned NMP demands, with group identity keyed by host relay plus local group id. Changing hosts cancels and replaces only those host-scoped handles.
 - Read-only subgroup navigation from exactly one child-side `parent` tag in relay-authored metadata. Conflicting or incomplete edges are not inferred; the unlinked group remains visible at the root.
 - Independent bounded, selected-host pinned room queries and evidence for chat (`kind:9` plus `kind:9000`/`kind:9001` notices), membership (`kind:39002`), and live agent activity (`kind:30315`). Chat opens on the newest 200 events and can expand in 200-event steps to a 1,000-event ceiling while preserving the reader's viewport. Each handle follows the room view task and releases its own demand on cancellation.
@@ -60,7 +60,7 @@ The iOS preview bundle identifier is `io.f7z.app29er.next`, so it installs besid
 
 Automatic login deliberately favors convenience over credential protection: the NMP SDK stores one plaintext nsec file inside the app sandbox with owner-only permissions. It does not use Keychain, Secure Enclave, hardware-backed encryption, or the canonical event/outbox database. Standard protected vault providers and credential recovery remain separate upstream NMP work.
 
-Remember/forget is deliberately absent. Safe edits to the kind 10009 replaceable list remain blocked on [NMP #50](https://github.com/pablof7z/nmp/issues/50), which must preserve source-scoped base evidence and unknown/private items. The app never rebuilds that list from its public projection and never keeps an optimistic Swift mirror.
+Signed-in accounts can add or remove public favorite-relay `r` tags. Swift edits the complete kind 10009 event delivered by NMP, preserving its content, unrelated tags, and ordering, then publishes a durable generic `WriteIntent` through author-outbox routing. The UI follows NMP's receipt and canonical store path and keeps no optimistic mirror. [NMP #597](https://github.com/pablof7z/nmp/issues/597) tracks exposing the existing Rust exact-base replaceable guard to Swift and Kotlin as concurrency hardening; generic native event creation and publication already work.
 
 The current typed kind 9 composer is NMP-owned end to end. Broader immutable draft/context composition for other protocol-owned event types remains tracked by [NMP #45](https://github.com/pablof7z/nmp/issues/45); Swift does not add protocol validation, raw tags, relay routing, signing, retries, or compatibility shims while that contract remains open.
 
