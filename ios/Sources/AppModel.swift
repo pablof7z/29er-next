@@ -24,15 +24,19 @@ final class AppModel {
     var selectedGroup: GroupCoordinate?
     var diagnostics = DiagnosticsSnapshot()
     var diagnosticsError: String?
-    private(set) var activePubkey: String?
-    private(set) var isSigningIn = false
-    private(set) var identityError: String?
+    var activePubkey: String?
+    var isSigningIn = false
+    var identityError: String?
+    var generatedIdentityProfile: GeneratedIdentityProfile?
 
     private(set) var engine: NMPEngine?
     private(set) var contentObservationFactory: NMPReferenceObservationFactory?
     private(set) var engineGeneration = 0
     private var engineConfig: NMPConfig?
     private var localAccountStore: NMPInsecureFileAccountStore?
+    var generatedProfileStore: GeneratedIdentityProfileStore?
+    var activeRegistration: NMPAccountRegistration?
+    var profilePublishTask: Task<Void, Never>?
     let groupRelay: String
 
     var canResetLocalDatabase: Bool {
@@ -72,10 +76,12 @@ final class AppModel {
             )
             engineConfig = resources.config
             localAccountStore = resources.accountStore
+            generatedProfileStore = resources.generatedProfileStore
             let session = try AppEngineBootstrap.start(resources)
             engine = session.engine
             contentObservationFactory = .live(engine: session.engine)
             activePubkey = session.activePubkey
+            generatedIdentityProfile = resources.generatedProfileStore.load(matching: session.activePubkey)
             selectedHost = session.activePubkey == nil ? groupRelay : nil
         } catch {
             engine = nil
@@ -95,6 +101,9 @@ final class AppModel {
         }
 
         let oldEngine = engine
+        profilePublishTask?.cancel()
+        profilePublishTask = nil
+        activeRegistration = nil
         engine = nil
         contentObservationFactory = nil
         activePubkey = nil
@@ -109,6 +118,7 @@ final class AppModel {
             self.engine = engine
             contentObservationFactory = .live(engine: engine)
             activePubkey = try engine.activeAccount()
+            generatedIdentityProfile = generatedProfileStore?.load(matching: activePubkey)
             groups = []
             hasReceivedGroups = false
             groupsError = nil
@@ -134,6 +144,10 @@ final class AppModel {
 
     func run() async {
         guard let engine else { return }
+        guard await ensureIdentity() else {
+            state = .failed(identityError ?? "NMP could not create a default identity.")
+            return
+        }
         let generation = engineGeneration
         state = .observing
 
@@ -147,110 +161,7 @@ final class AppModel {
         }
     }
 
-    func signIn(secretKey: String) async {
-        guard let engine else {
-            identityError = "NMP is not available."
-            return
-        }
-        guard !isSigningIn else { return }
-
-        isSigningIn = true
-        identityError = nil
-        defer { isSigningIn = false }
-
-        do {
-            let registration = try await engine.addAccount(secretKey: secretKey)
-            let pubkey = registration.publicKey
-            do {
-                try engine.setActiveAccount(pubkey)
-                activePubkey = pubkey
-                remembered = .empty
-                hasReceivedRememberedGroups = false
-                rememberedGroupsError = nil
-                favoriteRelayEditState = .idle
-                selectedHost = nil
-                selectedGroup = nil
-            } catch {
-                let message = Self.identityMessage(for: error)
-                do {
-                    try engine.clearPersistedAccount()
-                    replaceWithReadOnlyEngine(identityError: message)
-                } catch {
-                    identityError = "NMP could not activate or clear the saved account."
-                }
-            }
-        } catch {
-            activePubkey = nil
-            identityError = Self.identityMessage(for: error)
-        }
-    }
-
-    @discardableResult
-    func signOut() -> Bool {
-        guard let engine else {
-            identityError = "NMP is not available."
-            return false
-        }
-        do {
-            try engine.clearPersistedAccount()
-            replaceWithReadOnlyEngine(identityError: nil)
-            return true
-        } catch {
-            identityError = "NMP could not clear the saved account."
-            return false
-        }
-    }
-
     func clearIdentityError() {
         identityError = nil
-    }
-
-    private func replaceWithReadOnlyEngine(identityError: String?) {
-        let oldEngine = engine
-        engine = nil
-        contentObservationFactory = nil
-        activePubkey = nil
-        remembered = .empty
-        hasReceivedRememberedGroups = false
-        rememberedGroupsError = nil
-        favoriteRelayEditState = .idle
-        selectedHost = groupRelay
-        selectedGroup = nil
-        groups = []
-        hasReceivedGroups = false
-        groupsError = nil
-        self.identityError = identityError
-        state = .starting
-        oldEngine?.shutdown()
-
-        guard let engineConfig else {
-            engine = nil
-            state = .failed("NMP could not restart a read-only session.")
-            engineGeneration &+= 1
-            return
-        }
-
-        do {
-            let engine = try NMPEngine(
-                config: engineConfig,
-                localAccountStore: localAccountStore
-            )
-            self.engine = engine
-            contentObservationFactory = .live(engine: engine)
-        } catch {
-            engine = nil
-            contentObservationFactory = nil
-            state = .failed("NMP could not restart a read-only session.")
-        }
-        engineGeneration &+= 1
-    }
-
-    private static func identityMessage(for error: Error) -> String {
-        switch error as? NMPError {
-        case .invalidSecretKey:
-            return "That secret key is not a valid nsec or secret hex key."
-        default:
-            return "NMP could not sign in this account."
-        }
     }
 }

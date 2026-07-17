@@ -4,6 +4,7 @@ import NMP
 struct AppEngineResources {
     let config: NMPConfig
     let accountStore: NMPInsecureFileAccountStore
+    let generatedProfileStore: GeneratedIdentityProfileStore
 }
 
 struct AppEngineSession {
@@ -38,7 +39,14 @@ enum AppEngineBootstrap {
         let accountStore = NMPInsecureFileAccountStore(
             fileURL: appDirectory.appendingPathComponent("local-account.nsec")
         )
-        return AppEngineResources(config: config, accountStore: accountStore)
+        let generatedProfileStore = GeneratedIdentityProfileStore(
+            fileURL: appDirectory.appendingPathComponent("generated-identity.json")
+        )
+        return AppEngineResources(
+            config: config,
+            accountStore: accountStore,
+            generatedProfileStore: generatedProfileStore
+        )
     }
 
     static func start(_ resources: AppEngineResources) throws -> AppEngineSession {
