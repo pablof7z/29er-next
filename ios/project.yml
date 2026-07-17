@@ -35,6 +35,9 @@ targets:
       properties:
         UILaunchScreen: {}
         CFBundleDisplayName: 29er Next
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        ITSAppUsesNonExemptEncryption: false
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         NMPIndexerRelays:
@@ -51,7 +54,9 @@ targets:
         PRODUCT_MODULE_NAME: TwentyNinerNext
         PRODUCT_NAME: TwentyNinerNext
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CURRENT_PROJECT_VERSION: "1"
         DEVELOPMENT_TEAM: 456SHKPP26
+        MARKETING_VERSION: 0.1.0
         TARGETED_DEVICE_FAMILY: "1"
   TwentyNinerNextProof:
     type: application
