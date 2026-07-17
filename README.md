@@ -9,12 +9,12 @@ The current slice reconstructs a signed-in account's remembered NIP-29 groups th
 - SwiftUI owns presentation, navigation, and which live queries are on screen.
 - NMP owns the event store, relay planning, subscription lifecycle, routing, deduplication, persistence, and diagnostics.
 - Query handles follow view/task lifetime. There are no timers or polling loops.
-- The NMP dependency is pinned as a git submodule; legacy 29er code is not copied into this repository.
+- Bootstrap clones NMP's current `origin/master` into an untracked local checkout; legacy 29er code is not copied into this repository.
 
 ## Bootstrap
 
 ```bash
-git clone --recurse-submodules https://github.com/pablof7z/29er-next.git
+git clone https://github.com/pablof7z/29er-next.git
 cd 29er-next
 scripts/bootstrap-nmp.sh
 scripts/generate-project.sh
