@@ -4,6 +4,7 @@ struct IdentitySheet: View {
     @Bindable var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var secretKey = ""
+    @State private var isReplacingIdentity = false
 
     var body: some View {
         Group {
@@ -142,6 +143,9 @@ struct IdentitySheet: View {
 
     private func macSignedInContent(pubkey: String) -> some View {
         VStack(alignment: .leading, spacing: 18) {
+            if let profile = model.generatedIdentityProfile {
+                GeneratedIdentityHeader(profile: profile)
+            }
             VStack(alignment: .leading, spacing: 7) {
                 Label("Signed in", systemImage: "checkmark.circle.fill")
                     .font(.headline)
@@ -156,14 +160,14 @@ struct IdentitySheet: View {
 
             Divider()
 
-            HStack {
-                Button("Close") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Sign Out", role: .destructive) {
-                    if model.signOut() {
-                        dismiss()
-                    }
+            if isReplacingIdentity {
+                replacementEntry
+            } else {
+                HStack {
+                    Button("Close") { dismiss() }
+                        .keyboardShortcut(.cancelAction)
+                    Spacer()
+                    Button("Use Another Account") { isReplacingIdentity = true }
                 }
             }
         }
@@ -173,6 +177,14 @@ struct IdentitySheet: View {
 
     @ViewBuilder
     private func signedInContent(pubkey: String) -> some View {
+        if let profile = model.generatedIdentityProfile {
+            Section {
+                GeneratedIdentityHeader(profile: profile)
+            } footer: {
+                Text("29er created this identity automatically. You can replace it at any time.")
+            }
+        }
+
         Section {
             Label("Signed in", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
@@ -186,13 +198,22 @@ struct IdentitySheet: View {
         }
 
         Section {
-            Button("Sign Out", role: .destructive) {
-                if model.signOut() {
-                    dismiss()
+            if isReplacingIdentity {
+                SecureField("nsec1… or secret hex", text: $secretKey)
+                    .platformSecretEntry()
+                    .privacySensitive()
+                    .disabled(model.isSigningIn)
+                Button {
+                    Task { await submit() }
+                } label: {
+                    if model.isSigningIn { ProgressView() } else { Text("Replace Account") }
                 }
+                .disabled(!canSubmit)
+            } else {
+                Button("Use Another Account") { isReplacingIdentity = true }
             }
         } footer: {
-            Text("Signing out removes the local account checkpoint and starts a fresh read-only engine.")
+            Text("The entered account replaces the current local identity after NMP validates it.")
         }
     }
 
@@ -240,9 +261,9 @@ struct IdentitySheet: View {
     private func submit() async {
         var submittedKey = secretKey.trimmingCharacters(in: .whitespacesAndNewlines)
         secretKey.removeAll(keepingCapacity: false)
-        await model.signIn(secretKey: submittedKey)
+        let didReplace = await model.signIn(secretKey: submittedKey)
         submittedKey.removeAll(keepingCapacity: false)
-        if model.activePubkey != nil {
+        if didReplace {
             dismiss()
         }
     }
@@ -250,11 +271,28 @@ struct IdentitySheet: View {
     private var canSubmit: Bool {
         !secretKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !model.isSigningIn
     }
-}
 
-private extension String {
-    var shortIdentity: String {
-        guard count > 20 else { return self }
-        return "\(prefix(10))…\(suffix(10))"
+    #if os(macOS)
+    private var replacementEntry: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SecureField("nsec1… or 64-character secret hex", text: $secretKey)
+                .textFieldStyle(.roundedBorder)
+                .privacySensitive()
+                .disabled(model.isSigningIn)
+                .onSubmit { Task { await submit() } }
+            if let identityError = model.identityError {
+                Label(identityError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.red)
+            }
+            HStack {
+                Button("Cancel") { isReplacingIdentity = false }
+                Spacer()
+                Button("Replace Account") { Task { await submit() } }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!canSubmit)
+            }
+        }
     }
+    #endif
 }

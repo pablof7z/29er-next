@@ -6,65 +6,112 @@ final class IdentitySessionTests: XCTestCase {
     private let secretOne = String(repeating: "0", count: 63) + "1"
     private let publicOne = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
 
-    func testValidSecretRestoresAcrossLaunchAndSignOutClearsCheckpoint() async throws {
+    func testCleanLaunchCreatesAndRestoresGeneratedIdentity() async throws {
         let root = try makeRoot()
         var model: AppModel? = makeModel(root: root)
 
-        await model?.signIn(secretKey: secretOne)
+        let didGenerate = await model?.ensureIdentity() ?? false
+        XCTAssertTrue(didGenerate)
+        let pubkey = try XCTUnwrap(model?.activePubkey)
+        let profile = try XCTUnwrap(model?.generatedIdentityProfile)
+        XCTAssertEqual(profile.pubkey, pubkey)
+        XCTAssertFalse(profile.name.isEmpty)
 
+        model?.profilePublishTask?.cancel()
+        model?.engine?.shutdown()
+        model = nil
+
+        var restored: AppModel? = makeModel(root: root)
+        XCTAssertEqual(restored?.activePubkey, pubkey)
+        XCTAssertEqual(restored?.generatedIdentityProfile, profile)
+
+        restored?.engine?.shutdown()
+        restored = nil
+        try FileManager.default.removeItem(at: root)
+    }
+
+    func testImportedIdentityReplacesGeneratedIdentity() async throws {
+        let root = try makeRoot()
+        var model: AppModel? = makeModel(root: root)
+        let didGenerate = await model?.ensureIdentity() ?? false
+        XCTAssertTrue(didGenerate)
+        let generatedPubkey = model?.activePubkey
+
+        model?.profilePublishTask?.cancel()
+        model?.engine?.shutdown()
+        model = makeModel(root: root)
+        XCTAssertEqual(model?.activePubkey, generatedPubkey)
+
+        let didReplace = await model?.signIn(secretKey: secretOne) ?? false
+        XCTAssertTrue(didReplace)
         XCTAssertEqual(model?.activePubkey, publicOne)
+        XCTAssertNotEqual(model?.activePubkey, generatedPubkey)
+        XCTAssertNil(model?.generatedIdentityProfile)
         XCTAssertNil(model?.identityError)
-        XCTAssertFalse(model?.isSigningIn ?? true)
 
         model?.engine?.shutdown()
         model = nil
 
         var restored: AppModel? = makeModel(root: root)
         XCTAssertEqual(restored?.activePubkey, publicOne)
-        let restoredEngineID = try ObjectIdentifier(XCTUnwrap(restored?.engine))
-        let restoredGeneration = restored?.engineGeneration
-
-        XCTAssertTrue(restored?.signOut() ?? false)
-        XCTAssertNil(restored?.activePubkey)
-        XCTAssertNil(restored?.identityError)
-        XCTAssertEqual(restored?.engineGeneration, (restoredGeneration ?? 0) + 1)
-        XCTAssertNotEqual(
-            ObjectIdentifier(try XCTUnwrap(restored?.engine)),
-            restoredEngineID
-        )
+        XCTAssertNil(restored?.generatedIdentityProfile)
 
         restored?.engine?.shutdown()
         restored = nil
-
-        var signedOut: AppModel? = makeModel(root: root)
-        XCTAssertNil(signedOut?.activePubkey)
-        signedOut?.engine?.shutdown()
-        signedOut = nil
         try FileManager.default.removeItem(at: root)
     }
 
-    func testInvalidSecretStaysSignedOutWithTypedMessage() async throws {
+    func testInvalidReplacementPreservesGeneratedIdentity() async throws {
         let root = try makeRoot()
         var model: AppModel? = makeModel(root: root)
+        let didGenerate = await model?.ensureIdentity() ?? false
+        XCTAssertTrue(didGenerate)
+        let generatedPubkey = model?.activePubkey
+        let generatedProfile = model?.generatedIdentityProfile
 
-        await model?.signIn(secretKey: "not-a-key")
-
-        XCTAssertNil(model?.activePubkey)
-        XCTAssertEqual(
-            model?.identityError,
-            "That secret key is not a valid nsec or secret hex key."
-        )
+        let didReplace = await model?.signIn(secretKey: "not-a-key") ?? true
+        XCTAssertFalse(didReplace)
+        XCTAssertEqual(model?.activePubkey, generatedPubkey)
+        XCTAssertEqual(model?.generatedIdentityProfile, generatedProfile)
+        XCTAssertEqual(model?.identityError, "That secret key is not a valid nsec or secret hex key.")
         XCTAssertFalse(model?.isSigningIn ?? true)
+
+        model?.profilePublishTask?.cancel()
+        model?.engine?.shutdown()
+        model = nil
+        try FileManager.default.removeItem(at: root)
+    }
+
+    func testGeneratedProfilePersistenceFailureRollsBackAccount() async throws {
+        let root = try makeRoot()
+        let appDirectory = root.appendingPathComponent("29er-next", isDirectory: true)
+        try FileManager.default.createDirectory(at: appDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: appDirectory.appendingPathComponent("generated-identity.json"),
+            withIntermediateDirectories: true
+        )
+        var model: AppModel? = makeModel(root: root)
+
+        let didGenerate = await model?.ensureIdentity() ?? true
+        XCTAssertFalse(didGenerate)
+        XCTAssertNil(model?.activePubkey)
+        XCTAssertEqual(model?.identityError, "NMP could not create and save a default identity.")
 
         model?.engine?.shutdown()
         model = nil
+        var restored: AppModel? = makeModel(root: root)
+        XCTAssertNil(restored?.activePubkey)
+
+        restored?.engine?.shutdown()
+        restored = nil
         try FileManager.default.removeItem(at: root)
     }
 
     func testDatabaseResetRecoversStartupAndPreservesSavedAccount() async throws {
         let root = try makeRoot()
         var model: AppModel? = makeModel(root: root)
-        await model?.signIn(secretKey: secretOne)
+        let didSignIn = await model?.signIn(secretKey: secretOne) ?? false
+        XCTAssertTrue(didSignIn)
         XCTAssertEqual(model?.activePubkey, publicOne)
 
         let appDirectory = root.appendingPathComponent("29er-next", isDirectory: true)
@@ -130,12 +177,11 @@ final class IdentitySessionTests: XCTestCase {
     }
 
     private func makeModel(root: URL) -> AppModel {
-        let configuration = OperatorConfiguration(
-            indexerRelays: [],
-            groupRelay: "wss://nip29.f7z.io"
-        )
-        return AppModel(
-            operatorConfiguration: configuration,
+        AppModel(
+            operatorConfiguration: OperatorConfiguration(
+                indexerRelays: [],
+                groupRelay: "wss://nip29.f7z.io"
+            ),
             applicationSupportURL: root
         )
     }
