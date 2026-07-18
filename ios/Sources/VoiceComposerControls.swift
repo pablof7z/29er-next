@@ -1,44 +1,50 @@
 import SwiftUI
 
 #if os(iOS)
+/// The trailing composer button. Shows the send arrow when there is substantive text/an
+/// attachment, otherwise a microphone that is the persistent anchor for the press-and-hold
+/// gesture. Keeping this one view mounted across idle → held recording is what preserves
+/// the continuous touch as the surrounding composer content swaps.
 struct VoiceComposerActionButton: View {
-    @ObservedObject var recorder: VoiceMessageRecorder
+    @ObservedObject var coordinator: VoiceComposerCoordinator
     let showsMic: Bool
     let canSubmit: Bool
     let isSending: Bool
     let submit: () -> Void
 
+    @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     @State private var isTracking = false
-    @State private var isCancelArmed = false
 
     var body: some View {
         Group {
-            if showsMic || recorder.isActive {
+            if showsMic || coordinator.state.isHeldRecording {
                 micButton
             } else {
                 sendButton
             }
         }
-        .frame(width: 36, height: 36)
+        .frame(width: 44, height: 44)
         .contentShape(Rectangle())
     }
 
     private var micButton: some View {
-        Image(systemName: recorder.isLocked ? "lock.fill" : "mic.fill")
+        Image(systemName: "mic.fill")
             .font(.subheadline.weight(.bold))
             .foregroundStyle(.white)
-            .frame(width: 36, height: 36)
-            .background(isCancelArmed ? Color.red : Color.accentColor, in: .circle)
-            .scaleEffect(isTracking && !recorder.isLocked ? 1.12 : 1)
-            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: isTracking)
-            .gesture(recordingGesture)
+            .frame(width: 40, height: 40)
+            .background(Color.accentColor, in: .circle)
+            .scaleEffect(coordinator.state.isHeldRecording ? 1.14 : 1)
+            .animation(.spring(response: 0.24, dampingFraction: 0.7), value: coordinator.state.isHeldRecording)
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
+            // VoiceOver cannot hold: the gesture is suppressed and a tap records hands-free.
+            .gesture(recordingGesture, including: voiceOverEnabled ? .none : .all)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(recorder.isActive ? "Recording voice message" : "Record voice message")
-            .accessibilityHint("Press and hold to record. Slide up to lock or left to cancel.")
-            .accessibilityAction(named: "Start recording") { recorder.begin() }
-            .accessibilityAction(named: "Lock recording") { recorder.lock() }
-            .accessibilityAction(named: "Send recording") { recorder.finishAndSend() }
-            .accessibilityAction(named: "Cancel recording") { recorder.cancel() }
+            .accessibilityLabel("Record voice message")
+            .accessibilityHint("Starts a hands-free recording you can pause, review, or send.")
+            .accessibilityAddTraits(.startsMediaSession)
+            .accessibilityAction { coordinator.beginHandsFree() }
             .accessibilityIdentifier("room-message-mic")
     }
 
@@ -53,7 +59,7 @@ struct VoiceComposerActionButton: View {
                         .foregroundStyle(canSubmit ? .white : .secondary)
                 }
             }
-            .frame(width: 36, height: 36)
+            .frame(width: 40, height: 40)
             .background(Color.accentColor.opacity(canSubmit ? 1 : 0.12), in: .circle)
         }
         .buttonStyle(.plain)
@@ -67,75 +73,46 @@ struct VoiceComposerActionButton: View {
             .onChanged { value in
                 if !isTracking {
                     isTracking = true
-                    recorder.begin()
+                    coordinator.pressBegan()
                 }
-                if value.translation.height < -64 {
-                    recorder.lock()
-                }
-                isCancelArmed = value.translation.width < -86 && !recorder.isLocked
+                let reading = coordinator.state.metrics.reading(
+                    translation: value.translation,
+                    layoutDirection: layoutDirection
+                )
+                coordinator.dragChanged(reading)
             }
             .onEnded { _ in
-                defer {
-                    isTracking = false
-                    isCancelArmed = false
-                }
-                if isCancelArmed {
-                    recorder.cancel()
-                } else if !recorder.isLocked {
-                    recorder.finishAndSend()
-                }
+                isTracking = false
+                coordinator.pressEnded()
             }
     }
 }
 
-struct VoiceRecordingPanel: View {
-    @ObservedObject var recorder: VoiceMessageRecorder
+/// Inline, recoverable microphone-denied state. Never destroys typed text or drafts; the
+/// composer keeps that state and simply offers a way to grant access.
+struct VoicePermissionDeniedRow: View {
+    let onOpenSettings: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
-            Circle()
-                .fill(Color.red)
-                .frame(width: 8, height: 8)
-            Text(Self.timeLabel(recorder.duration))
-                .font(.caption.monospacedDigit().weight(.semibold))
-                .frame(width: 42, alignment: .leading)
-            waveform
-            if recorder.isLocked {
-                Button("Cancel", role: .destructive) { recorder.cancel() }
-                    .font(.caption.weight(.semibold))
-                Button { recorder.finishAndSend() } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title2)
-                }
-                .accessibilityLabel("Send voice message")
-            } else {
-                Label("Slide up to lock", systemImage: "chevron.up")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+            Image(systemName: "mic.slash.fill")
+                .foregroundStyle(.secondary)
+            Text("Microphone access is off.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            Button("Open Settings", action: onOpenSettings)
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.accentColor)
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("voice-open-settings")
         }
-        .frame(minHeight: 40)
+        .padding(.leading, 6)
+        .frame(minHeight: 44)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("voice-recording-panel")
-    }
-
-    private var waveform: some View {
-        HStack(alignment: .center, spacing: 2) {
-            ForEach(Array(recorder.samples.enumerated()), id: \.offset) { _, sample in
-                Capsule()
-                    .fill(Color.accentColor.opacity(0.55 + Double(sample) * 0.45))
-                    .frame(width: 2, height: 4 + CGFloat(sample) * 20)
-            }
-        }
-        .frame(maxWidth: .infinity, minHeight: 26)
-        .animation(.linear(duration: 0.08), value: recorder.samples)
-        .accessibilityHidden(true)
-    }
-
-    static func timeLabel(_ duration: TimeInterval) -> String {
-        let seconds = max(0, Int(duration))
-        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+        .accessibilityIdentifier("voice-permission-denied")
     }
 }
 #endif
