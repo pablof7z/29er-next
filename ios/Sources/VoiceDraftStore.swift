@@ -1,11 +1,6 @@
 import CryptoKit
 import Foundation
 
-struct CompletedVoiceDraft: Equatable, Sendable {
-    let url: URL
-    let shouldSend: Bool
-}
-
 struct VoiceDraftStore: Sendable {
     let directory: URL
 
@@ -35,14 +30,15 @@ struct VoiceDraftStore: Sendable {
         return directory.appendingPathComponent("voice-\(timestamp)-\(id.uuidString).m4a")
     }
 
-    func recoverAttachments() throws -> [ComposerAttachment] {
+    /// Non-empty durable draft files for this room, oldest first.
+    func draftURLs() throws -> [URL] {
         guard FileManager.default.fileExists(atPath: directory.path) else { return [] }
         let urls = try FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: [.creationDateKey, .fileSizeKey],
             options: [.skipsHiddenFiles]
         )
-        return try urls
+        return urls
             .filter { $0.pathExtension.lowercased() == "m4a" }
             .filter { (try? $0.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0 > 0 }
             .sorted { lhs, rhs in
@@ -50,7 +46,16 @@ struct VoiceDraftStore: Sendable {
                 let right = try? rhs.resourceValues(forKeys: [.creationDateKey]).creationDate
                 return (left ?? .distantPast) < (right ?? .distantPast)
             }
-            .map(attachment(from:))
+            .map(Self.canonicalFileURL)
+    }
+
+    /// The most recent recoverable draft for this room, if any.
+    func newestDraftURL() throws -> URL? {
+        try draftURLs().last
+    }
+
+    func recoverAttachments() throws -> [ComposerAttachment] {
+        try draftURLs().map(attachment(from:))
     }
 
     func attachment(from url: URL) throws -> ComposerAttachment {

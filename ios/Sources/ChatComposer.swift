@@ -3,6 +3,8 @@ import UniformTypeIdentifiers
 
 /// Bottom-of-room composer. Display names and unsent state stay in SwiftUI;
 /// NMP owns materializing recipients/replies into the published group event.
+/// Voice capture is owned by `VoiceComposerCoordinator`; this view only hosts its
+/// surfaces and bridges a finalized draft into the existing send path.
 struct ChatComposer: View {
     let canSend: Bool
     let recipients: [ComposerRecipient]
@@ -10,14 +12,14 @@ struct ChatComposer: View {
     let send: (ComposerRequest) async -> String?
 
     @State private var draft = ""
-    @State private var selectedRecipients: [ComposerRecipient] = []
+    @State var selectedRecipients: [ComposerRecipient] = []
     @State private var attachments: [ComposerAttachment] = []
     @State private var isSending = false
     @State private var errorMessage: String?
     @State private var isRecipientPickerPresented = false
     @State private var isAttachmentPickerPresented = false
-    @State private var didRestoreVoiceDrafts = false
-    @StateObject private var voiceRecorder: VoiceMessageRecorder
+    @State var didConfigureVoice = false
+    @StateObject var voice: VoiceComposerCoordinator
     @FocusState private var isEditorFocused: Bool
     @Environment(\.scenePhase) private var scenePhase
 
@@ -27,14 +29,15 @@ struct ChatComposer: View {
         reply: Binding<ComposerReply?>,
         initialAttachments: [ComposerAttachment] = [],
         voiceDraftScope: String = "default",
+        voiceCoordinator: VoiceComposerCoordinator? = nil,
         send: @escaping (ComposerRequest) async -> String?
     ) {
         self.canSend = canSend
         self.recipients = recipients
         _reply = reply
         _attachments = State(initialValue: initialAttachments)
-        _voiceRecorder = StateObject(
-            wrappedValue: VoiceMessageRecorder(store: VoiceDraftStore(scope: voiceDraftScope))
+        _voice = StateObject(
+            wrappedValue: voiceCoordinator ?? .live(store: VoiceDraftStore(scope: voiceDraftScope))
         )
         self.send = send
     }
@@ -57,17 +60,17 @@ struct ChatComposer: View {
         .onChange(of: reply?.id) { _, eventID in
             if eventID != nil { isEditorFocused = true }
         }
-        .onChange(of: voiceRecorder.completedDraft) { _, completed in
-            guard let completed else { return }
-            acceptVoiceDraft(completed)
-        }
-        .onChange(of: voiceRecorder.failureMessage) { _, message in
-            if let message { errorMessage = message }
-        }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { voiceRecorder.preserveForBackground() }
+            if phase != .active { voice.sceneBecameInactive() }
         }
-        .onAppear(perform: restoreVoiceDrafts)
+        .onChange(of: voice.state.publishingDraft?.url) { _, url in
+            guard url != nil, let draft = voice.state.publishingDraft else { return }
+            runVoicePublish(draft)
+        }
+        .onChange(of: voice.state.failure) { _, failure in
+            errorMessage = failure?.isPermissionDenied == true ? nil : failure?.message
+        }
+        .onAppear(perform: configureVoice)
     }
 
     private var content: some View {
@@ -105,33 +108,48 @@ struct ChatComposer: View {
             in: RoundedRectangle(cornerRadius: 21)
         )
         .overlay(composerBorder)
+        .overlay(alignment: .topTrailing) { lockRailOverlay }
+    }
+
+    @ViewBuilder
+    private var lockRailOverlay: some View {
+        #if os(iOS)
+        if voice.state.isHeldRecording {
+            VoiceLockRail(
+                fraction: voice.state.gesture.lockFraction,
+                armed: voice.state.gesture.isLockArmed
+            )
+            .padding(.trailing, 10)
+            .offset(y: -102)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
+        }
+        #endif
     }
 
     @ViewBuilder
     private var composerControls: some View {
         #if os(iOS)
-        if voiceRecorder.isActive {
-            VoiceRecordingPanel(recorder: voiceRecorder)
-                .padding(.leading, 8)
-                .padding(.vertical, 8)
-                .frame(minHeight: 40)
-            actionButton
-        } else {
-            standardComposerControls
-        }
+        voiceAwareControls
         #else
         standardComposerControls
         #endif
     }
 
     @ViewBuilder
-    private var standardComposerControls: some View {
+    var standardComposerControls: some View {
+        standardLeadingControls
+        actionButton
+    }
+
+    /// Attach + mention + editor, without the trailing action button, so the voice layout
+    /// can keep that button as a stable sibling across content swaps.
+    @ViewBuilder
+    var standardLeadingControls: some View {
         attachmentButton
         mentionButton
         editorPanel
             .padding(.vertical, 8)
             .frame(minHeight: 40)
-        actionButton
     }
 
     private var attachmentButton: some View {
@@ -196,10 +214,10 @@ struct ChatComposer: View {
     }
 
     @ViewBuilder
-    private var actionButton: some View {
+    var actionButton: some View {
         #if os(iOS)
         VoiceComposerActionButton(
-            recorder: voiceRecorder,
+            coordinator: voice,
             showsMic: showsVoiceAction,
             canSubmit: canSubmit,
             isSending: isSending,
@@ -269,7 +287,7 @@ struct ChatComposer: View {
 
 extension ChatComposer {
     @ViewBuilder
-    private var sendButtonLabel: some View {
+    var sendButtonLabel: some View {
         if isSending {
             ProgressView()
         } else {
@@ -279,7 +297,7 @@ extension ChatComposer {
         }
     }
 
-    private var visibleRecipients: [ComposerRecipient] {
+    var visibleRecipients: [ComposerRecipient] {
         ChatComposerState.recipients(selectedRecipients: selectedRecipients, reply: reply)
     }
 
@@ -290,17 +308,17 @@ extension ChatComposer {
         return [reply.author] + recipients
     }
 
-    private var canSubmit: Bool {
+    var canSubmit: Bool {
         canSend && (ChatComposerState.message(from: draft) != nil || !attachments.isEmpty)
     }
 
-    private var showsVoiceAction: Bool {
+    var showsVoiceAction: Bool {
         canSend
             && !isSending
             && ChatComposerState.showsVoiceAction(draft: draft, attachments: attachments)
     }
 
-    private func submit() {
+    func submit() {
         guard let request = ChatComposerState.request(
             draft: draft,
             selectedRecipients: selectedRecipients,
@@ -332,40 +350,7 @@ extension ChatComposer {
         }
     }
 
-    private func acceptVoiceDraft(_ completed: CompletedVoiceDraft) {
-        defer { voiceRecorder.consumeCompletedDraft() }
-        do {
-            let attachment = try voiceRecorder.store.attachment(from: completed.url)
-            guard !attachments.contains(where: { $0.localDraftURL == completed.url }) else {
-                return
-            }
-            attachments.append(attachment)
-            errorMessage = completed.shouldSend ? nil : voiceRecorder.failureMessage
-            if completed.shouldSend { submit() }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func restoreVoiceDrafts() {
-        guard !didRestoreVoiceDrafts else { return }
-        didRestoreVoiceDrafts = true
-        do {
-            let recovered = try voiceRecorder.recoverPendingAttachments()
-            let existing = Set(attachments.compactMap(\.localDraftURL))
-            attachments.append(contentsOf: recovered.filter { attachment in
-                guard let url = attachment.localDraftURL else { return true }
-                return !existing.contains(url)
-            })
-            if !recovered.isEmpty {
-                errorMessage = "Recovered an unsent voice message."
-            }
-        } catch {
-            errorMessage = "A saved voice message could not be restored: \(error.localizedDescription)"
-        }
-    }
-
-    private func removeAttachment(_ id: UUID) {
+    func removeAttachment(_ id: UUID) {
         guard let attachment = attachments.first(where: { $0.id == id }) else { return }
         attachment.removeLocalDraft()
         attachments.removeAll { $0.id == id }
