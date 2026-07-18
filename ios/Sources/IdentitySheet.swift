@@ -143,9 +143,6 @@ struct IdentitySheet: View {
 
     private func macSignedInContent(pubkey: String) -> some View {
         VStack(alignment: .leading, spacing: 18) {
-            if let profile = model.generatedIdentityProfile {
-                GeneratedIdentityHeader(profile: profile)
-            }
             VStack(alignment: .leading, spacing: 7) {
                 Label("Signed in", systemImage: "checkmark.circle.fill")
                     .font(.headline)
@@ -153,7 +150,7 @@ struct IdentitySheet: View {
                 Text("Public key")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text(pubkey.shortIdentity)
+                Text(PubkeyDisplay.shortHex(pubkey))
                     .monospaced()
                     .textSelection(.enabled)
             }
@@ -177,19 +174,11 @@ struct IdentitySheet: View {
 
     @ViewBuilder
     private func signedInContent(pubkey: String) -> some View {
-        if let profile = model.generatedIdentityProfile {
-            Section {
-                GeneratedIdentityHeader(profile: profile)
-            } footer: {
-                Text("29er created this identity automatically. You can replace it at any time.")
-            }
-        }
-
         Section {
             Label("Signed in", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
             LabeledContent("Public key") {
-                Text(pubkey.shortIdentity)
+                Text(PubkeyDisplay.shortHex(pubkey))
                     .monospaced()
                     .textSelection(.enabled)
             }

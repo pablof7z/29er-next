@@ -1,12 +1,12 @@
 import NMP
 
 struct NMPQueryOpening: Sendable {
-    let filter: @Sendable (NMPEngine, NMPFilter, Window?) async throws -> NMPQuery
-    let demand: @Sendable (NMPEngine, NMPDemand, Window?) async throws -> NMPQuery
+    let filter: @Sendable (NMPEngine, NMPFilter) async throws -> NMPQuery
+    let demand: @Sendable (NMPEngine, NMPDemand) async throws -> NMPQuery
 
     static let live = NMPQueryOpening(
-        filter: openNMPQuery(engine:filter:window:),
-        demand: openNMPQuery(engine:demand:window:)
+        filter: openNMPQuery(engine:filter:),
+        demand: openNMPQuery(engine:demand:)
     )
 }
 
@@ -16,16 +16,14 @@ struct NMPQueryOpening: Sendable {
 /// own actor.
 func openNMPQuery(
     engine: NMPEngine,
-    filter: NMPFilter,
-    window: Window? = nil
+    filter: NMPFilter
 ) async throws -> NMPQuery {
-    try engine.observe(filter, window: window)
+    try engine.observe(filter)
 }
 
 func openNMPQuery(
     engine: NMPEngine,
-    demand: NMPDemand,
-    window: Window? = nil
+    demand: NMPDemand
 ) async throws -> NMPQuery {
-    try engine.observe(demand, window: window)
+    try engine.observe(demand)
 }

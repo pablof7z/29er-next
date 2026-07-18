@@ -39,12 +39,9 @@ final class ObservationModelTests: XCTestCase {
         )
 
         XCTAssertEqual(demand.selection.kinds, [9, 9_000, 9_001])
-        XCTAssertNil(demand.selection.limit)
+        XCTAssertEqual(demand.selection.limit, 200)
         XCTAssertEqual(demand.selection.tags["h"], .literal(["29er-next"]))
         assertPinned(demand, to: "wss://nip29.f7z.io")
-        XCTAssertEqual(RoomChatWindow.initialRows, 200)
-        XCTAssertEqual(RoomChatWindow.pageSize, 200)
-        XCTAssertEqual(RoomChatWindow.maxRows, 1_000)
     }
 
     func testActivityDemandIsIndependentBoundedAndPinned() throws {
@@ -157,12 +154,8 @@ final class ObservationModelTests: XCTestCase {
         let probe = QueryOpeningProbe()
         let opening = NMPQueryOpening(
             filter: NMPQueryOpening.live.filter,
-            demand: { engine, demand, window in
-                let query = try await openNMPQuery(
-                    engine: engine,
-                    demand: demand,
-                    window: window
-                )
+            demand: { engine, demand in
+                let query = try await openNMPQuery(engine: engine, demand: demand)
                 await probe.recordOpening()
                 return query
             }
@@ -187,21 +180,13 @@ final class ObservationModelTests: XCTestCase {
         let engine = try NMPEngine(config: .init())
         let probe = QueryOpeningProbe(target: 5)
         let opening = NMPQueryOpening(
-            filter: { engine, filter, window in
-                let query = try await openNMPQuery(
-                    engine: engine,
-                    filter: filter,
-                    window: window
-                )
+            filter: { engine, filter in
+                let query = try await openNMPQuery(engine: engine, filter: filter)
                 await probe.recordOpening()
                 return query
             },
-            demand: { engine, demand, window in
-                let query = try await openNMPQuery(
-                    engine: engine,
-                    demand: demand,
-                    window: window
-                )
+            demand: { engine, demand in
+                let query = try await openNMPQuery(engine: engine, demand: demand)
                 await probe.recordOpening()
                 return query
             }
@@ -246,7 +231,7 @@ final class ObservationModelTests: XCTestCase {
 
 private extension NMPQueryOpening {
     static let failing = NMPQueryOpening(
-        filter: { _, _, _ in throw FixtureQueryError.openingFailed },
-        demand: { _, _, _ in throw FixtureQueryError.openingFailed }
+        filter: { _, _ in throw FixtureQueryError.openingFailed },
+        demand: { _, _ in throw FixtureQueryError.openingFailed }
     )
 }
