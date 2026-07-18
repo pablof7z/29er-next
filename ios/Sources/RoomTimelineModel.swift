@@ -17,7 +17,6 @@ final class RoomTimelineModel {
     private(set) var members: [RoomMember] = []
     private(set) var admins: [String] = []
     var profiles = ProfileBook()
-    private(set) var chatHistory = ChatHistoryPaging()
 
     private(set) var chatError: String?
     private(set) var membershipError: String?
@@ -37,7 +36,6 @@ final class RoomTimelineModel {
     let queryOpening: NMPQueryOpening
     let profileAuthorUpdates = ProfileAuthorUpdates()
     var lastProfileAuthors: [String]?
-    private var chatQuery: NMPQuery?
 
     init(
         engine: NMPEngine,
@@ -121,41 +119,21 @@ final class RoomTimelineModel {
         }
     }
 
-    func loadOlderMessages() {
-        guard let query = chatQuery,
-              let target = chatHistory.proposedTarget else { return }
-        do {
-            try query.requestRows(atLeast: target)
-            chatHistory.acceptedRequest(target: target)
-        } catch {
-            chatHistory.fail(error.localizedDescription)
-        }
-    }
-
     private func observeChat() async {
         do {
             let demand = try roomChatDemand(host: hostRelay, groupID: groupID)
             let clock = ContinuousClock()
             let started = clock.now
-            let query = try await queryOpening.demand(
-                engine,
-                demand,
-                RoomChatWindow.policy
-            )
-            chatQuery = query
+            let query = try await queryOpening.demand(engine, demand)
             RoomOpenProbe.shared.recordObserve(
                 .content,
                 duration: started.duration(to: clock.now)
             )
-            defer {
-                query.cancel()
-                chatQuery = nil
-            }
+            defer { query.cancel() }
 
             for await batch in query {
                 guard !Task.isCancelled else { return }
                 chatRows = batch.rows
-                chatHistory.receive(batch.load)
                 chatError = nil
                 hasReceivedChat = true
                 publishProfileAuthors()
@@ -172,7 +150,7 @@ final class RoomTimelineModel {
             let demand = try roomActivityDemand(host: hostRelay, groupID: groupID)
             let clock = ContinuousClock()
             let started = clock.now
-            let query = try await queryOpening.demand(engine, demand, nil)
+            let query = try await queryOpening.demand(engine, demand)
             RoomOpenProbe.shared.recordObserve(
                 .activity,
                 duration: started.duration(to: clock.now)
@@ -200,8 +178,7 @@ final class RoomTimelineModel {
             let started = clock.now
             let query = try await queryOpening.demand(
                 engine,
-                roomMembershipDemand(host: hostRelay, groupID: groupID),
-                nil
+                roomMembershipDemand(host: hostRelay, groupID: groupID)
             )
             RoomOpenProbe.shared.recordObserve(
                 .membership,
@@ -231,8 +208,7 @@ final class RoomTimelineModel {
             let started = clock.now
             let query = try await queryOpening.demand(
                 engine,
-                roomAdminDemand(host: hostRelay, groupID: groupID),
-                nil
+                roomAdminDemand(host: hostRelay, groupID: groupID)
             )
             RoomOpenProbe.shared.recordObserve(
                 .admins,

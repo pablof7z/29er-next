@@ -3,17 +3,29 @@ import NMPContent
 import NMPUI
 import SwiftUI
 
-/// A channel-row projection over NMP's immutable content document. Selected
-/// components own visible reference observations; text-sized renderers keep a
-/// NavigationLink row's ordinary tap target, height, and accessibility behavior.
+/// A channel-row projection over the same bounded content session used by full
+/// content. Renderers are text-sized and interaction-free so a NavigationLink
+/// row keeps its ordinary tap target, height, and accessibility behavior.
 struct GroupContentPreview: View {
-    let message: RoomMessage
-    let observationFactory: NMPReferenceObservationFactory?
+    @StateObject private var session: NostrContentSession
+
+    init(message: RoomMessage, contentClient: NMPContentClient) {
+        _session = StateObject(
+            wrappedValue: contentClient.session(
+                content: message.content,
+                policy: NostrContentPolicy(
+                    maxActiveReferences: 4,
+                    maxResolvedReferences: 8,
+                    maxDepth: 1,
+                    releaseGraceMilliseconds: 250
+                )
+            )
+        )
+    }
 
     var body: some View {
         NostrContent(
-            content: message.content,
-            observationFactory: observationFactory,
+            session: session,
             purpose: .preview,
             renderers: Self.renderers,
             maximumBlocks: 1,
@@ -21,6 +33,7 @@ struct GroupContentPreview: View {
         )
         .font(.subheadline)
         .foregroundStyle(.secondary)
+        .onDisappear { session.stop() }
     }
 
     private static let renderers = NostrContentRenderers.standard

@@ -122,8 +122,6 @@ struct RoomView: View {
             mentionIDs: model.mentionIDs,
             reads: reads,
             focusMessageID: focusMessageID,
-            historyState: model.chatHistory.state,
-            onLoadOlder: model.loadOlderMessages,
             onOpenLink: openLink,
             onOpenImage: { presentedImage = PresentedURL($0) },
             onReply: beginReply

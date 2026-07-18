@@ -1,12 +1,12 @@
 import Foundation
-import NMPUI
+import NMPContent
 import SwiftUI
 
 struct GroupRow: View {
     let group: GroupSummary
     let childCount: Int
     let entry: RoomDirectoryEntry?
-    let contentObservationFactory: NMPReferenceObservationFactory?
+    let contentClient: NMPContentClient?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -35,12 +35,9 @@ struct GroupRow: View {
     @ViewBuilder
     private var preview: some View {
         if let message = entry?.latest,
-           !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            GroupContentPreview(
-                message: message,
-                observationFactory: contentObservationFactory
-            )
-            .id(message.id)
+           !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let contentClient {
+            GroupContentPreview(message: message, contentClient: contentClient).id(message.id)
         } else {
             Text(group.about ?? group.localID)
                 .font(.subheadline)

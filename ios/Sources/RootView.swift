@@ -52,7 +52,7 @@ struct RootView: View {
                     ),
                     allGroups: model.groups,
                     directory: directory,
-                    contentObservationFactory: model.contentObservationFactory,
+                    contentClient: model.contentClient,
                     path: $path
                 )
                 .navigationTitle(route.parent.name)
@@ -203,7 +203,7 @@ struct RootView: View {
                     channels: GroupDirectoryProjection.roots(in: model.groups),
                     allGroups: model.groups,
                     directory: directory,
-                    contentObservationFactory: model.contentObservationFactory,
+                    contentClient: model.contentClient,
                     path: $path
                 )
             }

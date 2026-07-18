@@ -174,8 +174,6 @@ extension AppModel {
 
     static func favoriteRelayFailureMessage(for status: WriteStatus) -> String? {
         switch status {
-        case .cancelled:
-            return "The relay-list update was cancelled."
         case .rejected(_, let reason):
             return "The relay rejected the updated list: \(reason)"
         case .gaveUp:

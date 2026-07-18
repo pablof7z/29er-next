@@ -1,6 +1,6 @@
 import Foundation
 import NMP
-import NMPUI
+import NMPContent
 import Observation
 
 @MainActor
@@ -27,16 +27,12 @@ final class AppModel {
     var activePubkey: String?
     var isSigningIn = false
     var identityError: String?
-    var generatedIdentityProfile: GeneratedIdentityProfile?
 
     private(set) var engine: NMPEngine?
-    private(set) var contentObservationFactory: NMPReferenceObservationFactory?
+    private(set) var contentClient: NMPContentClient?
     private(set) var engineGeneration = 0
     private var engineConfig: NMPConfig?
     private var localAccountStore: NMPInsecureFileAccountStore?
-    var generatedProfileStore: GeneratedIdentityProfileStore?
-    var activeRegistration: NMPAccountRegistration?
-    var profilePublishTask: Task<Void, Never>?
     let groupRelay: String
 
     var canResetLocalDatabase: Bool {
@@ -58,7 +54,7 @@ final class AppModel {
             case .invalid(let error):
                 groupRelay = ""
                 engine = nil
-                contentObservationFactory = nil
+                contentClient = nil
                 engineConfig = nil
                 state = .failed(error.localizedDescription)
                 return
@@ -76,16 +72,14 @@ final class AppModel {
             )
             engineConfig = resources.config
             localAccountStore = resources.accountStore
-            generatedProfileStore = resources.generatedProfileStore
             let session = try AppEngineBootstrap.start(resources)
             engine = session.engine
-            contentObservationFactory = .live(engine: session.engine)
+            contentClient = NMPContentClient(engine: session.engine)
             activePubkey = session.activePubkey
-            generatedIdentityProfile = resources.generatedProfileStore.load(matching: session.activePubkey)
             selectedHost = session.activePubkey == nil ? groupRelay : nil
         } catch {
             engine = nil
-            contentObservationFactory = nil
+            contentClient = nil
             state = .failed(error.localizedDescription)
         }
     }
@@ -101,11 +95,8 @@ final class AppModel {
         }
 
         let oldEngine = engine
-        profilePublishTask?.cancel()
-        profilePublishTask = nil
-        activeRegistration = nil
         engine = nil
-        contentObservationFactory = nil
+        contentClient = nil
         activePubkey = nil
         oldEngine?.shutdown()
 
@@ -116,9 +107,8 @@ final class AppModel {
                 localAccountStore: localAccountStore
             )
             self.engine = engine
-            contentObservationFactory = .live(engine: engine)
+            contentClient = NMPContentClient(engine: engine)
             activePubkey = try engine.activeAccount()
-            generatedIdentityProfile = generatedProfileStore?.load(matching: activePubkey)
             groups = []
             hasReceivedGroups = false
             groupsError = nil
@@ -135,7 +125,7 @@ final class AppModel {
             return true
         } catch {
             engine = nil
-            contentObservationFactory = nil
+            contentClient = nil
             state = .failed("NMP could not reset the local database: \(error.localizedDescription)")
             engineGeneration &+= 1
             return false
@@ -144,10 +134,6 @@ final class AppModel {
 
     func run() async {
         guard let engine else { return }
-        guard await ensureIdentity() else {
-            state = .failed(identityError ?? "NMP could not create a default identity.")
-            return
-        }
         let generation = engineGeneration
         state = .observing
 

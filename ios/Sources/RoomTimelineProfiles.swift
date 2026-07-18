@@ -39,9 +39,8 @@ extension RoomTimelineModel {
                 NMPFilter(
                     kinds: [0],
                     authors: .literal(Set(authors)),
-                    limit: UInt32(RoomChatWindow.maxRows)
-                ),
-                nil
+                    limit: 1_000
+                )
             )
             RoomOpenProbe.shared.recordObserve(
                 .profiles,
