@@ -274,6 +274,10 @@ final class HostGroupSelectionTests: XCTestCase {
             ),
             "Your relay list changed during this update. Review it and try again."
         )
+        XCTAssertEqual(
+            AppModel.favoriteRelayFailureMessage(for: .cancelled),
+            "The relay-list update was cancelled."
+        )
     }
 
     private func rememberedSnapshot() -> RememberedGroupSnapshot {

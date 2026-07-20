@@ -182,6 +182,8 @@ extension AppModel {
             return "The relay-list delivery outcome is unknown."
         case .replaceableConflict:
             return "Your relay list changed during this update. Review it and try again."
+        case .cancelled:
+            return "The relay-list update was cancelled."
         case .failed(let reason):
             return "NMP could not update the relay list: \(reason)"
         case .accepted, .awaitingCapability, .signed, .routed, .awaitingRelay,

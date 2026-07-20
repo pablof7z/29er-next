@@ -5,40 +5,59 @@ import NMP
 /// event id with their narrated branches assembled. Ordinary chat messages are
 /// simply absent from the index.
 struct TTS29Catalog: Equatable {
-    static let empty = TTS29Catalog(assembled: [:], answers: [:])
+    static let empty = TTS29Catalog(assembled: [:], answers: [:], hiddenMessageIDs: [])
 
-    /// Assembled items (children nested) keyed by item id. Every parsed item
-    /// appears here, whether it is a root message or a narrated child, so a tap
-    /// on any spoken message can open its own player.
+    /// Assembled top-level items keyed by item id. Narrated children exist only
+    /// inside their parent's tree; malformed cycles and orphans never become
+    /// independent timeline cards.
     private let assembled: [String: TTS29Item]
     /// Winning answer bundle per `"itemID|author"`.
     private let answers: [String: TTS29AnswerBundle]
+    /// Narrated child and related-event rows that belong inside a spoken-item
+    /// projection rather than as independent chat messages.
+    private let hiddenMessageIDs: Set<String>
 
     /// The greatest bound depth of narrated nesting and children per node.
     static let maxDepth = 3
     static let maxChildren = 12
 
-    private init(assembled: [String: TTS29Item], answers: [String: TTS29AnswerBundle]) {
+    private init(
+        assembled: [String: TTS29Item],
+        answers: [String: TTS29AnswerBundle],
+        hiddenMessageIDs: Set<String>
+    ) {
         self.assembled = assembled
         self.answers = answers
+        self.hiddenMessageIDs = hiddenMessageIDs
     }
 
     init(rows: [Row]) {
         var flat: [String: TTS29Item] = [:]
         var childIDs: [String: [String]] = [:]
+        var answerCandidates: [TTS29AnswerBundle] = []
         var answers: [String: TTS29AnswerBundle] = [:]
+        var hiddenMessageIDs = Set<String>()
 
         for row in rows {
             if let item = TTS29ItemParsing.item(from: row) {
                 flat[item.id] = item
                 if let parent = item.parentID {
                     childIDs[parent, default: []].append(item.id)
+                    hiddenMessageIDs.insert(item.id)
                 }
             } else if let bundle = TTS29ItemParsing.answerBundle(from: row) {
-                let key = Self.answerKey(itemID: bundle.itemID, author: bundle.author)
-                if let existing = answers[key], !Self.wins(bundle, over: existing) { continue }
-                answers[key] = bundle
+                answerCandidates.append(bundle)
+                hiddenMessageIDs.insert(bundle.eventID)
             }
+        }
+
+        for bundle in answerCandidates {
+            guard let item = flat[bundle.itemID],
+                  TTS29ItemParsing.isValidAnswer(bundle, for: item.questions)
+            else { continue }
+            let key = Self.answerKey(itemID: bundle.itemID, author: bundle.author)
+            if let existing = answers[key], !Self.wins(bundle, over: existing) { continue }
+            answers[key] = bundle
         }
 
         // Order children by ascending (createdAt, id) so branches read in the
@@ -52,11 +71,21 @@ struct TTS29Catalog: Equatable {
         }
 
         var assembled: [String: TTS29Item] = [:]
-        for id in flat.keys {
-            assembled[id] = Self.assemble(id, flat: flat, childIDs: childIDs, visited: [], depth: 0)
+        for id in flat.keys where flat[id]?.parentID == nil {
+            assembled[id] = Self.assemble(
+                id,
+                flat: flat,
+                childIDs: childIDs,
+                visited: [],
+                depth: 0
+            )
         }
 
-        self.init(assembled: assembled, answers: answers)
+        self.init(
+            assembled: assembled,
+            answers: answers,
+            hiddenMessageIDs: hiddenMessageIDs
+        )
     }
 
     /// The assembled spoken item for a message id, or nil if the message is not
@@ -66,6 +95,8 @@ struct TTS29Catalog: Equatable {
     func isSpokenItem(id: String) -> Bool { assembled[id] != nil }
 
     var isEmpty: Bool { assembled.isEmpty }
+
+    func isHiddenMessage(id: String) -> Bool { hiddenMessageIDs.contains(id) }
 
     /// The winning answer bundle a given author submitted for an item.
     func answer(itemID: String, author: String?) -> TTS29AnswerBundle? {
@@ -86,16 +117,24 @@ struct TTS29Catalog: Equatable {
         var branch = visited
         branch.insert(id)
 
-        if depth < maxDepth {
-            let children = (childIDs[id] ?? [])
-                .prefix(maxChildren)
-                .compactMap {
-                    assemble($0, flat: flat, childIDs: childIDs, visited: branch, depth: depth + 1)
-                }
-            item.children = Array(children)
-        } else {
+        guard depth < maxDepth else {
             item.children = []
+            return item
         }
+
+        var children: [TTS29Item] = []
+        for childID in childIDs[id] ?? [] where children.count < maxChildren {
+            if let child = assemble(
+                childID,
+                flat: flat,
+                childIDs: childIDs,
+                visited: branch,
+                depth: depth + 1
+            ) {
+                children.append(child)
+            }
+        }
+        item.children = children
         return item
     }
 

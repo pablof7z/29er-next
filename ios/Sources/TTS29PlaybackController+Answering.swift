@@ -31,6 +31,7 @@ extension TTS29PlaybackController {
         guard let intent = TTS29AnswerComposer.intent(
             itemID: item.id,
             groupID: item.groupID.isEmpty ? context.groupID : item.groupID,
+            questions: item.questions,
             answers: answers,
             activePubkey: activePubkey,
             now: UInt64(Date().timeIntervalSince1970)

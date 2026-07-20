@@ -25,18 +25,27 @@ enum TTS29AnswerComposer {
     static func intent(
         itemID: String,
         groupID: String,
+        questions: [TTS29Question],
         answers: [TTS29Answer],
         activePubkey: String,
         now: UInt64
     ) -> WriteIntent? {
-        let answerTags = answers.filter { !$0.values.isEmpty }
-        guard !answerTags.isEmpty, !groupID.isEmpty else { return nil }
+        let bundle = TTS29AnswerBundle(
+            eventID: "",
+            itemID: itemID,
+            author: activePubkey,
+            createdAt: now,
+            answers: answers
+        )
+        guard !groupID.isEmpty,
+              TTS29ItemParsing.isValidAnswer(bundle, for: questions)
+        else { return nil }
         return WriteIntent(
             payload: .unsigned(
                 pubkey: activePubkey,
                 createdAt: now,
                 kind: 9,
-                tags: tags(itemID: itemID, groupID: groupID, answers: answerTags),
+                tags: tags(itemID: itemID, groupID: groupID, answers: answers),
                 content: ""
             ),
             durability: .durable,

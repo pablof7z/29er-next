@@ -16,9 +16,16 @@ struct ChatTimelineView: View {
     let onReply: (RoomMessage) -> Void
     let onOpenSpoken: (TTS29Item) -> Void
 
+    private var visibleItems: [RoomTimelineItem] {
+        items.filter { item in
+            guard let message = item.message else { return true }
+            return !tts29Catalog.isHiddenMessage(id: message.id)
+        }
+    }
+
     private var presentation: ChatTimelinePresentation {
         ChatTimelinePresentation.make(
-            itemCount: items.count,
+            itemCount: visibleItems.count,
             hasReceivedSnapshot: hasReceivedSnapshot,
             error: error,
             profileError: profileError
@@ -44,7 +51,7 @@ struct ChatTimelineView: View {
             )
         case .messages(let profileNotice):
             MessageTimelineView(
-                items: items,
+                items: visibleItems,
                 profiles: profiles,
                 people: people,
                 tts29Catalog: tts29Catalog,

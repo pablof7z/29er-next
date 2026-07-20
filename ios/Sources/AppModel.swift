@@ -1,6 +1,6 @@
 import Foundation
 import NMP
-import NMPContent
+import NMPUI
 import Observation
 
 @MainActor
@@ -29,10 +29,11 @@ final class AppModel {
     var identityError: String?
 
     private(set) var engine: NMPEngine?
-    private(set) var contentClient: NMPContentClient?
+    private(set) var contentObservationFactory: NMPReferenceObservationFactory?
     private(set) var engineGeneration = 0
     private var engineConfig: NMPConfig?
     private var localAccountStore: NMPInsecureFileAccountStore?
+    var activeRegistration: NMPAccountRegistration?
     let groupRelay: String
 
     var canResetLocalDatabase: Bool {
@@ -54,7 +55,7 @@ final class AppModel {
             case .invalid(let error):
                 groupRelay = ""
                 engine = nil
-                contentClient = nil
+                contentObservationFactory = nil
                 engineConfig = nil
                 state = .failed(error.localizedDescription)
                 return
@@ -74,12 +75,12 @@ final class AppModel {
             localAccountStore = resources.accountStore
             let session = try AppEngineBootstrap.start(resources)
             engine = session.engine
-            contentClient = NMPContentClient(engine: session.engine)
+            contentObservationFactory = .live(engine: session.engine)
             activePubkey = session.activePubkey
             selectedHost = session.activePubkey == nil ? groupRelay : nil
         } catch {
             engine = nil
-            contentClient = nil
+            contentObservationFactory = nil
             state = .failed(error.localizedDescription)
         }
     }
@@ -95,8 +96,9 @@ final class AppModel {
         }
 
         let oldEngine = engine
+        activeRegistration = nil
         engine = nil
-        contentClient = nil
+        contentObservationFactory = nil
         activePubkey = nil
         oldEngine?.shutdown()
 
@@ -107,7 +109,7 @@ final class AppModel {
                 localAccountStore: localAccountStore
             )
             self.engine = engine
-            contentClient = NMPContentClient(engine: engine)
+            contentObservationFactory = .live(engine: engine)
             activePubkey = try engine.activeAccount()
             groups = []
             hasReceivedGroups = false
@@ -125,7 +127,7 @@ final class AppModel {
             return true
         } catch {
             engine = nil
-            contentClient = nil
+            contentObservationFactory = nil
             state = .failed("NMP could not reset the local database: \(error.localizedDescription)")
             engineGeneration &+= 1
             return false
