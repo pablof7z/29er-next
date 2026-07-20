@@ -4,6 +4,7 @@ struct ChatTimelineView: View {
     let items: [RoomTimelineItem]
     let profiles: ProfileBook
     let people: RoomPeople
+    let tts29Catalog: TTS29Catalog
     let hasReceivedSnapshot: Bool
     let error: String?
     let profileError: String?
@@ -13,6 +14,7 @@ struct ChatTimelineView: View {
     let onOpenLink: (URL) -> Void
     let onOpenImage: (URL) -> Void
     let onReply: (RoomMessage) -> Void
+    let onOpenSpoken: (TTS29Item) -> Void
 
     private var presentation: ChatTimelinePresentation {
         ChatTimelinePresentation.make(
@@ -45,12 +47,14 @@ struct ChatTimelineView: View {
                 items: items,
                 profiles: profiles,
                 people: people,
+                tts29Catalog: tts29Catalog,
                 mentionIDs: mentionIDs,
                 reads: reads,
                 focusMessageID: focusMessageID,
                 onOpenLink: onOpenLink,
                 onOpenImage: onOpenImage,
-                onReply: onReply
+                onReply: onReply,
+                onOpenSpoken: onOpenSpoken
             )
             .safeAreaInset(edge: .top, spacing: 0) {
                 if let profileNotice {
@@ -75,13 +79,16 @@ private struct MessageTimelineView: View {
     let items: [RoomTimelineItem]
     let profiles: ProfileBook
     let people: RoomPeople
+    let tts29Catalog: TTS29Catalog
     let mentionIDs: Set<String>
     let reads: MentionReads?
     let focusMessageID: String?
     let onOpenLink: (URL) -> Void
     let onOpenImage: (URL) -> Void
     let onReply: (RoomMessage) -> Void
+    let onOpenSpoken: (TTS29Item) -> Void
 
+    @Environment(TTS29PlaybackController.self) private var spokenPlayback
     @State private var isPinnedToBottom = true
     @State private var visibleIndices: Set<Int> = []
     @State private var didFocus = false
@@ -127,17 +134,9 @@ private struct MessageTimelineView: View {
                                 DaySeparatorRow(label: label)
                                     .id(entry.id)
                             case .message(let message, let showsHeader):
-                                MessageRow(
-                                    message: message,
-                                    showsHeader: showsHeader,
-                                    profiles: profiles,
-                                    agentActivity: people.activity(for: message.author),
-                                    onOpenLink: onOpenLink,
-                                    onOpenImage: onOpenImage,
-                                    onReply: { onReply(message) }
-                                )
-                                .id(entry.id)
-                                .background(visibilityReporter(for: message, viewportHeight: viewport.size.height))
+                                messageOrSpokenCard(message, showsHeader: showsHeader)
+                                    .id(entry.id)
+                                    .background(visibilityReporter(for: message, viewportHeight: viewport.size.height))
                             case .membership(let event):
                                 MembershipEventRow(event: event, profiles: profiles)
                                     .id(entry.id)
@@ -212,6 +211,29 @@ private struct MessageTimelineView: View {
                 .animation(.easeOut(duration: 0.2), value: isPinnedToBottom)
                 .animation(.easeOut(duration: 0.2), value: unreadMentionsAbove.isEmpty)
             }
+        }
+    }
+
+    /// A spoken-update card for a TTS29 item, or an ordinary message row.
+    @ViewBuilder
+    private func messageOrSpokenCard(_ message: RoomMessage, showsHeader: Bool) -> some View {
+        if let item = tts29Catalog.item(id: message.id) {
+            TTS29Card(
+                item: item,
+                isActive: spokenPlayback.isActive(item),
+                isPlaying: spokenPlayback.isActive(item) && spokenPlayback.isPlaying,
+                onOpen: { onOpenSpoken(item) }
+            )
+        } else {
+            MessageRow(
+                message: message,
+                showsHeader: showsHeader,
+                profiles: profiles,
+                agentActivity: people.activity(for: message.author),
+                onOpenLink: onOpenLink,
+                onOpenImage: onOpenImage,
+                onReply: { onReply(message) }
+            )
         }
     }
 

@@ -15,6 +15,7 @@ struct RoomView: View {
     @State private var presentedImage: PresentedURL?
     @State private var presentedBrowser: PresentedURL?
     @Environment(\.openURL) private var openURL
+    @Environment(TTS29PlaybackController.self) private var spokenPlayback
 
     init(
         group: GroupSummary,
@@ -116,6 +117,7 @@ struct RoomView: View {
             items: model.timelineItems,
             profiles: model.profiles,
             people: model.people,
+            tts29Catalog: model.tts29Catalog,
             hasReceivedSnapshot: model.hasReceivedChat,
             error: model.chatError,
             profileError: model.profileError,
@@ -124,7 +126,8 @@ struct RoomView: View {
             focusMessageID: focusMessageID,
             onOpenLink: openLink,
             onOpenImage: { presentedImage = PresentedURL($0) },
-            onReply: beginReply
+            onReply: beginReply,
+            onOpenSpoken: openSpoken
         )
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ChatComposer(
@@ -176,6 +179,18 @@ struct RoomView: View {
 
     private func beginReply(_ message: RoomMessage) {
         replyTarget = model.composerReply(to: message)
+    }
+
+    /// Open a spoken item's player. Playback starts here (tapping the card),
+    /// never from the card merely appearing in the timeline.
+    private func openSpoken(_ item: TTS29Item) {
+        let context = TTS29SendContext(
+            host: group.hostRelay,
+            groupID: group.localID,
+            activePubkey: activePubkey
+        )
+        let existingAnswer = model.tts29Catalog.answer(itemID: item.id, author: activePubkey)
+        spokenPlayback.open(item, existingAnswer: existingAnswer, context: context, engine: engine)
     }
 
     private func openLink(_ url: URL) {
