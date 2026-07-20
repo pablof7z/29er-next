@@ -7,25 +7,18 @@ import SwiftUI
 /// content. Renderers are text-sized and interaction-free so a NavigationLink
 /// row keeps its ordinary tap target, height, and accessibility behavior.
 struct GroupContentPreview: View {
-    @StateObject private var session: NostrContentSession
-
-    init(message: RoomMessage, contentClient: NMPContentClient) {
-        _session = StateObject(
-            wrappedValue: contentClient.session(
-                content: message.content,
-                policy: NostrContentPolicy(
-                    maxActiveReferences: 4,
-                    maxResolvedReferences: 8,
-                    maxDepth: 1,
-                    releaseGraceMilliseconds: 250
-                )
-            )
-        )
-    }
+    let message: RoomMessage
+    let observationFactory: NMPReferenceObservationFactory
 
     var body: some View {
         NostrContent(
-            session: session,
+            content: message.content,
+            observationFactory: observationFactory,
+            context: NostrContentRenderContext(
+                ancestorTargetKeys: [],
+                depth: 0,
+                maximumDepth: 1
+            ),
             purpose: .preview,
             renderers: Self.renderers,
             maximumBlocks: 1,
@@ -33,7 +26,6 @@ struct GroupContentPreview: View {
         )
         .font(.subheadline)
         .foregroundStyle(.secondary)
-        .onDisappear { session.stop() }
     }
 
     private static let renderers = NostrContentRenderers.standard

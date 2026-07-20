@@ -58,6 +58,12 @@ final class RoomTimelineModel {
         NIP29ViewProjection.timelineItems(from: chatRows)
     }
 
+    /// TTS29 spoken items present in the room's chat rows, indexed by event id
+    /// with their narrated branches assembled.
+    var tts29Catalog: TTS29Catalog {
+        TTS29Catalog(rows: chatRows)
+    }
+
     var mentionIDs: Set<String> {
         guard let recipient else { return [] }
         return MentionProjection.mentionIDs(from: chatRows, recipient: recipient)

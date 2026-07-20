@@ -3,28 +3,35 @@ import SwiftUI
 @main
 struct TwentyNinerNextApp: App {
     @State private var audioPlayback = AudioPlaybackController()
+    @State private var spokenPlayback = TTS29PlaybackController()
 
     var body: some Scene {
         #if os(macOS)
         WindowGroup {
             PersistentAudioPlayerContainer {
-                MacAppRootView()
+                TTS29PlayerContainer {
+                    MacAppRootView()
+                }
             }
-                .environment(audioPlayback)
+            .environment(audioPlayback)
+            .environment(spokenPlayback)
         }
         .defaultSize(width: 980, height: 720)
         #else
         WindowGroup {
             PersistentAudioPlayerContainer {
-                Group {
-                    #if NMP_DEVICE_PROOF
-                    ProofLaunchRootView()
-                    #else
-                    AppRootView()
-                    #endif
+                TTS29PlayerContainer {
+                    Group {
+                        #if NMP_DEVICE_PROOF
+                        ProofLaunchRootView()
+                        #else
+                        AppRootView()
+                        #endif
+                    }
                 }
             }
             .environment(audioPlayback)
+            .environment(spokenPlayback)
         }
         #endif
     }

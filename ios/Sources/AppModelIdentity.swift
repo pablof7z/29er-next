@@ -16,14 +16,46 @@ extension AppModel {
         defer { isSigningIn = false }
 
         do {
-            let pubkey = try await engine.addAccount(secretKey: secretKey)
-            try engine.setActiveAccount(pubkey)
-            activePubkey = pubkey
-            resetIdentityScopedState()
-            return true
+            try await validateSecretKey(secretKey)
+            if activePubkey != nil {
+                try detachCurrentAccount(from: engine)
+            }
+            activePubkey = nil
+
+            let registration = try await engine.addAccount(secretKey: secretKey)
+            do {
+                try engine.setActiveAccount(registration.publicKey)
+                activeRegistration = registration
+                activePubkey = registration.publicKey
+                resetIdentityScopedState()
+                return true
+            } catch {
+                _ = try? engine.removeAccount(registration)
+                throw error
+            }
         } catch {
             identityError = Self.identityMessage(for: error)
             return false
+        }
+    }
+
+    private func validateSecretKey(_ secretKey: String) async throws {
+        let validationEngine = try NMPEngine(config: NMPConfig())
+        defer { validationEngine.shutdown() }
+        let registration = try await validationEngine.addAccount(secretKey: secretKey)
+        _ = try validationEngine.removeAccount(registration)
+    }
+
+    private func detachCurrentAccount(from engine: NMPEngine) throws {
+        if let activeRegistration {
+            guard try engine.removeAccount(activeRegistration) else {
+                throw IdentityReplacementError.couldNotDetach
+            }
+            self.activeRegistration = nil
+            return
+        }
+        guard try engine.detachPersistedAccount() else {
+            throw IdentityReplacementError.couldNotDetach
         }
     }
 
@@ -44,4 +76,8 @@ extension AppModel {
             return "NMP could not replace this account."
         }
     }
+}
+
+private enum IdentityReplacementError: Error {
+    case couldNotDetach
 }
