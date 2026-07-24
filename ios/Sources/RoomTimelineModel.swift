@@ -14,6 +14,7 @@ final class RoomTimelineModel {
     private(set) var chatRows: [Row] = []
     private(set) var membershipRows: [Row] = []
     private(set) var activityRows: [Row] = []
+    private(set) var reactionRows: [Row] = []
     private(set) var members: [RoomMember] = []
     private(set) var admins: [String] = []
     var profiles = ProfileBook()
@@ -22,6 +23,7 @@ final class RoomTimelineModel {
     private(set) var membershipError: String?
     private(set) var activityError: String?
     private(set) var adminError: String?
+    private(set) var reactionError: String?
     var profileError: String?
 
     private(set) var hasReceivedChat = false
@@ -32,7 +34,7 @@ final class RoomTimelineModel {
     let engine: NMPEngine
     let groupID: String
     let hostRelay: String
-    private let recipient: String?
+    let recipient: String?
     let queryOpening: NMPQueryOpening
     let profileAuthorUpdates = ProfileAuthorUpdates()
     var lastProfileAuthors: [String]?
@@ -71,6 +73,13 @@ final class RoomTimelineModel {
 
     var activities: [AgentActivity] {
         NIP29ViewProjection.activities(from: activityRows)
+    }
+
+    var reactionsByMessage: [String: [RoomReactionGroup]] {
+        RoomReactionProjection.summaries(
+            from: RoomReactionProjection.reactions(from: reactionRows),
+            viewer: recipient
+        )
     }
 
     var people: RoomPeople {
@@ -112,6 +121,10 @@ final class RoomTimelineModel {
             }
             group.addTask { [weak self] in
                 guard let self else { return }
+                await self.observeReactions()
+            }
+            group.addTask { [weak self] in
+                guard let self else { return }
                 await self.observeMembership()
             }
             group.addTask { [weak self] in
@@ -137,7 +150,7 @@ final class RoomTimelineModel {
             )
             defer { query.cancel() }
 
-            for await batch in query {
+            for try await batch in query {
                 guard !Task.isCancelled else { return }
                 chatRows = batch.rows
                 chatError = nil
@@ -163,7 +176,7 @@ final class RoomTimelineModel {
             )
             defer { query.cancel() }
 
-            for await batch in query {
+            for try await batch in query {
                 guard !Task.isCancelled else { return }
                 RoomOpenProbe.shared.recordSnapshot(.activity, rows: batch.rows)
                 activityRows = batch.rows
@@ -175,6 +188,23 @@ final class RoomTimelineModel {
         } catch {
             guard !Task.isCancelled else { return }
             activityError = error.localizedDescription
+        }
+    }
+
+    private func observeReactions() async {
+        do {
+            let demand = try roomReactionsDemand(host: hostRelay, groupID: groupID)
+            let query = try await queryOpening.demand(engine, demand)
+            defer { query.cancel() }
+
+            for try await batch in query {
+                guard !Task.isCancelled else { return }
+                reactionRows = batch.rows
+                reactionError = nil
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            reactionError = error.localizedDescription
         }
     }
 
@@ -192,7 +222,7 @@ final class RoomTimelineModel {
             )
             defer { query.cancel() }
 
-            for await batch in query {
+            for try await batch in query {
                 guard !Task.isCancelled else { return }
                 membershipRows = batch.rows
                 members = NIP29ViewProjection.members(from: membershipRows)
@@ -222,7 +252,7 @@ final class RoomTimelineModel {
             )
             defer { query.cancel() }
 
-            for await batch in query {
+            for try await batch in query {
                 guard !Task.isCancelled else { return }
                 RoomOpenProbe.shared.recordSnapshot(.admins, rows: batch.rows)
                 admins = NIP29ViewProjection.admins(from: batch.rows)

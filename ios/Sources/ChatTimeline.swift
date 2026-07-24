@@ -9,12 +9,14 @@ struct ChatTimelineView: View {
     let error: String?
     let profileError: String?
     let mentionIDs: Set<String>
+    let reactionsByMessage: [String: [RoomReactionGroup]]
     let reads: MentionReads?
     let focusMessageID: String?
     let onOpenLink: (URL) -> Void
     let onOpenImage: (URL) -> Void
     let onReply: (RoomMessage) -> Void
     let onOpenSpoken: (TTS29Item) -> Void
+    let onReact: ((RoomMessage, String) -> Void)?
 
     private var visibleItems: [RoomTimelineItem] {
         items.filter { item in
@@ -56,12 +58,14 @@ struct ChatTimelineView: View {
                 people: people,
                 tts29Catalog: tts29Catalog,
                 mentionIDs: mentionIDs,
+                reactionsByMessage: reactionsByMessage,
                 reads: reads,
                 focusMessageID: focusMessageID,
                 onOpenLink: onOpenLink,
                 onOpenImage: onOpenImage,
                 onReply: onReply,
-                onOpenSpoken: onOpenSpoken
+                onOpenSpoken: onOpenSpoken,
+                onReact: onReact
             )
             .safeAreaInset(edge: .top, spacing: 0) {
                 if let profileNotice {
@@ -88,12 +92,14 @@ private struct MessageTimelineView: View {
     let people: RoomPeople
     let tts29Catalog: TTS29Catalog
     let mentionIDs: Set<String>
+    let reactionsByMessage: [String: [RoomReactionGroup]]
     let reads: MentionReads?
     let focusMessageID: String?
     let onOpenLink: (URL) -> Void
     let onOpenImage: (URL) -> Void
     let onReply: (RoomMessage) -> Void
     let onOpenSpoken: (TTS29Item) -> Void
+    let onReact: ((RoomMessage, String) -> Void)?
 
     @Environment(TTS29PlaybackController.self) private var spokenPlayback
     @State private var isPinnedToBottom = true
@@ -237,9 +243,11 @@ private struct MessageTimelineView: View {
                 showsHeader: showsHeader,
                 profiles: profiles,
                 agentActivity: people.activity(for: message.author),
+                reactions: reactionsByMessage[message.id] ?? [],
                 onOpenLink: onOpenLink,
                 onOpenImage: onOpenImage,
-                onReply: { onReply(message) }
+                onReply: { onReply(message) },
+                onReact: onReact.map { react in { emoji in react(message, emoji) } }
             )
         }
     }

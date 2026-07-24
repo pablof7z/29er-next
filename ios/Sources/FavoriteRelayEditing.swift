@@ -159,7 +159,7 @@ extension AppModel {
             var failure: String?
             do {
                 let receipt = try await engine.publish(intent)
-                for await status in receipt.status {
+                for try await status in receipt.status {
                     if let message = Self.favoriteRelayFailureMessage(for: status) {
                         failure = message
                     }
@@ -199,8 +199,6 @@ extension AppModel {
             return "Sign in to edit your favorite relays."
         case .engineClosed:
             return "NMP closed before the relay list could be updated."
-        case .executorSaturated, .threadUnavailable:
-            return "NMP is busy and could not start the relay-list update."
         default:
             return "NMP could not start the relay-list update."
         }

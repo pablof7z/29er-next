@@ -36,7 +36,7 @@ extension AppModel {
             let query = try await openNMPQuery(engine: engine, demand: demand)
             defer { query.cancel() }
 
-            for await batch in query {
+            for try await batch in query {
                 guard !Task.isCancelled,
                       generation == engineGeneration,
                       selectedHost == host else { return }
@@ -57,7 +57,7 @@ extension AppModel {
             let query = try await openNMPQuery(engine: engine, demand: activeAccountDemand())
             defer { query.cancel() }
 
-            for await batch in query {
+            for try await batch in query {
                 guard !Task.isCancelled, generation == engineGeneration else { return }
                 let row = batch.rows.first(where: { $0.kind == 10_009 })
                 let snapshot = row.map {
@@ -79,7 +79,7 @@ extension AppModel {
             let observation = try engine.observeDiagnostics()
             defer { observation.cancel() }
 
-            for await snapshot in observation {
+            for try await snapshot in observation {
                 guard !Task.isCancelled, generation == engineGeneration else { return }
                 diagnostics = snapshot
                 diagnosticsError = nil
