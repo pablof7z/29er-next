@@ -14,6 +14,13 @@ func roomActivityDemand(host: String, groupID: String) throws -> NMPDemand {
     return demand
 }
 
+func roomReactionsDemand(host: String, groupID: String) throws -> NMPDemand {
+    var demand = try groupContentDemand(host: host, groupId: groupID)
+    demand.selection.kinds = [7]
+    demand.selection.limit = 1_000
+    return demand
+}
+
 func roomMembershipDemand(host: String, groupID: String) -> NMPDemand {
     NMPDemand(
         selection: NMPFilter(

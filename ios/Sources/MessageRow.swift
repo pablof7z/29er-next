@@ -1,3 +1,4 @@
+import NMPUI
 import SwiftUI
 
 let avatarWidth: CGFloat = 34
@@ -11,10 +12,14 @@ struct MessageRow: View {
     let showsHeader: Bool
     let profiles: ProfileBook
     let agentActivity: AgentActivity?
+    let reactions: [RoomReactionGroup]
     let onOpenLink: (URL) -> Void
     let onOpenImage: (URL) -> Void
     let onReply: () -> Void
+    let onReact: ((String) -> Void)?
     @State private var isShowingAgentProfile = false
+
+    private static let quickReactions = ["❤️", "👍", "😂", "🎉", "👀", "🙏"]
 
     private var displayContent: String {
         message.content.isEmpty ? "Empty message" : message.content
@@ -62,6 +67,9 @@ struct MessageRow: View {
                 content
                     .font(.body)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                if !reactions.isEmpty {
+                    reactionBar
+                }
             }
         }
         .padding(.horizontal, 16)
@@ -97,11 +105,21 @@ struct MessageRow: View {
             MessageBody(
                 raw: message.content,
                 messageID: message.id,
+                resolveMention: { profiles.name(for: $0) },
                 onOpenLink: onOpenLink,
                 onOpenImage: onOpenImage,
                 onReply: onReply
             )
         }
+    }
+
+    private var reactionBar: some View {
+        NMPEmojiReactionBar(
+            reactions: reactions.map {
+                NMPEmojiReaction(emoji: $0.emoji, count: $0.count, isSelected: $0.reactedByViewer)
+            },
+            select: { onReact?($0) }
+        )
     }
 
     @ViewBuilder
@@ -154,6 +172,15 @@ struct MessageRow: View {
 
     @ViewBuilder
     private var contextActions: some View {
+        if let onReact {
+            Menu {
+                ForEach(Self.quickReactions, id: \.self) { emoji in
+                    Button(emoji) { onReact(emoji) }
+                }
+            } label: {
+                Label("React", systemImage: "face.smiling")
+            }
+        }
         if !message.content.isEmpty {
             Button {
                 PlatformSupport.copyToPasteboard(message.content)
