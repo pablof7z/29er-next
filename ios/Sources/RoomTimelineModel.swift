@@ -89,6 +89,7 @@ final class RoomTimelineModel {
     var composerRecipients: [ComposerRecipient] {
         RoomComposerProjection.recipients(
             from: people,
+            recentSpeakers: timelineItems.compactMap { $0.message?.author },
             profiles: profiles,
             excluding: recipient
         )
