@@ -157,6 +157,7 @@ struct RoomView: View {
     private var peopleView: some View {
         RoomPeopleView(
             people: model.people,
+            profiles: model.profiles,
             hasReceivedMembership: model.hasReceivedMembership,
             hasMembershipMetadata: model.hasMembershipMetadata,
             membershipError: model.membershipError,
