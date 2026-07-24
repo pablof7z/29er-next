@@ -180,8 +180,12 @@ enum NIP29ViewProjection {
         guard kind == 30_315,
               let sessionID = firstTag("d", in: tags),
               !sessionID.isEmpty,
-              let status = firstTag("status", in: tags),
-              status == "busy" || status == "idle",
+              // The live-status heartbeat carries its working/idle/suspended/
+              // offline value on a tag literally named "state" -- the "d" tag's
+              // own value is unrelated and happens to read "status" in today's
+              // producer, which is not the same thing.
+              let state = firstTag("state", in: tags),
+              ["working", "idle", "suspended", "offline"].contains(state),
               let expirationValue = firstTag("expiration", in: tags),
               let expiresAt = UInt64(expirationValue),
               expiresAt >= createdAt else {
@@ -195,7 +199,7 @@ enum NIP29ViewProjection {
             createdAt: createdAt,
             title: firstTag("title", in: tags) ?? "",
             activity: content,
-            isBusy: status == "busy",
+            isBusy: state == "working",
             host: nonEmptyTag("host", in: tags),
             slug: nonEmptyTag("slug", in: tags)
         )
