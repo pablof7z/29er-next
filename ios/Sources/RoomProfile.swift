@@ -39,7 +39,14 @@ struct ProfileBook: Hashable, Sendable {
     }
 
     func displayName(for pubkey: String, fallback: String) -> String {
-        guard let name = profiles[pubkey]?.displayName, !name.isEmpty else { return fallback }
+        name(for: pubkey) ?? fallback
+    }
+
+    /// The kind:0 display name for `pubkey`, or `nil` when no profile has
+    /// arrived yet (unlike `displayName(for:fallback:)`, which always
+    /// returns something displayable).
+    func name(for pubkey: String) -> String? {
+        guard let name = profiles[pubkey]?.displayName, !name.isEmpty else { return nil }
         return name
     }
 

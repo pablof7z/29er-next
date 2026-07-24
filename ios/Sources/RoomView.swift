@@ -112,6 +112,11 @@ struct RoomView: View {
         #endif
     }
 
+    private var reactHandler: ((RoomMessage, String) -> Void)? {
+        guard activePubkey != nil else { return nil }
+        return reactToMessage
+    }
+
     private var roomContent: some View {
         ChatTimelineView(
             items: model.timelineItems,
@@ -122,12 +127,14 @@ struct RoomView: View {
             error: model.chatError,
             profileError: model.profileError,
             mentionIDs: model.mentionIDs,
+            reactionsByMessage: model.reactionsByMessage,
             reads: reads,
             focusMessageID: focusMessageID,
             onOpenLink: openLink,
             onOpenImage: { presentedImage = PresentedURL($0) },
             onReply: beginReply,
-            onOpenSpoken: openSpoken
+            onOpenSpoken: openSpoken,
+            onReact: reactHandler
         )
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ChatComposer(
@@ -179,6 +186,10 @@ struct RoomView: View {
 
     private func beginReply(_ message: RoomMessage) {
         replyTarget = model.composerReply(to: message)
+    }
+
+    private func reactToMessage(_ message: RoomMessage, emoji: String) {
+        Task { _ = await model.reactToMessage(message, emoji: emoji) }
     }
 
     /// Open a spoken item's player. Playback starts here (tapping the card),

@@ -1,12 +1,14 @@
 import Foundation
+import NMP
 import SwiftUI
 
 /// Renders raw kind:9 message text into a display `AttributedString` with
 /// tappable web links and styled `nostr:` entity tokens. Pure presentation:
-/// no network, no signing, and — critically — no bech32 decode. Resolving a
-/// `nostr:npub…`/`nprofile…` mention to a hex pubkey (and thus to a kind:0
-/// display name) needs a decoder NMP does not yet expose over FFI, so entity
-/// tokens are shown as a shortened bech32 label until that codec lands.
+/// no network, no signing. A `nostr:npub…`/`nprofile…` mention is decoded
+/// (NMP's stateless bech32 codec, #116) to its hex pubkey and shown as
+/// `@<kind:0 display name>` when the caller's `resolveMention` resolver
+/// knows that pubkey; otherwise, and for every other entity kind, it falls
+/// back to the shortened bech32 label.
 enum MessageContent {
     /// A contiguous run of the source text classified for display.
     enum Segment: Equatable {
@@ -24,13 +26,19 @@ enum MessageContent {
         case image(display: String, url: URL)
     }
 
-    static func attributed(_ raw: String) -> AttributedString {
-        attributed(segments(of: raw))
+    static func attributed(
+        _ raw: String,
+        resolveMention: (String) -> String? = { _ in nil }
+    ) -> AttributedString {
+        attributed(segments(of: raw), resolveMention: resolveMention)
     }
 
-    static func attributed(_ segments: [Segment]) -> AttributedString {
+    static func attributed(
+        _ segments: [Segment],
+        resolveMention: (String) -> String? = { _ in nil }
+    ) -> AttributedString {
         segments.reduce(into: AttributedString()) { result, segment in
-            result.append(rendered(segment))
+            result.append(rendered(segment, resolveMention: resolveMention))
         }
     }
 
@@ -174,7 +182,10 @@ enum MessageContent {
 
     // MARK: - Rendering
 
-    private static func rendered(_ segment: Segment) -> AttributedString {
+    private static func rendered(
+        _ segment: Segment,
+        resolveMention: (String) -> String?
+    ) -> AttributedString {
         switch segment {
         case .text(let value):
             return AttributedString(value)
@@ -185,11 +196,37 @@ enum MessageContent {
             return attributed
         case .audio:
             return AttributedString()
-        case .entity(_, let label):
-            var attributed = AttributedString(label)
+        case .entity(let token, let label):
+            var attributed = AttributedString(mentionLabel(for: token, fallback: label, resolveMention: resolveMention))
             attributed.foregroundColor = .accentColor
             attributed.font = .body.weight(.medium)
             return attributed
+        }
+    }
+
+    /// `@<kind:0 display name>` for an `npub`/`nprofile` token the caller's
+    /// resolver knows; the shortened bech32 `label` otherwise (unresolved
+    /// pubkey, or an entity kind that isn't a profile mention at all).
+    private static func mentionLabel(
+        for token: String,
+        fallback label: String,
+        resolveMention: (String) -> String?
+    ) -> String {
+        guard let pubkey = mentionPubkey(in: token), let name = resolveMention(pubkey) else {
+            return label
+        }
+        return "@\(name)"
+    }
+
+    private static func mentionPubkey(in token: String) -> String? {
+        guard let entity = try? decodeNostrEntity(token) else { return nil }
+        switch entity {
+        case .pubkey(let pubkey):
+            return pubkey
+        case .profile(let pubkey, _):
+            return pubkey
+        case .eventId, .event, .coordinate:
+            return nil
         }
     }
 

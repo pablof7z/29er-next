@@ -44,7 +44,7 @@ extension TTS29PlaybackController {
         do {
             let receipt = try await engine.publish(intent)
             var failure: String?
-            for await status in receipt.status {
+            for try await status in receipt.status {
                 if let message = Self.failureMessage(for: status) { failure = message }
             }
             answerState = failure.map(TTS29AnswerState.failed) ?? .submitted

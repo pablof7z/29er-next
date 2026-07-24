@@ -53,7 +53,7 @@ extension RoomTimelineModel {
                 reply: replyParent
             )
             let receipt = try await engine.publishComposed(intent)
-            for await status in receipt.status {
+            for try await status in receipt.status {
                 if let failure = deliveryFailure(for: status) { return failure }
                 if case .acked = status { return nil }
             }
@@ -63,7 +63,7 @@ extension RoomTimelineModel {
         }
     }
 
-    private func deliveryFailure(for status: WriteStatus) -> String? {
+    func deliveryFailure(for status: WriteStatus) -> String? {
         switch status {
         case .rejected(_, let reason):
             return "The relay rejected the message: \(reason)"

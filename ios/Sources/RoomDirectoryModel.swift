@@ -67,7 +67,7 @@ final class RoomDirectoryModel {
             )
             defer { query.cancel() }
 
-            for await batch in query {
+            for try await batch in query {
                 guard !Task.isCancelled else { return }
                 ingest(rows: batch.rows)
                 observationError = nil

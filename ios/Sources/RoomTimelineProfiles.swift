@@ -48,7 +48,7 @@ extension RoomTimelineModel {
             )
             defer { query.cancel() }
 
-            for await batch in query {
+            for try await batch in query {
                 guard !Task.isCancelled else { return }
                 RoomOpenProbe.shared.recordSnapshot(.profiles, rows: batch.rows)
                 profiles = RoomProfileProjection.profiles(from: batch.rows)

@@ -55,7 +55,7 @@ final class InboxModel {
             )
             defer { query.cancel() }
 
-            for await batch in query {
+            for try await batch in query {
                 guard !Task.isCancelled else { return }
                 mentions = MentionProjection.mentions(from: batch.rows, recipient: recipient)
                 mentionError = nil
@@ -71,10 +71,13 @@ final class InboxModel {
         // binding so demand grows as new mention authors appear. NMP owns the
         // routing; the app only declares which authors it cares about.
         let authors: NMPBinding = .derived(
-            inner: NMPFilter(
-                kinds: [9],
-                tags: ["p": .literal([recipient])],
-                limit: 500
+            inner: NMPDemand(
+                selection: NMPFilter(
+                    kinds: [9],
+                    tags: ["p": .literal([recipient])],
+                    limit: 500
+                ),
+                source: .public
             ),
             project: .authors
         )
@@ -86,7 +89,7 @@ final class InboxModel {
             )
             defer { query.cancel() }
 
-            for await batch in query {
+            for try await batch in query {
                 guard !Task.isCancelled else { return }
                 profiles = RoomProfileProjection.profiles(from: batch.rows)
                 profileError = nil
