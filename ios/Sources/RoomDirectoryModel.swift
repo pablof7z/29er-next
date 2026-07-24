@@ -33,6 +33,8 @@ struct DirectoryReadStore {
 final class RoomDirectoryModel {
     private(set) var entries: [String: RoomDirectoryEntry] = [:]
     private(set) var observationError: String?
+    private(set) var profiles = ProfileBook()
+    private(set) var profileError: String?
 
     private let engine: NMPEngine
     private let hostRelay: String
@@ -41,6 +43,8 @@ final class RoomDirectoryModel {
     private var baselines: [String: UInt64]
     private var latestByGroup: [String: RoomMessage] = [:]
     private var timesByGroup: [String: [UInt64]] = [:]
+    private let profileAuthorUpdates = ProfileAuthorUpdates()
+    private var lastProfileAuthors: [String]?
 
     init(
         engine: NMPEngine,
@@ -60,6 +64,16 @@ final class RoomDirectoryModel {
     }
 
     func observe() async {
+        lastProfileAuthors = nil
+        publishProfileAuthors()
+
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { [weak self] in await self?.observeDirectory() }
+            group.addTask { [weak self] in await self?.observeProfiles() }
+        }
+    }
+
+    private func observeDirectory() async {
         do {
             let query = try await queryOpening.demand(
                 engine,
@@ -76,6 +90,53 @@ final class RoomDirectoryModel {
             guard !Task.isCancelled else { return }
             observationError = error.localizedDescription
         }
+    }
+
+    /// Kind:0 for every room's most-recent-message author, via the same
+    /// reactive derived-author-set pattern as `RoomTimelineModel`'s profile
+    /// fetch, so the channel-list preview can resolve a display name the
+    /// same way a room's own message header does.
+    private func observeProfiles() async {
+        var observation: Task<Void, Never>?
+        for await authors in profileAuthorUpdates.stream {
+            guard !Task.isCancelled else { break }
+            if let observation {
+                observation.cancel()
+                await observation.value
+            }
+            observation = Task { [weak self] in
+                await self?.observeProfiles(authors: authors)
+            }
+        }
+        observation?.cancel()
+        await observation?.value
+    }
+
+    private func observeProfiles(authors: [String]) async {
+        do {
+            let query = try await queryOpening.filter(
+                engine,
+                NMPFilter(kinds: [0], authors: .literal(Set(authors)), limit: 1_000)
+            )
+            defer { query.cancel() }
+
+            for try await batch in query {
+                guard !Task.isCancelled else { return }
+                profiles = RoomProfileProjection.profiles(from: batch.rows)
+                profileError = nil
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            profileError = error.localizedDescription
+            profileAuthorUpdates.continuation.finish()
+        }
+    }
+
+    private func publishProfileAuthors() {
+        let authors = Set(entries.values.compactMap { $0.latest?.author }).sorted()
+        guard authors != lastProfileAuthors else { return }
+        lastProfileAuthors = authors
+        profileAuthorUpdates.continuation.yield(authors)
     }
 
     /// Clear a room's unread badge by advancing its baseline to the newest
@@ -118,6 +179,7 @@ final class RoomDirectoryModel {
         latestByGroup = snapshot.latestByGroup
         timesByGroup = snapshot.timesByGroup
         entries = snapshot.entries
+        publishProfileAuthors()
     }
 
     private func recompute() {

@@ -145,8 +145,10 @@ struct ChatComposer: View {
     /// can keep that button as a stable sibling across content swaps.
     @ViewBuilder
     var standardLeadingControls: some View {
-        attachmentButton
-        mentionButton
+        VStack(spacing: 4) {
+            attachmentButton
+            mentionButton
+        }
         editorPanel
             .padding(.vertical, 8)
             .frame(minHeight: 40)

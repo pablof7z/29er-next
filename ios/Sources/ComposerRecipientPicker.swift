@@ -43,6 +43,7 @@ struct ComposerRecipientPicker: View {
             } else {
                 selectedRecipients.append(recipient)
             }
+            dismiss()
         } label: {
             HStack(spacing: 12) {
                 AuthorAvatar(

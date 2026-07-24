@@ -80,6 +80,7 @@ struct ChannelListView: View {
             group: group,
             childCount: childCount,
             entry: directory?.entries[group.localID],
+            profiles: directory?.profiles ?? ProfileBook(),
             contentObservationFactory: contentObservationFactory
         )
     }
