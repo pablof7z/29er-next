@@ -19,8 +19,10 @@ struct ChatComposer: View {
     let defaultRecipient: ComposerRecipient?
     @Binding var reply: ComposerReply?
     let send: (ComposerRequest) async -> String?
+    let draftStore: ComposerDraftStore
 
-    @State var draft = ""
+    // Internal, not private: `ChatComposer+Submission` resets it on send.
+    @State var draft: String
     @State var selectedRecipients: [ComposerRecipient] = []
     @State var attachments: [ComposerAttachment] = []
     @State var isSending = false
@@ -54,6 +56,9 @@ struct ChatComposer: View {
         _voice = StateObject(
             wrappedValue: voiceCoordinator ?? .live(store: VoiceDraftStore(scope: voiceDraftScope))
         )
+        let draftStore = ComposerDraftStore(scope: voiceDraftScope)
+        self.draftStore = draftStore
+        _draft = State(initialValue: draftStore.load())
         self.send = send
     }
 
@@ -91,6 +96,9 @@ struct ChatComposer: View {
                   reply == nil, selectedRecipients.isEmpty,
                   let defaultRecipient else { return }
             selectedRecipients = [defaultRecipient]
+        }
+        .onChange(of: draft) { _, newValue in
+            draftStore.save(newValue)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { voice.sceneBecameInactive() }
