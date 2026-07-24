@@ -140,6 +140,7 @@ struct RoomView: View {
             ChatComposer(
                 canSend: activePubkey != nil,
                 recipients: model.composerRecipients,
+                defaultRecipient: model.lastOtherSpeaker,
                 reply: $replyTarget,
                 voiceDraftScope: "\(group.hostRelay)|\(group.localID)",
                 send: sendMessage

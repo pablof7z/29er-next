@@ -21,6 +21,23 @@ enum RoomComposerProjection {
             }
     }
 
+    /// The most recent message's author other than `excludedPubkey` (the
+    /// signed-in user) -- the default recipient a composer auto-tags the
+    /// moment typing starts, same value shape a manual mention pick or
+    /// reply already produces so it renders as an identical chip.
+    static func lastOtherSpeaker(
+        in items: [RoomTimelineItem],
+        excluding excludedPubkey: String?,
+        people: RoomPeople,
+        profiles: ProfileBook
+    ) -> ComposerRecipient? {
+        for item in items.reversed() {
+            guard let message = item.message, message.author != excludedPubkey else { continue }
+            return recipient(for: message.author, people: people, profiles: profiles)
+        }
+        return nil
+    }
+
     static func reply(
         to message: RoomMessage,
         people: RoomPeople,

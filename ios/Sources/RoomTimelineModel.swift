@@ -98,6 +98,17 @@ final class RoomTimelineModel {
         RoomComposerProjection.reply(to: message, people: people, profiles: profiles)
     }
 
+    /// The default recipient a new message auto-tags with: the most recent
+    /// speaker other than the signed-in user (#118).
+    var lastOtherSpeaker: ComposerRecipient? {
+        RoomComposerProjection.lastOtherSpeaker(
+            in: timelineItems,
+            excluding: recipient,
+            people: people,
+            profiles: profiles
+        )
+    }
+
     /// Management backends present in this room, resolved from kind:0 across
     /// members, admins, and live-session authors.
     var backends: [RoomBackend] {
