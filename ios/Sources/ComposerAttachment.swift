@@ -67,6 +67,68 @@ struct ComposerAttachment: Identifiable, Hashable, Sendable {
     }
 }
 
+extension ComposerAttachment {
+    /// Loads a pasted image/file the same way an attached one loads: through
+    /// `load(from: URL)`, on a copy of the provider's temp file so it survives
+    /// past `loadFileRepresentation`'s callback (the original is removed the
+    /// moment that callback returns).
+    @MainActor
+    static func load(from provider: NSItemProvider) async throws -> ComposerAttachment {
+        guard let typeIdentifier = provider.registeredTypeIdentifiers.first else {
+            throw ComposerAttachmentError.empty(filename: "Pasted item")
+        }
+
+        let temporaryURL = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
+            provider.loadFileRepresentation(forTypeIdentifier: typeIdentifier) { url, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                guard let url else {
+                    continuation.resume(throwing: ComposerAttachmentError.empty(filename: "Pasted item"))
+                    return
+                }
+                do {
+                    let destination = FileManager.default.temporaryDirectory
+                        .appendingPathComponent(UUID().uuidString)
+                        .appendingPathExtension(url.pathExtension)
+                    try FileManager.default.copyItem(at: url, to: destination)
+                    continuation.resume(returning: destination)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+        defer { try? FileManager.default.removeItem(at: temporaryURL) }
+
+        return try ComposerAttachment.load(from: temporaryURL)
+    }
+}
+
+#if os(iOS)
+import PhotosUI
+import SwiftUI
+
+extension ComposerAttachment {
+    static func load(from item: PhotosPickerItem) async throws -> ComposerAttachment {
+        let contentType = item.supportedContentTypes.first
+        let filename = "\(UUID().uuidString).\(contentType?.preferredFilenameExtension ?? "dat")"
+        guard let data = try await item.loadTransferable(type: Data.self), !data.isEmpty else {
+            throw ComposerAttachmentError.empty(filename: filename)
+        }
+        guard data.count <= maximumBytes else {
+            throw ComposerAttachmentError.tooLarge(filename: filename)
+        }
+
+        return ComposerAttachment(
+            filename: filename,
+            contentType: contentType?.preferredMIMEType ?? "application/octet-stream",
+            data: data
+        )
+    }
+}
+#endif
+
 enum ComposerAttachmentError: LocalizedError {
     case empty(filename: String)
     case tooLarge(filename: String)

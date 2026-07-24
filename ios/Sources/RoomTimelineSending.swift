@@ -55,9 +55,13 @@ extension RoomTimelineModel {
             let receipt = try await engine.publishComposed(intent)
             for try await status in receipt.status {
                 if let failure = deliveryFailure(for: status) { return failure }
-                if case .acked = status { return nil }
+                // NMP commits an accepted write into its canonical store -- and
+                // so into this room's live query -- before this status fires
+                // (#2's local-write visibility contract), so the composer can
+                // hand back control here instead of blocking on relay `.acked`.
+                if case .accepted = status { return nil }
             }
-            return "Message delivery ended without relay acknowledgement."
+            return "Message delivery ended before NMP accepted it."
         } catch {
             return error.localizedDescription
         }

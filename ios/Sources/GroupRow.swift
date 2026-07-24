@@ -6,6 +6,7 @@ struct GroupRow: View {
     let group: GroupSummary
     let childCount: Int
     let entry: RoomDirectoryEntry?
+    let profiles: ProfileBook
     let contentObservationFactory: NMPReferenceObservationFactory?
 
     var body: some View {
@@ -37,11 +38,17 @@ struct GroupRow: View {
         if let message = entry?.latest,
            !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            let contentObservationFactory {
-            GroupContentPreview(
-                message: message,
-                observationFactory: contentObservationFactory
-            )
-            .id(message.id)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(profiles.displayName(for: message.author, fallback: message.authorLabel))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                GroupContentPreview(
+                    message: message,
+                    observationFactory: contentObservationFactory
+                )
+                .id(message.id)
+            }
         } else {
             Text(group.about ?? group.localID)
                 .font(.subheadline)
