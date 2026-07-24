@@ -147,12 +147,12 @@ struct MessageRow: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
+                    if let agentActivity {
+                        AgentStateDot(isBusy: agentActivity.isBusy)
+                    }
                     Text(displayName)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(authorColor)
-                    if let agentActivity {
-                        AgentStateBadge(isBusy: agentActivity.isBusy)
-                    }
                 }
                 if let activityTitle {
                     Text(activityTitle)
@@ -205,25 +205,17 @@ struct MessageRow: View {
     }
 }
 
-private struct AgentStateBadge: View {
+private struct AgentStateDot: View {
     let isBusy: Bool
 
     private var color: Color { isBusy ? .orange : .green }
     private var label: String { isBusy ? "Busy" : "Idle" }
 
     var body: some View {
-        HStack(spacing: 3) {
-            Circle()
-                .fill(color)
-                .frame(width: 5, height: 5)
-            Text(label)
-                .font(.caption2.weight(.medium))
-        }
-        .foregroundStyle(color)
-        .padding(.horizontal, 5)
-        .padding(.vertical, 2)
-        .background(color.opacity(0.12), in: Capsule())
-        .accessibilityLabel("Agent status: \(label)")
+        Circle()
+            .fill(color)
+            .frame(width: 7, height: 7)
+            .accessibilityLabel("Agent status: \(label)")
     }
 }
 
