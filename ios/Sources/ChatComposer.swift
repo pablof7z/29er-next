@@ -1,5 +1,8 @@
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(iOS)
+import PhotosUI
+#endif
 
 /// Bottom-of-room composer. Display names and unsent state stay in SwiftUI;
 /// NMP owns materializing recipients/replies into the published group event.
@@ -18,6 +21,10 @@ struct ChatComposer: View {
     @State private var errorMessage: String?
     @State private var isRecipientPickerPresented = false
     @State private var isAttachmentPickerPresented = false
+    #if os(iOS)
+    @State private var isPhotoPickerPresented = false
+    @State private var photoPickerSelection: [PhotosPickerItem] = []
+    #endif
     @State var didConfigureVoice = false
     @StateObject var voice: VoiceComposerCoordinator
     @FocusState private var isEditorFocused: Bool
@@ -57,6 +64,17 @@ struct ChatComposer: View {
             allowsMultipleSelection: true,
             onCompletion: handlePickedFiles
         )
+        #if os(iOS)
+        .photosPicker(
+            isPresented: $isPhotoPickerPresented,
+            selection: $photoPickerSelection,
+            maxSelectionCount: 10,
+            matching: .any(of: [.images, .videos])
+        )
+        .onChange(of: photoPickerSelection) { _, items in
+            handlePickedPhotos(items)
+        }
+        #endif
         .onChange(of: reply?.id) { _, eventID in
             if eventID != nil { isEditorFocused = true }
         }
@@ -155,17 +173,29 @@ struct ChatComposer: View {
     }
 
     private var attachmentButton: some View {
+        #if os(iOS)
+        Menu {
+            Button {
+                isPhotoPickerPresented = true
+            } label: {
+                Label("Photo Library", systemImage: "photo.on.rectangle")
+            }
+            Button {
+                isAttachmentPickerPresented = true
+            } label: {
+                Label("Browse Files", systemImage: "folder")
+            }
+        } label: {
+            attachmentIcon
+        }
+        .frame(width: 36, height: 36)
+        .contentShape(Rectangle())
+        .disabled(isSending)
+        .accessibilityLabel("Attach files")
+        .accessibilityIdentifier("room-message-attach")
+        #else
         Button { isAttachmentPickerPresented = true } label: {
-            Image(systemName: "paperclip")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(attachments.isEmpty ? Color.secondary : Color.accentColor)
-                .frame(width: 30, height: 30)
-                .background(
-                    attachments.isEmpty
-                        ? Color.secondary.opacity(0.08)
-                        : Color.accentColor.opacity(0.14),
-                    in: .circle
-                )
+            attachmentIcon
         }
         .frame(width: 36, height: 36)
         .contentShape(Rectangle())
@@ -174,6 +204,20 @@ struct ChatComposer: View {
         .help("Attach files")
         .accessibilityLabel("Attach files")
         .accessibilityIdentifier("room-message-attach")
+        #endif
+    }
+
+    private var attachmentIcon: some View {
+        Image(systemName: "paperclip")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(attachments.isEmpty ? Color.secondary : Color.accentColor)
+            .frame(width: 30, height: 30)
+            .background(
+                attachments.isEmpty
+                    ? Color.secondary.opacity(0.08)
+                    : Color.accentColor.opacity(0.14),
+                in: .circle
+            )
     }
 
     private var mentionButton: some View {
@@ -380,4 +424,27 @@ extension ChatComposer {
             errorMessage = error.localizedDescription
         }
     }
+
+    #if os(iOS)
+    private func handlePickedPhotos(_ items: [PhotosPickerItem]) {
+        guard !items.isEmpty else { return }
+        guard attachments.count + items.count <= 10 else {
+            errorMessage = "You can attach up to 10 files to one message."
+            photoPickerSelection = []
+            return
+        }
+        Task {
+            var loaded: [ComposerAttachment] = []
+            for item in items {
+                do {
+                    loaded.append(try await ComposerAttachment.load(from: item))
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+            attachments.append(contentsOf: loaded)
+            photoPickerSelection = []
+        }
+    }
+    #endif
 }

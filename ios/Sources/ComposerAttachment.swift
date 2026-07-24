@@ -67,6 +67,30 @@ struct ComposerAttachment: Identifiable, Hashable, Sendable {
     }
 }
 
+#if os(iOS)
+import PhotosUI
+import SwiftUI
+
+extension ComposerAttachment {
+    static func load(from item: PhotosPickerItem) async throws -> ComposerAttachment {
+        let contentType = item.supportedContentTypes.first
+        let filename = "\(UUID().uuidString).\(contentType?.preferredFilenameExtension ?? "dat")"
+        guard let data = try await item.loadTransferable(type: Data.self), !data.isEmpty else {
+            throw ComposerAttachmentError.empty(filename: filename)
+        }
+        guard data.count <= maximumBytes else {
+            throw ComposerAttachmentError.tooLarge(filename: filename)
+        }
+
+        return ComposerAttachment(
+            filename: filename,
+            contentType: contentType?.preferredMIMEType ?? "application/octet-stream",
+            data: data
+        )
+    }
+}
+#endif
+
 enum ComposerAttachmentError: LocalizedError {
     case empty(filename: String)
     case tooLarge(filename: String)
