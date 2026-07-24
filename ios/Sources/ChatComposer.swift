@@ -2,6 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 #if os(iOS)
 import PhotosUI
+import UIKit
 #endif
 
 /// Bottom-of-room composer. Display names and unsent state stay in SwiftUI;
@@ -184,6 +185,11 @@ struct ChatComposer: View {
                 isAttachmentPickerPresented = true
             } label: {
                 Label("Browse Files", systemImage: "folder")
+            }
+            Button {
+                handlePastedProviders(UIPasteboard.general.itemProviders)
+            } label: {
+                Label("Paste", systemImage: "doc.on.clipboard")
             }
         } label: {
             attachmentIcon
@@ -447,4 +453,23 @@ extension ChatComposer {
         }
     }
     #endif
+
+    private func handlePastedProviders(_ providers: [NSItemProvider]) {
+        guard !providers.isEmpty else { return }
+        guard attachments.count + providers.count <= 10 else {
+            errorMessage = "You can attach up to 10 files to one message."
+            return
+        }
+        Task {
+            var loaded: [ComposerAttachment] = []
+            for provider in providers {
+                do {
+                    loaded.append(try await ComposerAttachment.load(from: provider))
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+            attachments.append(contentsOf: loaded)
+        }
+    }
 }
