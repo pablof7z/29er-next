@@ -25,37 +25,15 @@ final class VoiceComposerDeviceProofTests: XCTestCase {
         XCTAssertTrue(app.buttons["room-message-mic"].waitForExistence(timeout: 10))
     }
 
-    func testNeutralHeldShowsPanelAndCancelWithoutInstructionalCopy() {
-        let app = launch("neutralHeld")
-        XCTAssertTrue(app.descendants(matching: .any)["voice-recording-panel"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.descendants(matching: .any)["voice-cancel-track"].exists)
-        // The removed defect: no explanatory sentence stands in for the affordance.
-        XCTAssertFalse(app.staticTexts["Slide up to lock"].exists)
-    }
-
-    func testLockRailIsVisibleWhileProgressing() {
-        let app = launch("lockHalf")
-        XCTAssertTrue(app.descendants(matching: .any)["voice-lock-rail"].waitForExistence(timeout: 10))
-    }
-
-    func testCancelTrackVisibleWhileProgressing() {
-        let app = launch("cancelHalf")
-        XCTAssertTrue(app.descendants(matching: .any)["voice-cancel-track"].waitForExistence(timeout: 10))
-    }
-
-    func testLockedToolbarExposesEveryControl() {
+    /// Tap-once: a single mic tap drops straight into the locked recording bar, which
+    /// exposes cancel (✕), stop (◼ → review), and send (↑) — no held panel, no slide-to-
+    /// lock rail, no slide-to-cancel track, no pause.
+    func testLockedToolbarExposesCancelStopAndSend() {
         let app = launch("lockedRecording")
         XCTAssertTrue(app.descendants(matching: .any)["voice-locked-toolbar"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["voice-delete"].exists)
-        XCTAssertTrue(app.buttons["voice-pause-resume"].exists)
+        XCTAssertTrue(app.buttons["voice-stop"].exists)
         XCTAssertTrue(app.buttons["voice-send"].exists)
-    }
-
-    func testPausedShowsResumeControl() {
-        let app = launch("paused")
-        let resume = app.buttons["voice-pause-resume"]
-        XCTAssertTrue(resume.waitForExistence(timeout: 10))
-        XCTAssertEqual(resume.label, "Resume recording")
     }
 
     func testCompletedDraftShowsVoiceCardNotFilename() {

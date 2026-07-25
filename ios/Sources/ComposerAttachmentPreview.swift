@@ -14,7 +14,7 @@ struct ComposerAttachmentPreviewStrip: View {
 
     var body: some View {
         ScrollView(.horizontal) {
-            HStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
                 ForEach(attachments) { attachment in
                     ComposerAttachmentPreview(attachment: attachment) {
                         remove(attachment.id)
@@ -29,57 +29,51 @@ struct ComposerAttachmentPreviewStrip: View {
     }
 }
 
+/// A single attachment tile styled after ChatGPT's composer: a large rounded image
+/// thumbnail with a corner ✕, image-forward and chrome-free. Non-image files show a doc
+/// icon with the filename beneath; audio keeps a play/pause overlay.
 private struct ComposerAttachmentPreview: View {
     let attachment: ComposerAttachment
     let remove: () -> Void
     @State private var audioPlayer: AVAudioPlayer?
 
+    private let side: CGFloat = 72
+
     var body: some View {
-        HStack(spacing: 8) {
-            preview
-            VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
+            tile
+                .frame(width: side, height: side)
+                .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay(alignment: .topTrailing) { removeButton }
+            if !attachment.isImage {
                 Text(attachment.filename)
-                    .font(.caption.weight(.medium))
-                    .lineLimit(1)
-                Text(attachment.formattedSize)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .frame(width: side, alignment: .leading)
             }
-            Button(action: remove) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Remove \(attachment.filename)")
         }
-        .padding(6)
-        .frame(maxWidth: 230)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
         .accessibilityIdentifier("composer-attachment-\(attachment.id)")
         .onDisappear { audioPlayer?.stop() }
     }
 
     @ViewBuilder
-    private var preview: some View {
-        Group {
-            if attachment.isAudio {
-                Button(action: toggleAudioPreview) {
-                    thumbnail
-                        .overlay {
-                            Image(systemName: audioPlayer?.isPlaying == true ? "pause.fill" : "play.fill")
-                                .font(.caption.weight(.bold))
-                        }
+    private var tile: some View {
+        if attachment.isAudio {
+            Button(action: toggleAudioPreview) {
+                ZStack {
+                    fileIcon("waveform")
+                    Circle().fill(.ultraThinMaterial).frame(width: 32, height: 32)
+                    Image(systemName: audioPlayer?.isPlaying == true ? "pause.fill" : "play.fill")
+                        .font(.subheadline.weight(.bold))
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Preview \(attachment.filename)")
-            } else {
-                thumbnail
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Preview \(attachment.filename)")
+        } else {
+            thumbnail
         }
-        .frame(width: 38, height: 38)
-        .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     @ViewBuilder
@@ -88,21 +82,35 @@ private struct ComposerAttachmentPreview: View {
         if attachment.isImage, let image = UIImage(data: attachment.data) {
             Image(uiImage: image).resizable().scaledToFill()
         } else {
-            fileIcon
+            fileIcon("doc.fill")
         }
         #elseif os(macOS)
         if attachment.isImage, let image = NSImage(data: attachment.data) {
             Image(nsImage: image).resizable().scaledToFill()
         } else {
-            fileIcon
+            fileIcon("doc.fill")
         }
         #endif
     }
 
-    private var fileIcon: some View {
-        Image(systemName: attachment.isAudio ? "waveform" : "doc.fill")
-            .font(.title3)
+    private func fileIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.title2)
             .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var removeButton: some View {
+        Button(action: remove) {
+            Image(systemName: "xmark")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(Color.black.opacity(0.55), in: .circle)
+        }
+        .buttonStyle(.plain)
+        .padding(5)
+        .accessibilityLabel("Remove \(attachment.filename)")
     }
 
     private func toggleAudioPreview() {

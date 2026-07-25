@@ -2,9 +2,9 @@ import SwiftUI
 
 #if os(iOS)
 /// The trailing composer button. Shows the send arrow when there is substantive text/an
-/// attachment, otherwise a microphone that is the persistent anchor for the press-and-hold
-/// gesture. Keeping this one view mounted across idle → held recording is what preserves
-/// the continuous touch as the surrounding composer content swaps.
+/// attachment, otherwise a microphone. A single tap starts a hands-free recording — no
+/// press-and-hold, no release-to-send — so the interaction is one deliberate tap and the
+/// locked recording bar (pause, delete, send) takes over from there.
 struct VoiceComposerActionButton: View {
     @ObservedObject var coordinator: VoiceComposerCoordinator
     let showsMic: Bool
@@ -12,13 +12,9 @@ struct VoiceComposerActionButton: View {
     let isSending: Bool
     let submit: () -> Void
 
-    @Environment(\.layoutDirection) private var layoutDirection
-    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
-    @State private var isTracking = false
-
     var body: some View {
         Group {
-            if showsMic || coordinator.state.isHeldRecording {
+            if showsMic {
                 micButton
             } else {
                 sendButton
@@ -29,23 +25,20 @@ struct VoiceComposerActionButton: View {
     }
 
     private var micButton: some View {
-        Image(systemName: "mic.fill")
-            .font(.subheadline.weight(.bold))
-            .foregroundStyle(.white)
-            .frame(width: 40, height: 40)
-            .background(Color.accentColor, in: .circle)
-            .scaleEffect(coordinator.state.isHeldRecording ? 1.14 : 1)
-            .animation(.spring(response: 0.24, dampingFraction: 0.7), value: coordinator.state.isHeldRecording)
-            .frame(width: 44, height: 44)
-            .contentShape(Circle())
-            // VoiceOver cannot hold: the gesture is suppressed and a tap records hands-free.
-            .gesture(recordingGesture, including: voiceOverEnabled ? .none : .all)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Record voice message")
-            .accessibilityHint("Starts a hands-free recording you can pause, review, or send.")
-            .accessibilityAddTraits(.startsMediaSession)
-            .accessibilityAction { coordinator.beginHandsFree() }
-            .accessibilityIdentifier("room-message-mic")
+        Button { coordinator.beginHandsFree() } label: {
+            Image(systemName: "mic.fill")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .background(Color.accentColor, in: .circle)
+        }
+        .buttonStyle(.plain)
+        .frame(width: 44, height: 44)
+        .contentShape(Circle())
+        .accessibilityLabel("Record voice message")
+        .accessibilityHint("Starts a hands-free recording you can pause, review, or send.")
+        .accessibilityAddTraits(.startsMediaSession)
+        .accessibilityIdentifier("room-message-mic")
     }
 
     private var sendButton: some View {
@@ -66,25 +59,6 @@ struct VoiceComposerActionButton: View {
         .disabled(!canSubmit || isSending)
         .accessibilityLabel("Send message")
         .accessibilityIdentifier("room-message-send")
-    }
-
-    private var recordingGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                if !isTracking {
-                    isTracking = true
-                    coordinator.pressBegan()
-                }
-                let reading = coordinator.state.metrics.reading(
-                    translation: value.translation,
-                    layoutDirection: layoutDirection
-                )
-                coordinator.dragChanged(reading)
-            }
-            .onEnded { _ in
-                isTracking = false
-                coordinator.pressEnded()
-            }
     }
 }
 
