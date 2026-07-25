@@ -68,7 +68,7 @@ final class RoomComposerProjectionTests: XCTestCase {
         )
         let backendProfile = RoomProfile(
             pubkey: "backend",
-            displayName: "tenex-edge",
+            displayName: "Mosaico",
             pictureURL: nil,
             isBackend: true,
             host: "laptop",

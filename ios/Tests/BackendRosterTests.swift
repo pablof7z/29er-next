@@ -5,7 +5,7 @@ final class BackendRosterTests: XCTestCase {
     func testBackendKindZeroTagsAreParsed() {
         let profile = RoomProfileProjection.profile(
             pubkey: "backend-pubkey",
-            content: #"{"name":"laptop (tenex-edge)"}"#,
+            content: #"{"name":"laptop (Mosaico)"}"#,
             tags: [
                 ["backend"],
                 ["host", "laptop"],
@@ -42,7 +42,7 @@ final class BackendRosterTests: XCTestCase {
     func testBackendsSelectsOnlyBackendTaggedCandidates() {
         let backend = RoomProfile(
             pubkey: "backend-pubkey",
-            displayName: "laptop (tenex-edge)",
+            displayName: "laptop (Mosaico)",
             pictureURL: nil,
             isBackend: true,
             host: "laptop",

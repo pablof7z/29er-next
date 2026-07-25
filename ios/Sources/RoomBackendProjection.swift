@@ -1,6 +1,6 @@
 import Foundation
 
-/// A tenex-edge management backend present in this room (identified by a
+/// A Mosaico management backend present in this room (identified by a
 /// `["backend"]` tag on its kind:0), plus the agents it advertises. Tapping one
 /// issues management commands as kind:9 chat directed at `pubkey`.
 struct RoomBackend: Identifiable, Hashable, Sendable {

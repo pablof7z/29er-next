@@ -129,7 +129,7 @@ enum NIP29ViewProjection {
         return RoomPeople(members: listed, activeHere: activeHere)
     }
 
-    /// Admin pubkeys from the room's kind:39001 admin lists. tenex-edge adds
+    /// Admin pubkeys from the room's kind:39001 admin lists. Mosaico adds
     /// its backend management key as a group admin, so this is how the backend
     /// surfaces even when it is not in the kind:39002 member roster.
     static func admins(from rows: [Row]) -> [String] {
