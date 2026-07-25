@@ -1,7 +1,7 @@
 import Foundation
 import NMP
 
-/// One agent a tenex-edge backend advertises on its kind:0, as
+/// One agent a Mosaico backend advertises on its kind:0, as
 /// `["agent", <slug>, <description>]`. `slug` is exactly what the backend's
 /// `add <slug>` management command accepts, so it round-trips to a kind:9.
 struct BackendAgent: Hashable, Sendable, Identifiable {
@@ -16,7 +16,7 @@ struct RoomProfile: Hashable, Sendable {
     let pubkey: String
     let displayName: String?
     let pictureURL: URL?
-    /// A tenex-edge management backend advertises itself with a bare
+    /// A Mosaico management backend advertises itself with a bare
     /// `["backend"]` tag on its kind:0; these are read from tags, not content.
     let isBackend: Bool
     /// The backend's host label (`["host", "laptop"]`), when present.

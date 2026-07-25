@@ -63,7 +63,7 @@ struct DiagnosticsView: View {
 
                 if canResetCache {
                     Section {
-                        Button("Reset NMP Cache", role: .destructive) {
+                        Button("Reset Cache", role: .destructive) {
                             confirmingReset = true
                         }
                         .accessibilityIdentifier("reset-nmp-cache")
@@ -85,7 +85,7 @@ struct DiagnosticsView: View {
                 }
             }
             .confirmationDialog(
-                "Reset NMP Cache?",
+                "Reset Cache?",
                 isPresented: $confirmingReset,
                 titleVisibility: .visible
             ) {

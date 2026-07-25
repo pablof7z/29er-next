@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A tappable row in the room's People roster representing a tenex-edge
+/// A tappable row in the room's People roster representing a Mosaico
 /// management backend. Selecting it opens `BackendCommandsSheet`.
 struct BackendRow: View {
     let backend: RoomBackend

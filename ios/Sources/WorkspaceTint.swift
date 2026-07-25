@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Presentation-only workspace color selection. This mirrors tenex-edge's
+/// Presentation-only workspace color selection. This mirrors Mosaico's
 /// 64-bit FNV-style hash and six-color choice so a workspace remains visually
 /// stable across the CLI and native app.
 enum WorkspaceTint {

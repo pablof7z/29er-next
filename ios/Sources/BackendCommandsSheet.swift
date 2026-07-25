@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Commands a user can issue to a tenex-edge management backend from the room's
+/// Commands a user can issue to a Mosaico management backend from the room's
 /// People roster. Each action publishes a kind:9 chat message directed at the
 /// backend; the backend's reply lands inline in the room timeline. Sending
 /// requires a signed-in account that is a channel admin — the relay/backend
