@@ -141,7 +141,7 @@ struct RoomView: View {
                 canSend: activePubkey != nil,
                 recipients: model.composerRecipients,
                 reply: $replyTarget,
-                voiceDraftScope: "\(group.hostRelay)|\(group.localID)",
+                voiceDraftScope: "\(activePubkey ?? "signed-out")|\(group.hostRelay)|\(group.localID)",
                 send: sendMessage
             )
         }

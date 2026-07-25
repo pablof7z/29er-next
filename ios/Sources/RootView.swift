@@ -13,6 +13,9 @@ struct RootView: View {
     @State private var showingDiagnostics = false
     @State private var showingIdentity = false
     @State private var showingRelayBrowser = false
+    #if os(iOS)
+    @State private var showingSystem = false
+    #endif
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -89,6 +92,14 @@ struct RootView: View {
                 // inserts reliably when the account signs in, which a
                 // conditional standalone ToolbarItem does not.
                 ToolbarItemGroup(placement: PlatformSupport.trailingToolbarPlacement) {
+                    #if os(iOS)
+                    Button {
+                        showingSystem = true
+                    } label: {
+                        Label("System", systemImage: "gearshape")
+                    }
+                    .accessibilityIdentifier("system-settings-button")
+                    #endif
                     if model.activePubkey != nil {
                         Button {
                             path.append(InboxRoute())
@@ -140,6 +151,11 @@ struct RootView: View {
                     clearEditError: model.clearFavoriteRelayError
                 )
             }
+            #if os(iOS)
+            .sheet(isPresented: $showingSystem) {
+                SystemSettingsView()
+            }
+            #endif
         }
         .id(model.engineGeneration)
         .task(id: model.engineGeneration) {

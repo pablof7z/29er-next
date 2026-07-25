@@ -44,6 +44,7 @@ targets:
           - wss://purplepag.es
         NMPGroupRelay: wss://nip29.f7z.io
         NSMicrophoneUsageDescription: Record voice messages to share in your group chats.
+        NSSpeechRecognitionUsageDescription: Transcribe your saved voice messages into editable chat text.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
@@ -83,6 +84,7 @@ targets:
           - wss://purplepag.es
         NMPGroupRelay: wss://nip29.f7z.io
         NSMicrophoneUsageDescription: Record voice messages to validate the composer experience.
+        NSSpeechRecognitionUsageDescription: Transcribe saved voice messages for device validation.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft

@@ -8,11 +8,14 @@ import UIKit
 @MainActor
 final class AVVoiceRecorderEngine: NSObject, VoiceRecorderEngine, AVAudioRecorderDelegate {
     var onSample: ((Float, TimeInterval) -> Void)?
+    var onFailure: (() -> Void)?
 
     private var recorder: AVAudioRecorder?
     private var displayLink: CADisplayLink?
+    private var didReportFailure = false
 
     func start(url: URL) throws {
+        didReportFailure = false
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(
             .playAndRecord,
@@ -21,12 +24,17 @@ final class AVVoiceRecorderEngine: NSObject, VoiceRecorderEngine, AVAudioRecorde
         )
         try session.setActive(true, options: .notifyOthersOnDeactivation)
 
+        // Constant-size PCM in CAF deliberately favors recoverability over compactness:
+        // CAF permits an unfinished final audio-data chunk, so audio already written can
+        // remain readable even when the process never gets to finalize the recording.
         let recorder = try AVAudioRecorder(url: url, settings: [
-            AVFormatIDKey: kAudioFormatMPEG4AAC,
-            AVSampleRateKey: 44_100,
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: 16_000,
             AVNumberOfChannelsKey: 1,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
-            AVEncoderBitRateKey: 96_000
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsNonInterleaved: false
         ])
         recorder.delegate = self
         recorder.isMeteringEnabled = true
@@ -93,7 +101,25 @@ final class AVVoiceRecorderEngine: NSObject, VoiceRecorderEngine, AVAudioRecorde
     }
 
     nonisolated func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
-        // Encode errors surface through the coordinator's finish path; nothing to do here.
+        Task { @MainActor [weak self] in
+            self?.reportFailure()
+        }
+    }
+
+    nonisolated func audioRecorderDidFinishRecording(
+        _ recorder: AVAudioRecorder,
+        successfully flag: Bool
+    ) {
+        guard !flag else { return }
+        Task { @MainActor [weak self] in
+            self?.reportFailure()
+        }
+    }
+
+    private func reportFailure() {
+        guard !didReportFailure else { return }
+        didReportFailure = true
+        onFailure?()
     }
 }
 

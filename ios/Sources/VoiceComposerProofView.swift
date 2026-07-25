@@ -42,6 +42,9 @@ enum VoiceProofState: String {
     case cancelArmed
     case paused
     case finalizing
+    case transcribing
+    case transcriptReady
+    case transcriptionFailure
     case completedDraft
     case permissionDenied
     case publishFailure
@@ -95,6 +98,28 @@ enum VoiceProofState: String {
             state.capture = .paused; state.mode = .locked
         case .finalizing:
             state.capture = .finalizing(.send); state.mode = .locked
+        case .transcribing:
+            var draft = Self.draft
+            draft.intent = .review
+            draft.status = .transcribing
+            draft.providerName = "Apple (Built-In)"
+            state.capture = .transcribing(draft)
+        case .transcriptReady:
+            var draft = Self.draft
+            draft.intent = .review
+            draft.status = .transcriptReady
+            draft.transcript = "A saved example transcript."
+            state.capture = .transcriptReady(draft)
+        case .transcriptionFailure:
+            var draft = Self.draft
+            draft.intent = .review
+            draft.status = .transcriptionFailed
+            state.capture = .failed(
+                .transcription(
+                    draft,
+                    "Couldn’t Transcribe — No connection. Your recording is saved in this chat."
+                )
+            )
         case .completedDraft, .recoveredDraft:
             state.capture = .review(Self.draft)
         case .permissionDenied:

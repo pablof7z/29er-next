@@ -8,12 +8,33 @@ struct VoiceDraftReviewCard: View {
     let draft: VoiceDraft
     let isBusy: Bool
     let failureMessage: String?
+    let primaryLabel: String
     let onDelete: () -> Void
     let onPrimary: () -> Void
+    let onSettings: (() -> Void)?
+    let onSendAudioOnly: (() -> Void)?
 
     @StateObject private var player = VoiceDraftPlayer()
 
-    private var isRetry: Bool { failureMessage != nil }
+    init(
+        draft: VoiceDraft,
+        isBusy: Bool,
+        failureMessage: String?,
+        primaryLabel: String = "Send voice message",
+        onDelete: @escaping () -> Void,
+        onPrimary: @escaping () -> Void,
+        onSettings: (() -> Void)? = nil,
+        onSendAudioOnly: (() -> Void)? = nil
+    ) {
+        self.draft = draft
+        self.isBusy = isBusy
+        self.failureMessage = failureMessage
+        self.primaryLabel = primaryLabel
+        self.onDelete = onDelete
+        self.onPrimary = onPrimary
+        self.onSettings = onSettings
+        self.onSendAudioOnly = onSendAudioOnly
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -25,6 +46,9 @@ struct VoiceDraftReviewCard: View {
                     .foregroundStyle(.secondary)
                     .frame(minWidth: 40, alignment: .trailing)
                 deleteButton
+                if onSettings != nil || onSendAudioOnly != nil {
+                    recoveryMenu
+                }
                 primaryButton
             }
             if let failureMessage {
@@ -90,7 +114,7 @@ struct VoiceDraftReviewCard: View {
                 if isBusy {
                     ProgressView()
                 } else {
-                    Image(systemName: isRetry ? "arrow.clockwise" : "arrow.up")
+                    Image(systemName: failureMessage == nil ? "arrow.up" : "arrow.clockwise")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.white)
                 }
@@ -100,8 +124,31 @@ struct VoiceDraftReviewCard: View {
         }
         .buttonStyle(.plain)
         .disabled(isBusy)
-        .accessibilityLabel(isRetry ? "Retry sending voice message" : "Send voice message")
-        .accessibilityIdentifier(isRetry ? "voice-retry" : "voice-send")
+        .accessibilityLabel(primaryLabel)
+        .accessibilityIdentifier(failureMessage == nil ? "voice-send" : "voice-retry")
+    }
+
+    private var recoveryMenu: some View {
+        Menu {
+            if let onSettings {
+                Button(action: onSettings) {
+                    Label("Voice Settings", systemImage: "gearshape")
+                }
+            }
+            if let onSendAudioOnly {
+                Button(action: onSendAudioOnly) {
+                    Label("Send Audio Only", systemImage: "waveform")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("More recovery options")
+        .accessibilityIdentifier("voice-recovery-menu")
     }
 
     /// Counts down remaining preview time while playing, otherwise shows total length.

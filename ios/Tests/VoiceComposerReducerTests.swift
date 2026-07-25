@@ -9,6 +9,19 @@ final class VoiceComposerReducerTests: XCTestCase {
     private let draft = VoiceDraft(url: URL(fileURLWithPath: "/tmp/voice.m4a"), duration: 2, waveform: [])
     private let shortDraft = VoiceDraft(url: URL(fileURLWithPath: "/tmp/short.m4a"), duration: 0.2, waveform: [])
 
+    private func prepared(
+        _ source: VoiceDraft,
+        intent: VoiceFinalizeIntent,
+        status: VoiceDraftStatus,
+        transcript: String? = nil
+    ) -> VoiceDraft {
+        var result = source
+        result.intent = intent
+        result.status = status
+        result.transcript = transcript
+        return result
+    }
+
     @discardableResult
     private func reduce(_ state: inout VoiceComposerState, _ event: VoiceEvent) -> [VoiceEffect] {
         VoiceComposerReducer.reduce(&state, event)
@@ -36,7 +49,7 @@ final class VoiceComposerReducerTests: XCTestCase {
         XCTAssertTrue(effects.contains(.haptic(.recordingStart)))
     }
 
-    // 2 + 3. Neutral release finalizes to send exactly once; sub-minimum never sends.
+    // 2 + 3. Neutral release finalizes to transcribe exactly once.
     func testNeutralReleaseFinalizesSendOnce() {
         var state = recording()
         let ended = reduce(&state, .touchEnded)
@@ -44,17 +57,21 @@ final class VoiceComposerReducerTests: XCTestCase {
         XCTAssertEqual(ended, [.stopRecorder(deliver: true)])
 
         let finished = reduce(&state, .recorderFinished(draft))
-        XCTAssertEqual(state.capture, .publishing(draft))
-        XCTAssertEqual(finished, [.publish(draft)])
+        let queued = prepared(draft, intent: .send, status: .transcribing)
+        XCTAssertEqual(state.capture, .transcribing(queued))
+        XCTAssertTrue(finished.contains(.persistDraft(queued)))
+        XCTAssertTrue(finished.contains(.transcribe(queued)))
     }
 
-    func testSubMinimumRecordingNeverSends() {
+    func testShortRecordingIsPreservedAndTranscribed() {
         var state = recording()
         reduce(&state, .touchEnded)
         let finished = reduce(&state, .recorderFinished(shortDraft))
-        XCTAssertEqual(state.capture, .idle)
-        XCTAssertTrue(finished.contains(.deleteDraft))
-        XCTAssertFalse(finished.contains(.publish(shortDraft)))
+        let queued = prepared(shortDraft, intent: .send, status: .transcribing)
+        XCTAssertEqual(state.capture, .transcribing(queued))
+        XCTAssertTrue(finished.contains(.persistDraft(queued)))
+        XCTAssertTrue(finished.contains(.transcribe(queued)))
+        XCTAssertFalse(finished.contains(.deleteDraft))
     }
 
     // 4 + 5. Upward drag exposes progressive lock values; retreat returns toward neutral.
@@ -96,7 +113,7 @@ final class VoiceComposerReducerTests: XCTestCase {
         XCTAssertEqual(state.capture, .idle)
         XCTAssertTrue(effects.contains(.stopRecorder(deliver: false)))
         XCTAssertTrue(effects.contains(.deleteDraft))
-        XCTAssertFalse(effects.contains { if case .publish = $0 { return true } else { return false } })
+        XCTAssertFalse(effects.contains { if case .transcribe = $0 { return true } else { return false } })
     }
 
     // 9 + 10 + 11. Leading drag exposes cancel progress; arms at threshold; retreat unarms.
@@ -155,7 +172,7 @@ final class VoiceComposerReducerTests: XCTestCase {
         let granted = reduce(&state, .permissionGranted)
         XCTAssertEqual(state.capture, .idle)
         XCTAssertFalse(granted.contains(.startRecorder))
-        XCTAssertFalse(granted.contains { if case .publish = $0 { return true } else { return false } })
+        XCTAssertFalse(granted.contains { if case .transcribe = $0 { return true } else { return false } })
     }
 
     func testGrantThenFreshPressStartsRecording() {
@@ -199,7 +216,10 @@ final class VoiceComposerReducerTests: XCTestCase {
         var state = lockedRecording()
         reduce(&state, .send)
         reduce(&state, .recorderFinished(draft))
-        XCTAssertEqual(state.capture, .publishing(draft))
+        let ready = prepared(draft, intent: .send, status: .transcriptReady, transcript: "Hello")
+        reduce(&state, .transcriptionSucceeded(ready))
+        reduce(&state, .publishStarted(ready))
+        XCTAssertEqual(state.publishingDraft?.id, draft.id)
         let again = reduce(&state, .send)
         XCTAssertTrue(again.isEmpty)
     }
@@ -212,8 +232,10 @@ final class VoiceComposerReducerTests: XCTestCase {
             XCTAssertEqual(state.capture, .finalizing(.review), "\(event)")
             XCTAssertEqual(effects, [.stopRecorder(deliver: true)], "\(event)")
             let finished = reduce(&state, .recorderFinished(draft))
-            XCTAssertEqual(state.capture, .review(draft), "\(event)")
-            XCTAssertFalse(finished.contains(.publish(draft)), "\(event)")
+            let queued = prepared(draft, intent: .review, status: .transcribing)
+            XCTAssertEqual(state.capture, .transcribing(queued), "\(event)")
+            XCTAssertTrue(finished.contains(.persistDraft(queued)), "\(event)")
+            XCTAssertTrue(finished.contains(.transcribe(queued)), "\(event)")
         }
     }
 
@@ -223,11 +245,17 @@ final class VoiceComposerReducerTests: XCTestCase {
             var state = lockedRecording()
             reduce(&state, .send)
             reduce(&state, .recorderFinished(draft))
+            let ready = prepared(draft, intent: .send, status: .transcriptReady, transcript: "Hello")
+            reduce(&state, .transcriptionSucceeded(ready))
+            reduce(&state, .publishStarted(ready))
             reduce(&state, event)
-            XCTAssertEqual(state.failure?.draft, draft, "\(event)")
+            XCTAssertEqual(state.failure?.draft?.id, draft.id, "\(event)")
             let retry = reduce(&state, .send)
-            XCTAssertEqual(state.capture, .publishing(draft), "\(event)")
-            XCTAssertEqual(retry, [.publish(draft)], "\(event)")
+            XCTAssertEqual(state.publishingDraft?.id, draft.id, "\(event)")
+            XCTAssertEqual(retry.count, 1, "\(event)")
+            guard case .persistDraft = retry[0] else {
+                return XCTFail("retry must durably persist before publication")
+            }
         }
     }
 
@@ -236,6 +264,9 @@ final class VoiceComposerReducerTests: XCTestCase {
         var state = lockedRecording()
         reduce(&state, .send)
         reduce(&state, .recorderFinished(draft))
+        let ready = prepared(draft, intent: .send, status: .transcriptReady, transcript: "Hello")
+        reduce(&state, .transcriptionSucceeded(ready))
+        reduce(&state, .publishStarted(ready))
         let effects = reduce(&state, .sendSucceeded)
         XCTAssertEqual(state.capture, .idle)
         XCTAssertTrue(effects.contains(.deleteDraft))
@@ -248,6 +279,9 @@ final class VoiceComposerReducerTests: XCTestCase {
         reduce(&state, .meter(0.9))
         reduce(&state, .send)
         reduce(&state, .recorderFinished(draft))
+        let ready = prepared(draft, intent: .send, status: .transcriptReady, transcript: "Hello")
+        reduce(&state, .transcriptionSucceeded(ready))
+        reduce(&state, .publishStarted(ready))
         reduce(&state, .sendSucceeded)
         XCTAssertEqual(state.elapsed, 0)
         XCTAssertTrue(state.waveform.isEmpty)
@@ -257,12 +291,12 @@ final class VoiceComposerReducerTests: XCTestCase {
         XCTAssertTrue(state.waveform.isEmpty)
     }
 
-    // 32. Recovered drafts surface through the voice-specific review state.
-    func testRecoveredDraftEntersReview() {
+    // 32. Recovered drafts are explicit and never auto-send.
+    func testRecoveredDraftRequiresExplicitAction() {
         var state = VoiceComposerState(permission: .granted)
         let effects = reduce(&state, .recoveredDraft(draft))
-        XCTAssertEqual(state.capture, .review(draft))
-        XCTAssertFalse(effects.contains { if case .publish = $0 { return true } else { return false } })
+        XCTAssertEqual(state.failure?.draft, draft)
+        XCTAssertFalse(effects.contains { if case .transcribe = $0 { return true } else { return false } })
     }
 
     // 33. Maximum duration preserves captured audio by finalizing for review.
@@ -271,6 +305,12 @@ final class VoiceComposerReducerTests: XCTestCase {
         let effects = reduce(&state, .tick(metrics.maximumDuration + 1))
         XCTAssertEqual(state.capture, .finalizing(.review))
         XCTAssertTrue(effects.contains(.stopRecorder(deliver: true)))
+    }
+
+    func testSafetyCeilingAllowsTenMinuteDictationWithinAttachmentLimit() {
+        XCTAssertGreaterThan(metrics.maximumDuration, 10 * 60)
+        let estimatedPCMBytes = Int(metrics.maximumDuration * 16_000 * 2)
+        XCTAssertLessThan(estimatedPCMBytes, ComposerAttachment.maximumBytes)
     }
 
     // 18. Pause freezes active duration and metering (reducer ignores telemetry when paused).

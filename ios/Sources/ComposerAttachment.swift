@@ -64,6 +64,10 @@ struct ComposerAttachment: Identifiable, Hashable, Sendable {
     func removeLocalDraft() {
         guard let localDraftURL else { return }
         try? FileManager.default.removeItem(at: localDraftURL)
+        let manifestURL = localDraftURL
+            .deletingPathExtension()
+            .appendingPathExtension("json")
+        try? FileManager.default.removeItem(at: manifestURL)
     }
 }
 

@@ -14,6 +14,9 @@ protocol VoiceRecorderEngine: AnyObject {
     /// Called on the main actor with a normalized 0…1 power sample and the current
     /// active duration each meter tick.
     var onSample: ((Float, TimeInterval) -> Void)? { get set }
+    /// Signals that capture ended unexpectedly so the coordinator can finalize and
+    /// preserve everything the recorder managed to write.
+    var onFailure: (() -> Void)? { get set }
     func start(url: URL) throws
     func pause()
     func resume()
@@ -45,6 +48,7 @@ protocol VoiceAnnouncing: AnyObject {
 @MainActor
 final class NoopVoiceRecorderEngine: VoiceRecorderEngine {
     var onSample: ((Float, TimeInterval) -> Void)?
+    var onFailure: (() -> Void)?
     private var url: URL?
     func start(url: URL) throws { self.url = url }
     func pause() {}

@@ -14,14 +14,16 @@ final class VoiceComposerCoordinator: ObservableObject {
     private let authority: MicrophoneAuthority
     private let haptics: VoiceHapticsPerforming
     private let announcer: VoiceAnnouncing
+    private let transcriptionService: VoiceTranscriptionService
 
-    /// Routes a finalized draft through the canonical Blossom + NMP path. Set by the
-    /// composer; nil in tests/proof, where publish outcomes are injected as events.
-    var publisher: ((VoiceDraft) async -> String?)?
+    /// Resolved immediately before each transcription so configuration changes are
+    /// explicit, while the returned snapshot stays fixed for that in-flight request.
+    var providerSnapshot: (() throws -> VoiceProviderSnapshot)?
 
-    private var currentURL: URL?
+    private var currentDraft: VoiceDraft?
+    private var pendingOriginalText = ""
     private var permissionTask: Task<Void, Never>?
-    private var publishTask: Task<Void, Never>?
+    private var transcriptionTask: Task<Void, Never>?
     private var recoveryTask: Task<Void, Never>?
     private var didAttemptRecovery = false
 
@@ -31,6 +33,7 @@ final class VoiceComposerCoordinator: ObservableObject {
         authority: MicrophoneAuthority,
         haptics: VoiceHapticsPerforming,
         announcer: VoiceAnnouncing,
+        transcriptionService: VoiceTranscriptionService = VoiceTranscriptionService(),
         metrics: VoiceGestureMetrics = .default
     ) {
         self.store = store
@@ -38,17 +41,25 @@ final class VoiceComposerCoordinator: ObservableObject {
         self.authority = authority
         self.haptics = haptics
         self.announcer = announcer
+        self.transcriptionService = transcriptionService
         self.state = VoiceComposerState(permission: authority.status, metrics: metrics)
         engine.onSample = { [weak self] level, duration in
             self?.dispatch(.meter(level))
             self?.dispatch(.tick(duration))
+        }
+        engine.onFailure = { [weak self] in
+            guard let self else { return }
+            self.announcer.announce(
+                "Recording was interrupted. Saving everything captured so far."
+            )
+            self.dispatch(.audioInterruption)
         }
         observeAudioSession()
     }
 
     deinit {
         permissionTask?.cancel()
-        publishTask?.cancel()
+        transcriptionTask?.cancel()
         recoveryTask?.cancel()
     }
 
@@ -65,11 +76,13 @@ final class VoiceComposerCoordinator: ObservableObject {
     func stopForReview() { dispatch(.stopForReview) }
     func send() { dispatch(.send) }
     func discard() { dispatch(.discard) }
+    func retryTranscription() { dispatch(.retryTranscription) }
     func sceneBecameInactive() { dispatch(.appBackgrounded) }
 
     /// VoiceOver / non-gesture entry: start recording and immediately lock hands-free so
-    /// the accessible toolbar (pause, delete, send) is available without a held gesture.
-    func beginHandsFree() {
+    /// the accessible cancel, stop, and send controls are available without a held gesture.
+    func beginHandsFree(originalText: String = "") {
+        pendingOriginalText = originalText
         dispatch(.touchBegan)
         if state.isHeldRecording { dispatch(.lockCommitted) }
     }
@@ -79,16 +92,17 @@ final class VoiceComposerCoordinator: ObservableObject {
         state.isPaused ? dispatch(.resume) : dispatch(.pause)
     }
 
-    /// Restore the newest durable draft for this room, once, into the review card.
+    /// Restore the oldest durable draft for this room, once, into the recovery card.
     func restoreDraftIfNeeded() {
         guard !didAttemptRecovery else { return }
         didAttemptRecovery = true
-        guard state.capture == .idle, let url = try? store.newestDraftURL() else { return }
-        currentURL = url
+        guard state.capture == .idle, var draft = try? store.oldestDraft() else { return }
+        currentDraft = draft
         recoveryTask = Task { [weak self] in
-            let duration = await VoiceComposerCoordinator.loadDuration(of: url)
+            if draft.duration <= 0 {
+                draft.duration = await VoiceComposerCoordinator.loadDuration(of: draft.url)
+            }
             guard let self, !Task.isCancelled else { return }
-            let draft = VoiceDraft(url: url, duration: duration, waveform: [])
             self.dispatch(.recoveredDraft(draft))
         }
     }
@@ -108,7 +122,9 @@ final class VoiceComposerCoordinator: ObservableObject {
         case .resumeRecorder: engine.resume()
         case .stopRecorder(let deliver): finishRecorder(deliver: deliver)
         case .deleteDraft: deleteCurrentDraft()
-        case .publish(let draft): runPublish(draft)
+        case .releaseDraft: releaseCurrentDraft()
+        case .persistDraft(let draft): persist(draft)
+        case .transcribe(let draft): runTranscription(draft)
         case .haptic(let haptic): haptics.perform(haptic)
         case .announce(let message): announcer.announce(message)
         }
@@ -126,9 +142,9 @@ final class VoiceComposerCoordinator: ObservableObject {
 
     private func startRecorder() {
         do {
-            let url = try store.createURL()
-            currentURL = url
-            try engine.start(url: url)
+            let draft = try store.prepareDraft(originalText: pendingOriginalText)
+            currentDraft = draft
+            try engine.start(url: draft.url)
         } catch {
             dispatch(.recorderStartFailed(error.localizedDescription))
         }
@@ -141,22 +157,91 @@ final class VoiceComposerCoordinator: ObservableObject {
             dispatch(.recorderFinished(nil))
             return
         }
-        let draft = VoiceDraft(url: result.url, duration: result.duration, waveform: state.waveform)
+        var draft = currentDraft ?? VoiceDraft(
+            url: result.url,
+            duration: result.duration,
+            waveform: state.waveform
+        )
+        draft.url = result.url
+        draft.duration = result.duration
+        draft.waveform = state.waveform
+        draft.status = .ready
+        currentDraft = draft
+        persist(draft)
         dispatch(.recorderFinished(draft))
     }
 
     private func deleteCurrentDraft() {
-        if let url = currentURL { store.remove(url) }
-        currentURL = nil
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
+        if let draft = currentDraft { store.remove(draft.url) }
+        currentDraft = nil
+        pendingOriginalText = ""
     }
 
-    private func runPublish(_ draft: VoiceDraft) {
-        guard let publisher else { return }
-        publishTask?.cancel()
-        publishTask = Task { [weak self] in
-            let error = await publisher(draft)
-            guard let self, !Task.isCancelled else { return }
-            self.dispatch(error == nil ? .sendSucceeded : .publishFailed(error!))
+    private func releaseCurrentDraft() {
+        currentDraft = nil
+        pendingOriginalText = ""
+    }
+
+    private func persist(_ draft: VoiceDraft) {
+        currentDraft = draft
+        try? store.save(draft)
+    }
+
+    private func runTranscription(_ draft: VoiceDraft) {
+        transcriptionTask?.cancel()
+        guard let providerSnapshot else {
+            dispatch(
+                .transcriptionFailed(
+                    draft,
+                    VoiceProviderConfigurationError.missingConfiguration.localizedDescription
+                )
+            )
+            return
+        }
+        let snapshot: VoiceProviderSnapshot
+        do {
+            snapshot = try providerSnapshot()
+        } catch {
+            dispatch(.transcriptionFailed(draft, error.localizedDescription))
+            return
+        }
+
+        var working = draft
+        working.providerConfigurationID = snapshot.configuration.id
+        working.providerName = snapshot.configuration.name
+        working.status = .transcribing
+        persist(working)
+
+        transcriptionTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let transcript = try await transcriptionService.transcribe(
+                    audioURL: working.url,
+                    snapshot: snapshot
+                )
+                guard !Task.isCancelled else { return }
+                var completed = working
+                completed.transcript = transcript
+                completed.status = .transcriptReady
+                do {
+                    try store.save(completed)
+                } catch {
+                    self.dispatch(
+                        .transcriptionFailed(
+                            working,
+                            "The transcript could not be saved safely. Your recording is still saved."
+                        )
+                    )
+                    return
+                }
+                currentDraft = completed
+                self.dispatch(.transcriptionSucceeded(completed))
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.dispatch(.transcriptionFailed(working, error.localizedDescription))
+            }
         }
     }
 

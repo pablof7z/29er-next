@@ -4,6 +4,7 @@ import SwiftUI
 struct TwentyNinerNextApp: App {
     @State private var audioPlayback = AudioPlaybackController()
     @State private var spokenPlayback = TTS29PlaybackController()
+    @State private var voiceProviders = VoiceProviderStore()
 
     var body: some Scene {
         #if os(macOS)
@@ -15,6 +16,7 @@ struct TwentyNinerNextApp: App {
             }
             .environment(audioPlayback)
             .environment(spokenPlayback)
+            .environment(voiceProviders)
         }
         .defaultSize(width: 980, height: 720)
         #else
@@ -32,6 +34,7 @@ struct TwentyNinerNextApp: App {
             }
             .environment(audioPlayback)
             .environment(spokenPlayback)
+            .environment(voiceProviders)
         }
         #endif
     }
@@ -74,6 +77,12 @@ private struct ProofLaunchRootView: View {
             AttachmentComposerProofView()
         case .voiceComposer:
             VoiceComposerProofView()
+        case .voiceSettings:
+            SystemSettingsView()
+        case .voiceProvider:
+            NavigationStack {
+                VoiceProviderListView()
+            }
         }
     }
 }
@@ -85,11 +94,17 @@ private enum ProofLaunchMode {
     case audioPlayer
     case attachmentComposer
     case voiceComposer
+    case voiceSettings
+    case voiceProvider
 
     static let current = ProofLaunchMode(arguments: ProcessInfo.processInfo.arguments)
 
     init(arguments: [String]) {
-        if arguments.contains("--voice-composer-proof") {
+        if arguments.contains("--voice-provider-proof") {
+            self = .voiceProvider
+        } else if arguments.contains("--voice-settings-proof") {
+            self = .voiceSettings
+        } else if arguments.contains("--voice-composer-proof") {
             self = .voiceComposer
         } else if arguments.contains("--audio-player-proof") {
             self = .audioPlayer

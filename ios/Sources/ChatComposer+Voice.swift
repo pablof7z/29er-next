@@ -4,55 +4,117 @@ import UIKit
 #endif
 
 extension ChatComposer {
-    /// Wire the coordinator's publish bridge to the canonical send path exactly once, then
-    /// restore any durable draft for this room into the voice-specific review card.
     func configureVoice() {
         guard !didConfigureVoice else { return }
         didConfigureVoice = true
-        // Publishing is driven from `body`'s onChange with *live* recipient/reply state
-        // (see runVoicePublish); the coordinator's own publisher stays nil so it no-ops
-        // the `.publish` effect and waits for the canonical result event.
+        #if os(iOS)
+        voice.providerSnapshot = { try voiceProviders.snapshot() }
+        #endif
         voice.restoreDraftIfNeeded()
     }
 
-    /// Run the canonical send for a finalized draft the coordinator moved to `.publishing`,
-    /// then feed the outcome back as the terminal event.
-    func runVoicePublish(_ draft: VoiceDraft) {
-        Task {
-            let error = await publishVoice(draft)
-            voice.dispatch(error == nil ? .sendSucceeded : .publishFailed(error ?? "Send failed"))
+    func handleTranscriptReady(_ voiceDraft: VoiceDraft) {
+        if voiceDraft.intent == .send {
+            voice.dispatch(.publishStarted(voiceDraft))
+        } else {
+            integrateVoiceTranscript(voiceDraft)
         }
     }
 
-    /// Convert a finalized local draft into an audio attachment and send it through the
-    /// same Blossom upload + NMP publication path as every other message. No second
-    /// send implementation; composer context (recipients, reply) is preserved.
-    func publishVoice(_ draft: VoiceDraft) async -> String? {
+    private func integrateVoiceTranscript(_ voiceDraft: VoiceDraft) {
+        Task {
+            do {
+                let store = voice.store
+                let attachment = try await Task.detached(priority: .userInitiated) {
+                    try store.attachment(from: voiceDraft.url)
+                }.value
+                guard !Task.isCancelled else { return }
+                if !attachments.contains(where: { $0.localDraftURL == voiceDraft.url }) {
+                    attachments.append(attachment)
+                }
+                if let transcript = voiceDraft.transcript {
+                    draft = VoiceTranscriptText.merging(
+                        transcript,
+                        originalText: voiceDraft.originalText,
+                        currentText: draft
+                    )
+                }
+                errorMessage = nil
+                voice.dispatch(.transcriptIntegrated)
+                #if os(iOS)
+                isEditorFocused = true
+                #endif
+            } catch {
+                voice.dispatch(.transcriptionFailed(voiceDraft, error.localizedDescription))
+            }
+        }
+    }
+
+    func runVoicePublish(_ voiceDraft: VoiceDraft) {
+        guard !isSending else { return }
+        let submittedText = draft
+        let submittedRecipients = selectedRecipients
+        let submittedReply = reply
+        let submittedAttachments = attachments
+        isSending = true
+        errorMessage = nil
+
+        Task {
+            let error = await publishVoice(voiceDraft)
+            guard !Task.isCancelled else { return }
+            isSending = false
+            if let error {
+                let message = "Couldn’t Send — Your text and recording are saved in this chat. \(error)"
+                errorMessage = message
+                voice.dispatch(.publishFailed(message))
+                return
+            }
+
+            if draft == submittedText || draft == composedText(for: voiceDraft) { draft = "" }
+            if selectedRecipients == submittedRecipients { selectedRecipients = [] }
+            if reply == submittedReply { reply = nil }
+            let submittedIDs = Set(submittedAttachments.map(\.id))
+            attachments.removeAll { submittedIDs.contains($0.id) }
+            submittedAttachments.forEach { $0.removeLocalDraft() }
+            voice.dispatch(.sendSucceeded)
+        }
+    }
+
+    func publishVoice(_ voiceDraft: VoiceDraft) async -> String? {
         do {
-            let attachment = try voice.store.attachment(from: draft.url)
+            let store = voice.store
+            let attachment = try await Task.detached(priority: .userInitiated) {
+                try store.attachment(from: voiceDraft.url)
+            }.value
             let request = ComposerRequest(
-                content: "",
+                content: composedText(for: voiceDraft),
                 recipients: ChatComposerState.recipients(
                     selectedRecipients: selectedRecipients,
                     reply: reply
                 ),
                 reply: reply,
-                attachments: [attachment]
+                attachments: attachments + [attachment]
             )
-            let error = await send(request)
-            if error == nil, reply != nil { reply = nil }
-            return error
+            return await send(request)
         } catch {
             return error.localizedDescription
         }
+    }
+
+    private func composedText(for voiceDraft: VoiceDraft) -> String {
+        guard let transcript = voiceDraft.transcript, !transcript.isEmpty else {
+            return draft.isEmpty ? voiceDraft.originalText : draft
+        }
+        return VoiceTranscriptText.merging(
+            transcript,
+            originalText: voiceDraft.originalText,
+            currentText: draft
+        )
     }
 }
 
 #if os(iOS)
 extension ChatComposer {
-    /// Voice-aware composer layout. When a live recording, review card, or a recoverable
-    /// voice failure is on screen, that surface takes over the whole bar; otherwise the
-    /// text composer (with its focus-driven reflow and tap-once mic) is shown.
     @ViewBuilder
     var voiceAwareControls: some View {
         if showsVoiceSurface {
@@ -62,63 +124,80 @@ extension ChatComposer {
         }
     }
 
-    /// True when a dedicated voice surface should replace the text composer entirely:
-    /// the locked recording bar, the draft review card, or a publish/permission failure.
-    /// Idle, requesting-permission, and recoverable recorder failures stay on the text
-    /// composer so the mic can retry inline.
     var showsVoiceSurface: Bool {
         switch voice.state.capture {
-        case .review, .publishing:
-            return true
-        case .failed(.publish):
-            return true
-        case .failed(.permissionDenied):
-            return voice.state.permission == .denied
+        case .review, .transcribing, .transcriptReady, .publishing:
+            true
+        case .failed(let failure):
+            failure.draft != nil || (failure.isPermissionDenied && voice.state.permission == .denied)
         default:
-            return voice.state.isLockedActive || voice.state.isHeldRecording
+            voice.state.isLockedActive || voice.state.isHeldRecording
         }
     }
 
     @ViewBuilder
     private var voiceSurface: some View {
         switch voice.state.capture {
+        case .transcribing(let draft), .transcriptReady(let draft):
+            VoiceTranscriptionProgressCard(
+                draft: draft,
+                message: progressMessage(for: draft)
+            )
         case .review(let draft):
-            VoiceDraftReviewCard(
-                draft: draft,
-                isBusy: false,
-                failureMessage: nil,
-                onDelete: voice.discard,
-                onPrimary: voice.send
-            )
+            draftCard(draft: draft, failure: nil, isBusy: false)
         case .publishing(let draft):
-            VoiceDraftReviewCard(
-                draft: draft,
-                isBusy: true,
-                failureMessage: nil,
-                onDelete: {},
-                onPrimary: {}
-            )
-        case .failed(.publish(let draft, let message)):
-            VoiceDraftReviewCard(
-                draft: draft,
-                isBusy: false,
-                failureMessage: message,
-                onDelete: voice.discard,
-                onPrimary: voice.send
-            )
+            draftCard(draft: draft, failure: nil, isBusy: true)
+        case .failed(let failure) where failure.draft != nil:
+            draftCard(draft: failure.draft!, failure: failure, isBusy: false)
         case .failed(.permissionDenied):
             VoicePermissionDeniedRow(onOpenSettings: openAppSettings)
         default:
-            // Any live capture (tap-once lands here immediately as a locked recording).
             VoiceLockedToolbar(
                 elapsed: voice.state.elapsed,
                 samples: voice.state.waveform,
                 isBusy: voice.state.isFinalizingOrPublishing,
-                onCancel: voice.discard,
+                onCancel: { isVoiceDeleteConfirmationPresented = true },
                 onStop: voice.stopForReview,
                 onSend: voice.send
             )
         }
+    }
+
+    private func draftCard(
+        draft: VoiceDraft,
+        failure: VoiceFailure?,
+        isBusy: Bool
+    ) -> some View {
+        VoiceDraftReviewCard(
+            draft: draft,
+            isBusy: isBusy,
+            failureMessage: failure?.message,
+            primaryLabel: primaryLabel(for: failure),
+            onDelete: { isVoiceDeleteConfirmationPresented = true },
+            onPrimary: {
+                if case .publish = failure {
+                    voice.send()
+                } else {
+                    voice.retryTranscription()
+                }
+            },
+            onSettings: failure == nil ? nil : { isVoiceSettingsPresented = true },
+            onSendAudioOnly: failure == nil
+                ? nil
+                : { voice.dispatch(.audioOnlyPublishStarted(draft)) }
+        )
+    }
+
+    private func primaryLabel(for failure: VoiceFailure?) -> String {
+        if case .publish = failure { return "Retry sending" }
+        return "Retry transcription"
+    }
+
+    private func progressMessage(for draft: VoiceDraft) -> String {
+        let provider = draft.providerName ?? voiceProviders.activeName
+        return draft.intent == .send
+            ? "Transcribing with \(provider), then sending…"
+            : "Transcribing with \(provider)…"
     }
 
     private func openAppSettings() {

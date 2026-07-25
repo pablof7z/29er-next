@@ -40,7 +40,7 @@ final class VoiceComposerCoordinatorTests: XCTestCase {
         XCTAssertEqual(engine.startCount, 1, "resume must not restart capture")
 
         coordinator.send()
-        XCTAssertEqual(coordinator.state.publishingDraft?.duration, 3.5)
+        XCTAssertEqual(coordinator.state.failure?.draft?.duration, 3.5)
     }
 
     // 30. Starting a second recording clears prior duration + waveform telemetry.
@@ -69,12 +69,27 @@ final class VoiceComposerCoordinatorTests: XCTestCase {
         engine.emit(0.5, 8.0)
         XCTAssertEqual(coordinator.state.elapsed, frozen)
     }
+
+    func testRecorderFailureFinalizesPartialAudioAsUnsentDraft() {
+        let engine = FakeRecorderEngine()
+        engine.stopDuration = 7
+        let coordinator = makeCoordinator(engine: engine)
+        coordinator.beginHandsFree(originalText: "Keep this too")
+
+        engine.failCapture()
+
+        XCTAssertEqual(engine.stopCount, 1)
+        XCTAssertEqual(coordinator.state.failure?.draft?.duration, 7)
+        XCTAssertEqual(coordinator.state.failure?.draft?.intent, .review)
+        XCTAssertEqual(coordinator.state.failure?.draft?.originalText, "Keep this too")
+    }
 }
 
 /// Deterministic stand-in for `AVVoiceRecorderEngine`.
 @MainActor
 final class FakeRecorderEngine: VoiceRecorderEngine {
     var onSample: ((Float, TimeInterval) -> Void)?
+    var onFailure: (() -> Void)?
     private(set) var startCount = 0
     private(set) var pauseCount = 0
     private(set) var resumeCount = 0
@@ -98,5 +113,9 @@ final class FakeRecorderEngine: VoiceRecorderEngine {
 
     func emit(_ level: Float, _ duration: TimeInterval) {
         onSample?(level, duration)
+    }
+
+    func failCapture() {
+        onFailure?()
     }
 }
