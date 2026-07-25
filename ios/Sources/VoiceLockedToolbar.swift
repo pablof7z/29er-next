@@ -1,76 +1,78 @@
 #if os(iOS)
 import SwiftUI
 
-/// The deliberate locked control surface that replaces the held interaction once lock
-/// commits: persistent delete, live indicator + elapsed + waveform, pause/resume, and
-/// send. Every actionable control is at least 44×44 points, and conflicting actions are
-/// disabled while finalizing/publishing so repeated taps cannot duplicate a send.
+/// The locked recording bar a single mic tap lands in, styled after the reference:
+/// cancel (✕) · live waveform + elapsed · stop (◼) · send (↑). Every actionable control
+/// is at least 44×44 points, and conflicting actions are disabled while finalizing or
+/// publishing so repeated taps cannot duplicate a send. "Stop" finalizes into the review
+/// card (playback before sending); "send" publishes immediately.
 struct VoiceLockedToolbar: View {
     let elapsed: TimeInterval
     let samples: [Float]
-    let isPaused: Bool
     let isBusy: Bool
-    let onDelete: () -> Void
-    let onPauseResume: () -> Void
+    let onCancel: () -> Void
+    let onStop: () -> Void
     let onSend: () -> Void
 
     var body: some View {
-        HStack(spacing: 6) {
-            deleteButton
+        HStack(spacing: 8) {
+            cancelButton
             statusColumn
-            pauseResumeButton
+            stopButton
             sendButton
         }
-        .padding(.leading, 4)
+        .padding(.leading, 2)
         .frame(minHeight: 44)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("voice-locked-toolbar")
     }
 
-    private var deleteButton: some View {
-        Button(role: .destructive, action: onDelete) {
-            Image(systemName: "trash")
+    /// Neutral ✕ that discards the recording — matches the reference's cancel affordance.
+    private var cancelButton: some View {
+        Button(role: .destructive, action: onCancel) {
+            Image(systemName: "xmark")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.red)
+                .foregroundStyle(.secondary)
+                .frame(width: 32, height: 32)
+                .background(Color.secondary.opacity(0.14), in: .circle)
                 .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .disabled(isBusy)
-        .accessibilityLabel("Delete recording")
+        .accessibilityLabel("Cancel recording")
         .accessibilityIdentifier("voice-delete")
     }
 
     private var statusColumn: some View {
         HStack(spacing: 8) {
-            Circle()
-                .fill(isPaused ? Color.secondary : Color.red)
-                .frame(width: 9, height: 9)
-                .accessibilityHidden(true)
             Text(VoiceDurationText.clock(elapsed))
                 .font(.callout.monospacedDigit().weight(.semibold))
-                .frame(minWidth: 44, alignment: .leading)
-            VoiceWaveformView(samples: samples, tint: isPaused ? .secondary : .accentColor)
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 40, alignment: .leading)
+            VoiceWaveformView(samples: samples, tint: .accentColor)
                 .frame(maxWidth: .infinity)
-                .opacity(isPaused ? 0.5 : 1)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(isPaused ? "Paused" : "Recording")
+        .accessibilityLabel("Recording")
         .accessibilityValue(VoiceDurationText.spoken(elapsed))
     }
 
-    private var pauseResumeButton: some View {
-        Button(action: onPauseResume) {
-            Image(systemName: isPaused ? "record.circle" : "pause.fill")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(isPaused ? Color.red : Color.accentColor)
+    /// Filled ◼ that stops recording into the review card before sending.
+    private var stopButton: some View {
+        Button(action: onStop) {
+            Image(systemName: "stop.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 32, height: 32)
+                .background(Color.secondary.opacity(0.14), in: .circle)
                 .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .disabled(isBusy)
-        .accessibilityLabel(isPaused ? "Resume recording" : "Pause recording")
-        .accessibilityIdentifier("voice-pause-resume")
+        .accessibilityLabel("Stop and review recording")
+        .accessibilityIdentifier("voice-stop")
     }
 
     private var sendButton: some View {
@@ -84,7 +86,7 @@ struct VoiceLockedToolbar: View {
                         .foregroundStyle(.white)
                 }
             }
-            .frame(width: 44, height: 44)
+            .frame(width: 40, height: 40)
             .background(Color.accentColor, in: .circle)
         }
         .buttonStyle(.plain)

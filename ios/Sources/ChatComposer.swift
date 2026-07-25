@@ -127,22 +127,6 @@ struct ChatComposer: View {
             in: RoundedRectangle(cornerRadius: 21)
         )
         .overlay(composerBorder)
-        .overlay(alignment: .topTrailing) { lockRailOverlay }
-    }
-
-    @ViewBuilder
-    private var lockRailOverlay: some View {
-        #if os(iOS)
-        if voice.state.isHeldRecording {
-            VoiceLockRail(
-                fraction: voice.state.gesture.lockFraction,
-                armed: voice.state.gesture.isLockArmed
-            )
-            .padding(.trailing, 10)
-            .offset(y: -102)
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
-        }
-        #endif
     }
 
     @ViewBuilder
@@ -160,8 +144,8 @@ struct ChatComposer: View {
         actionButton
     }
 
-    /// Attach + mention + editor, without the trailing action button, so the voice layout
-    /// can keep that button as a stable sibling across content swaps.
+    /// Attach + mention + editor, without the trailing action button. Used by the macOS
+    /// composer, which keeps the two side buttons rather than the iOS focus reflow.
     @ViewBuilder
     var standardLeadingControls: some View {
         VStack(spacing: 4) {
@@ -172,6 +156,145 @@ struct ChatComposer: View {
             .padding(.vertical, 8)
             .frame(minHeight: 40)
     }
+
+    #if os(iOS)
+    /// The composer is "expanded" (text on top, controls in a bottom row) whenever the
+    /// user is writing or has added content; otherwise it collapses to a single line with
+    /// the `+` and mic hugging the sides.
+    var isComposerExpanded: Bool {
+        isEditorFocused
+            || !draft.isEmpty
+            || !attachments.isEmpty
+            || !visibleRecipients.isEmpty
+            || reply != nil
+    }
+
+    /// iOS text composer with the two-state focus reflow.
+    @ViewBuilder
+    var textComposer: some View {
+        if isComposerExpanded {
+            expandedTextComposer
+        } else {
+            collapsedTextComposer
+        }
+    }
+
+    /// Resting state: one line, `+` on the leading edge, mic/send on the trailing edge.
+    private var collapsedTextComposer: some View {
+        HStack(alignment: .center, spacing: 8) {
+            plusMenu
+            TextField("Message", text: $draft, axis: .vertical)
+                .textFieldStyle(.plain)
+                .lineLimit(1)
+                .focused($isEditorFocused)
+                .disabled(isSending)
+                .accessibilityIdentifier("room-message-composer")
+            actionButton
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Writing state: reply/attachments/text take the full width on top, and the controls
+    /// drop into a single bottom row — `+`, inline mention pills, then mic/send.
+    private var expandedTextComposer: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !attachments.isEmpty {
+                ComposerAttachmentPreviewStrip(
+                    attachments: attachments,
+                    isDisabled: isSending
+                ) { id in
+                    removeAttachment(id)
+                }
+            }
+            TextField("Message", text: $draft, axis: .vertical)
+                .textFieldStyle(.plain)
+                .lineLimit(1...6)
+                .focused($isEditorFocused)
+                .disabled(isSending)
+                .padding(.horizontal, 4)
+                .padding(.top, 2)
+                .accessibilityIdentifier("room-message-composer")
+            bottomRow
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 2)
+    }
+
+    /// The bottom control row shown while expanded.
+    private var bottomRow: some View {
+        HStack(spacing: 8) {
+            plusMenu
+            if visibleRecipients.isEmpty {
+                Spacer(minLength: 0)
+            } else {
+                mentionPillsInline
+            }
+            actionButton
+        }
+    }
+
+    /// Mention pills, inline in the bottom row right after the `+`. Scrolls horizontally
+    /// in place when there are more than fit, so the row stays a single line.
+    private var mentionPillsInline: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 6) {
+                ForEach(visibleRecipients) { recipient in
+                    // Every mention pill is removable now that the "Replying to…" summary
+                    // is gone — removing the reply author's pill also clears the reply.
+                    ComposerMentionChip(recipient: recipient, isRequired: false) {
+                        if reply?.author.id == recipient.id { reply = nil }
+                        selectedRecipients.removeAll { $0.id == recipient.id }
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .scrollIndicators(.hidden)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The single "add" entry point: attachments and mentions both live under `+`, so there
+    /// is no separate mention button on iOS.
+    private var plusMenu: some View {
+        Menu {
+            Button {
+                isPhotoPickerPresented = true
+            } label: {
+                Label("Photo Library", systemImage: "photo.on.rectangle")
+            }
+            Button {
+                isAttachmentPickerPresented = true
+            } label: {
+                Label("Browse Files", systemImage: "folder")
+            }
+            Button {
+                handlePastedProviders(UIPasteboard.general.itemProviders)
+            } label: {
+                Label("Paste", systemImage: "doc.on.clipboard")
+            }
+            Divider()
+            Button {
+                isRecipientPickerPresented = true
+            } label: {
+                Label("Mention someone", systemImage: "at")
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.title2.weight(.regular))
+                .foregroundStyle(plusMenuHasContent ? Color.accentColor : Color.secondary)
+                .frame(width: 34, height: 34)
+                .contentShape(Rectangle())
+        }
+        .frame(width: 36, height: 36)
+        .disabled(isSending)
+        .accessibilityLabel("Add attachment or mention")
+        .accessibilityIdentifier("room-message-attach")
+    }
+
+    private var plusMenuHasContent: Bool {
+        !attachments.isEmpty || !visibleRecipients.isEmpty
+    }
+    #endif
 
     private var attachmentButton: some View {
         #if os(iOS)

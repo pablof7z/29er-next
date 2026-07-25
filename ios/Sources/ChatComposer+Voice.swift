@@ -50,18 +50,37 @@ extension ChatComposer {
 
 #if os(iOS)
 extension ChatComposer {
-    /// Voice-aware composer layout. The trailing action button is kept as a stable sibling
-    /// so the press-and-hold gesture survives the idle → held-recording content swap.
+    /// Voice-aware composer layout. When a live recording, review card, or a recoverable
+    /// voice failure is on screen, that surface takes over the whole bar; otherwise the
+    /// text composer (with its focus-driven reflow and tap-once mic) is shown.
     @ViewBuilder
     var voiceAwareControls: some View {
-        leadingVoiceContent
-        if showsTrailingActionButton {
-            actionButton
+        if showsVoiceSurface {
+            voiceSurface
+        } else {
+            textComposer
+        }
+    }
+
+    /// True when a dedicated voice surface should replace the text composer entirely:
+    /// the locked recording bar, the draft review card, or a publish/permission failure.
+    /// Idle, requesting-permission, and recoverable recorder failures stay on the text
+    /// composer so the mic can retry inline.
+    var showsVoiceSurface: Bool {
+        switch voice.state.capture {
+        case .review, .publishing:
+            return true
+        case .failed(.publish):
+            return true
+        case .failed(.permissionDenied):
+            return voice.state.permission == .denied
+        default:
+            return voice.state.isLockedActive || voice.state.isHeldRecording
         }
     }
 
     @ViewBuilder
-    private var leadingVoiceContent: some View {
+    private var voiceSurface: some View {
         switch voice.state.capture {
         case .review(let draft):
             VoiceDraftReviewCard(
@@ -89,40 +108,16 @@ extension ChatComposer {
             )
         case .failed(.permissionDenied):
             VoicePermissionDeniedRow(onOpenSettings: openAppSettings)
-        case _ where voice.state.isLockedActive:
+        default:
+            // Any live capture (tap-once lands here immediately as a locked recording).
             VoiceLockedToolbar(
                 elapsed: voice.state.elapsed,
                 samples: voice.state.waveform,
-                isPaused: voice.state.isPaused,
                 isBusy: voice.state.isFinalizingOrPublishing,
-                onDelete: voice.discard,
-                onPauseResume: voice.togglePause,
+                onCancel: voice.discard,
+                onStop: voice.stopForReview,
                 onSend: voice.send
             )
-        case _ where voice.state.isHeldRecording:
-            VoiceHeldRecordingRow(
-                elapsed: voice.state.elapsed,
-                samples: voice.state.waveform,
-                gesture: voice.state.gesture
-            )
-        default:
-            standardLeadingControls
-        }
-    }
-
-    /// The mic/send button is shown for idle, requesting-permission, held-recording, and
-    /// recoverable recorder failures. Locked/review/publishing/denied surfaces own their
-    /// own actions, so the trailing button is withdrawn to avoid a duplicate.
-    private var showsTrailingActionButton: Bool {
-        switch voice.state.capture {
-        case .idle, .requestingPermission:
-            return true
-        case .recording:
-            return voice.state.mode == .held
-        case .failed(.recorder):
-            return true
-        default:
-            return false
         }
     }
 
