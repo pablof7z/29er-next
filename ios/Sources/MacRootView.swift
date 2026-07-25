@@ -55,7 +55,12 @@ struct MacRootView: View {
             reconcileSelection(with: groups)
         }
         .sheet(isPresented: $showingDiagnostics) {
-            DiagnosticsView(snapshot: model.diagnostics, error: model.diagnosticsError)
+            DiagnosticsView(
+                snapshot: model.diagnostics,
+                error: model.diagnosticsError,
+                canResetCache: model.canResetLocalDatabase,
+                resetCache: { _ = model.resetLocalDatabase() }
+            )
         }
         .sheet(isPresented: $showingIdentity) {
             IdentitySheet(model: model)
