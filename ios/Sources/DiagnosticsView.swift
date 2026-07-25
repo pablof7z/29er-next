@@ -4,7 +4,10 @@ import SwiftUI
 struct DiagnosticsView: View {
     let snapshot: DiagnosticsSnapshot
     let error: String?
+    let canResetCache: Bool
+    let resetCache: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var confirmingReset = false
 
     var body: some View {
         NavigationStack {
@@ -57,6 +60,22 @@ struct DiagnosticsView: View {
                         description: Text("NMP has not emitted a relay plan yet.")
                     )
                 }
+
+                if canResetCache {
+                    Section {
+                        Button("Reset NMP Cache", role: .destructive) {
+                            confirmingReset = true
+                        }
+                        .accessibilityIdentifier("reset-nmp-cache")
+                    } header: {
+                        Text("Local Storage")
+                    } footer: {
+                        Text(
+                            "Deletes cached events, pending writes, receipts, and sync evidence. "
+                            + "Your saved account remains available for automatic sign-in."
+                        )
+                    }
+                }
             }
             .navigationTitle("NMP Diagnostics")
             .platformInlineNavigationTitle()
@@ -64,6 +83,23 @@ struct DiagnosticsView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
+            }
+            .confirmationDialog(
+                "Reset NMP Cache?",
+                isPresented: $confirmingReset,
+                titleVisibility: .visible
+            ) {
+                Button("Reset and Reload", role: .destructive) {
+                    resetCache()
+                    dismiss()
+                }
+                .accessibilityIdentifier("confirm-reset-nmp-cache")
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(
+                    "29er Next will rebuild its local event cache from relays. "
+                    + "Pending writes and their delivery history will be permanently deleted."
+                )
             }
         }
     }
