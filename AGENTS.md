@@ -6,6 +6,7 @@
 - Work only from an agent-owned git worktree. Never implement from the shared root checkout.
 - PR descriptions include a TLDR, detailed overview, and tradeoffs or assumptions.
 - Validate the running iOS result when the change is user-visible.
+- Before ending a session or handing off in-progress work, leave a handoff note on the owning GitHub issue/PR with the branch/worktree, blocker, and next step; tag @chief-of-staff via `mosaico channel send`/`reply` when fabric access is available.
 
 ## Product boundary
 
