@@ -15,16 +15,16 @@ struct ChatComposer: View {
     @Binding var reply: ComposerReply?
     let send: (ComposerRequest) async -> String?
 
-    @State private var draft = ""
+    @State var draft = ""
     @State var selectedRecipients: [ComposerRecipient] = []
-    @State private var attachments: [ComposerAttachment] = []
-    @State private var isSending = false
-    @State private var errorMessage: String?
+    @State var attachments: [ComposerAttachment] = []
+    @State var isSending = false
+    @State var errorMessage: String?
     @State private var isRecipientPickerPresented = false
     @State private var isAttachmentPickerPresented = false
     #if os(iOS)
     @State private var isPhotoPickerPresented = false
-    @State private var photoPickerSelection: [PhotosPickerItem] = []
+    @State var photoPickerSelection: [PhotosPickerItem] = []
     #endif
     @State var didConfigureVoice = false
     @StateObject var voice: VoiceComposerCoordinator
@@ -169,34 +169,9 @@ struct ChatComposer: View {
             || reply != nil
     }
 
-    /// iOS text composer with the two-state focus reflow.
-    @ViewBuilder
+    /// iOS text composer with one stable editor that moves between the resting row and
+    /// the expanded writing layout without surrendering keyboard focus.
     var textComposer: some View {
-        if isComposerExpanded {
-            expandedTextComposer
-        } else {
-            collapsedTextComposer
-        }
-    }
-
-    /// Resting state: one line, `+` on the leading edge, mic/send on the trailing edge.
-    private var collapsedTextComposer: some View {
-        HStack(alignment: .center, spacing: 8) {
-            plusMenu
-            TextField("Message", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1)
-                .focused($isEditorFocused)
-                .disabled(isSending)
-                .accessibilityIdentifier("room-message-composer")
-            actionButton
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    /// Writing state: reply/attachments/text take the full width on top, and the controls
-    /// drop into a single bottom row — `+`, inline mention pills, then mic/send.
-    private var expandedTextComposer: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !attachments.isEmpty {
                 ComposerAttachmentPreviewStrip(
@@ -206,31 +181,26 @@ struct ChatComposer: View {
                     removeAttachment(id)
                 }
             }
-            TextField("Message", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...6)
-                .focused($isEditorFocused)
-                .disabled(isSending)
-                .padding(.horizontal, 4)
-                .padding(.top, 2)
-                .accessibilityIdentifier("room-message-composer")
-            bottomRow
+            ComposerTextReflowLayout(isExpanded: isComposerExpanded) {
+                plusMenu
+                composerEditor
+                mentionPillsInline
+                actionButton
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 2)
+        .padding(.horizontal, isComposerExpanded ? 2 : 0)
     }
 
-    /// The bottom control row shown while expanded.
-    private var bottomRow: some View {
-        HStack(spacing: 8) {
-            plusMenu
-            if visibleRecipients.isEmpty {
-                Spacer(minLength: 0)
-            } else {
-                mentionPillsInline
-            }
-            actionButton
-        }
+    private var composerEditor: some View {
+        TextField("Message", text: $draft, axis: .vertical)
+            .textFieldStyle(.plain)
+            .lineLimit(isComposerExpanded ? 1...6 : 1...1)
+            .focused($isEditorFocused)
+            .disabled(isSending)
+            .padding(.horizontal, isComposerExpanded ? 4 : 0)
+            .padding(.top, isComposerExpanded ? 2 : 0)
+            .accessibilityIdentifier("room-message-composer")
     }
 
     /// Mention pills, inline in the bottom row right after the `+`. Scrolls horizontally
@@ -457,142 +427,5 @@ struct ChatComposer: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .accessibilityIdentifier("room-composer-signed-out")
-    }
-}
-
-extension ChatComposer {
-    @ViewBuilder
-    var sendButtonLabel: some View {
-        if isSending {
-            ProgressView()
-        } else {
-            Image(systemName: "arrow.up")
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(canSubmit ? .white : .secondary)
-        }
-    }
-
-    var visibleRecipients: [ComposerRecipient] {
-        ChatComposerState.recipients(selectedRecipients: selectedRecipients, reply: reply)
-    }
-
-    private var pickerRecipients: [ComposerRecipient] {
-        guard let reply, !recipients.contains(where: { $0.id == reply.author.id }) else {
-            return recipients
-        }
-        return [reply.author] + recipients
-    }
-
-    var canSubmit: Bool {
-        canSend && (ChatComposerState.message(from: draft) != nil || !attachments.isEmpty)
-    }
-
-    var showsVoiceAction: Bool {
-        canSend
-            && !isSending
-            && ChatComposerState.showsVoiceAction(draft: draft, attachments: attachments)
-    }
-
-    func submit() {
-        guard let request = ChatComposerState.request(
-            draft: draft,
-            selectedRecipients: selectedRecipients,
-            reply: reply,
-            attachments: attachments
-        ), !isSending else { return }
-
-        let submittedRecipients = selectedRecipients
-        let submittedReply = reply
-        let submittedAttachments = attachments
-        let submittedDraft = draft
-        isSending = true
-        errorMessage = nil
-        Task {
-            let error = await send(request)
-            guard !Task.isCancelled else { return }
-
-            isSending = false
-            if let error {
-                errorMessage = error
-                return
-            }
-            if draft == submittedDraft { draft = "" }
-            if selectedRecipients == submittedRecipients { selectedRecipients = [] }
-            if reply == submittedReply { reply = nil }
-            let submittedIDs = Set(submittedAttachments.map(\.id))
-            attachments.removeAll { submittedIDs.contains($0.id) }
-            submittedAttachments.forEach { $0.removeLocalDraft() }
-        }
-    }
-
-    func removeAttachment(_ id: UUID) {
-        guard let attachment = attachments.first(where: { $0.id == id }) else { return }
-        attachment.removeLocalDraft()
-        attachments.removeAll { $0.id == id }
-    }
-
-    private func handlePickedFiles(_ result: Result<[URL], Error>) {
-        do {
-            let urls = try result.get()
-            guard attachments.count + urls.count <= 10 else {
-                errorMessage = "You can attach up to 10 files to one message."
-                return
-            }
-            Task {
-                do {
-                    let loaded = try await Task.detached(priority: .userInitiated) {
-                        try urls.map(ComposerAttachment.load(from:))
-                    }.value
-                    attachments.append(contentsOf: loaded)
-                    errorMessage = nil
-                } catch {
-                    errorMessage = error.localizedDescription
-                }
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    #if os(iOS)
-    private func handlePickedPhotos(_ items: [PhotosPickerItem]) {
-        guard !items.isEmpty else { return }
-        guard attachments.count + items.count <= 10 else {
-            errorMessage = "You can attach up to 10 files to one message."
-            photoPickerSelection = []
-            return
-        }
-        Task {
-            var loaded: [ComposerAttachment] = []
-            for item in items {
-                do {
-                    loaded.append(try await ComposerAttachment.load(from: item))
-                } catch {
-                    errorMessage = error.localizedDescription
-                }
-            }
-            attachments.append(contentsOf: loaded)
-            photoPickerSelection = []
-        }
-    }
-    #endif
-
-    private func handlePastedProviders(_ providers: [NSItemProvider]) {
-        guard !providers.isEmpty else { return }
-        guard attachments.count + providers.count <= 10 else {
-            errorMessage = "You can attach up to 10 files to one message."
-            return
-        }
-        Task {
-            var loaded: [ComposerAttachment] = []
-            for provider in providers {
-                do {
-                    loaded.append(try await ComposerAttachment.load(from: provider))
-                } catch {
-                    errorMessage = error.localizedDescription
-                }
-            }
-            attachments.append(contentsOf: loaded)
-        }
     }
 }
