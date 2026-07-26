@@ -1,0 +1,123 @@
+name: NMP master nightly
+
+# Option C for staying aligned with NMP master: the app tracks NMP master (see
+# scripts/bootstrap-nmp.sh), and this scheduled job rebuilds NMP master from scratch
+# and runs the app's simulator tests every night. If NMP master lands a breaking API
+# change, this catches it here — proactively, on a dedicated run — instead of red-lighting
+# an unrelated PR or biting a developer with a stale local checkout. On failure it opens
+# (or updates) a tracking issue so the break is actionable.
+#
+# The build/test steps intentionally mirror .github/workflows/ios-ci.yml so the nightly
+# validates exactly what PR CI validates. Keep the two in sync when either changes.
+
+on:
+  schedule:
+    # 08:00 UTC daily — after NMP's typical active hours, so it covers the prior day.
+    - cron: "0 8 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nmp-master-nightly
+  cancel-in-progress: true
+
+jobs:
+  simulator-tests:
+    name: TwentyNinerNext simulator tests (NMP master)
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      XCODEGEN_VERSION: 2.45.4
+      XCODEGEN_SHA256: 090ec29491aad50aec10631bf6e62253fed733c50f3aab0f5ffc86bc170bdbef
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install pinned XcodeGen
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/xcodegen.zip"
+          curl --fail --location --silent --show-error \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" \
+            --output "$archive"
+          echo "${XCODEGEN_SHA256}  ${archive}" | shasum --algorithm 256 --check
+          unzip -q "$archive" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Record pinned toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sw_vers
+          xcodebuild -version
+          xcodegen --version
+
+      - name: Install NMP Rust targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup +nightly show active-toolchain
+          rustup +nightly target add \
+            aarch64-apple-ios-sim \
+            x86_64-apple-ios \
+            aarch64-apple-ios
+
+      - name: Bootstrap NMP master
+        shell: bash
+        run: scripts/bootstrap-nmp.sh
+
+      - name: Record NMP master commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "NMP master commit under test:"
+          git -C Dependencies/nmp log -1 --format='%H %ci %s'
+
+      - name: Generate Xcode project
+        shell: bash
+        run: scripts/generate-project.sh
+
+      - name: Run iOS simulator tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project ios/TwentyNinerNext.xcodeproj \
+            -scheme TwentyNinerNext \
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
+            -derivedDataPath ios/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            test
+
+  notify-on-failure:
+    name: Flag NMP master breakage
+    needs: simulator-tests
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update the drift issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title="Nightly: app build broke against NMP master"
+          body=$(printf 'The nightly build of the app against the latest NMP master failed.\n\nThis usually means NMP master landed a breaking API change, or the xcframework build regressed. Bisect NMP master against the last green nightly and either fix the app or coordinate an NMP revert.\n\nFailed run: %s' "$RUN_URL")
+          existing=$(gh issue list --repo "$REPO" --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          if [[ -n "$existing" ]]; then
+            gh issue comment "$existing" --repo "$REPO" --body "$body"
+          else
+            gh issue create --repo "$REPO" --title "$title" --body "$body"
+          fi
