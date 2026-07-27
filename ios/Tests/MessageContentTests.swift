@@ -115,6 +115,71 @@ final class MessageContentTests: XCTestCase {
         XCTAssertTrue(hasLink)
     }
 
+    func testMarkdownInlineFormattingRemovesSyntaxAndCarriesPresentationIntents() {
+        let attributed = MessageContent.attributed("**bold**, *italic*, and `code`")
+        XCTAssertEqual(String(attributed.characters), "bold, italic, and code")
+
+        let intents = attributed.runs.compactMap(\.inlinePresentationIntent)
+        XCTAssertTrue(intents.contains { $0.contains(.stronglyEmphasized) })
+        XCTAssertTrue(intents.contains { $0.contains(.emphasized) })
+        XCTAssertTrue(intents.contains { $0.contains(.code) })
+    }
+
+    func testMarkdownLinkUsesItsLabelAndWebDestination() {
+        let attributed = MessageContent.attributed("[Apple](https://developer.apple.com)")
+        XCTAssertEqual(String(attributed.characters), "Apple")
+        XCTAssertEqual(
+            attributed.runs.compactMap(\.link).first?.absoluteString,
+            "https://developer.apple.com"
+        )
+    }
+
+    func testUnsupportedMarkdownLinkSchemeIsNotTappable() {
+        let attributed = MessageContent.attributed("[unsafe](javascript:alert(1))")
+        XCTAssertEqual(String(attributed.characters), "unsafe")
+        XCTAssertFalse(attributed.runs.contains { $0.link != nil })
+    }
+
+    func testMarkdownBlocksClassifyCommonChatFormatting() {
+        let source = """
+        # Heading
+
+        Paragraph
+
+        - bullet
+        2. ordered
+        > quote
+        ---
+        ```
+        let value = 1
+        ```
+        """
+        XCTAssertEqual(
+            MessageMarkdown.blocks(in: source).map(\.kind),
+            [.heading(1), .paragraph, .bullet, .ordered("2."), .quote, .divider, .code]
+        )
+    }
+
+    func testMarkdownImageBecomesOneImageBlockWithoutSyntaxFragments() throws {
+        let url = try XCTUnwrap(URL(string: "https://cdn.example.com/photo"))
+        XCTAssertEqual(
+            MessageContent.blocks(of: "Before\n\n![A photo](\(url.absoluteString))\n\nAfter"),
+            [
+                .inline([.text("Before")]),
+                .image(display: "A photo", url: url),
+                .inline([.text("After")])
+            ]
+        )
+    }
+
+    func testMarkdownAudioLinkRemainsAnInlineLink() {
+        let raw = "[Listen](https://cdn.example.com/episode.mp3)"
+        XCTAssertEqual(MessageContent.blocks(of: raw), [.inline([.text(raw)])])
+        let attributed = MessageContent.attributed(raw)
+        XCTAssertEqual(String(attributed.characters), "Listen")
+        XCTAssertTrue(attributed.runs.contains { $0.link != nil })
+    }
+
     func testImageLinksAreClassifiedForInlinePresentation() {
         let raw = "look https://cdn.example.com/photo.webp?width=1200"
         XCTAssertEqual(
