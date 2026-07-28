@@ -54,10 +54,15 @@ targets:
         PRODUCT_MODULE_NAME: TwentyNinerNext
         PRODUCT_NAME: TwentyNinerNext
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        CURRENT_PROJECT_VERSION: "2"
+        CURRENT_PROJECT_VERSION: "3"
         DEVELOPMENT_TEAM: 456SHKPP26
         MARKETING_VERSION: 0.1.0
         TARGETED_DEVICE_FAMILY: "1"
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: 999BA2819E241A38B16ED0103710663297BD9714
+          PROVISIONING_PROFILE_SPECIFIER: 29er Next App Store Distribution
   TwentyNinerNextProof:
     type: application
     platform: iOS
