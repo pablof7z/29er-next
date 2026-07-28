@@ -19,6 +19,8 @@ struct ChatComposer: View {
     let defaultRecipient: ComposerRecipient?
     @Binding var reply: ComposerReply?
     let send: (ComposerRequest) async -> String?
+    let deliveryProgress: String?
+    let deliveryFailure: String?
     let draftStore: ComposerDraftStore
 
     // Internal, not private: `ChatComposer+Submission` resets it on send.
@@ -27,6 +29,7 @@ struct ChatComposer: View {
     @State var attachments: [ComposerAttachment] = []
     @State var isSending = false
     @State var errorMessage: String?
+    @State var sendTask: Task<Void, Never>?
     @State private var isRecipientPickerPresented = false
     @State private var isAttachmentPickerPresented = false
     #if os(iOS)
@@ -50,6 +53,8 @@ struct ChatComposer: View {
         initialAttachments: [ComposerAttachment] = [],
         voiceDraftScope: String = "default",
         voiceCoordinator: VoiceComposerCoordinator? = nil,
+        deliveryProgress: String? = nil,
+        deliveryFailure: String? = nil,
         send: @escaping (ComposerRequest) async -> String?
     ) {
         self.canSend = canSend
@@ -63,6 +68,8 @@ struct ChatComposer: View {
         let draftStore = ComposerDraftStore(scope: voiceDraftScope)
         self.draftStore = draftStore
         _draft = State(initialValue: draftStore.load())
+        self.deliveryProgress = deliveryProgress
+        self.deliveryFailure = deliveryFailure
         self.send = send
     }
 
@@ -174,6 +181,10 @@ struct ChatComposer: View {
             errorMessage = failure?.isPermissionDenied == true ? nil : failure?.message
         }
         .onAppear(perform: configureVoice)
+        .onDisappear {
+            sendTask?.cancel()
+            sendTask = nil
+        }
     }
 
     private var content: some View {
@@ -189,9 +200,12 @@ struct ChatComposer: View {
                     .overlay(composerBorder)
             }
             ComposerDeliveryStatus(
-                isSending: isSending,
-                progressMessage: attachments.isEmpty ? "Sending…" : "Uploading attachments…",
-                errorMessage: errorMessage
+                progressMessage: deliveryProgress ?? (
+                    isSending
+                        ? (attachments.isEmpty ? "Sending…" : "Uploading attachments…")
+                        : nil
+                ),
+                errorMessage: errorMessage ?? deliveryFailure
             )
         }
         .padding(.horizontal, 12)

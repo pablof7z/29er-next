@@ -30,6 +30,7 @@ final class RoomTimelineModel {
     private(set) var hasReceivedMembership = false
     private(set) var hasReceivedActivities = false
     private(set) var hasMembershipMetadata = false
+    var messageDeliveryState = MessageDeliveryState.idle
 
     let engine: NMPEngine
     let groupID: String
@@ -37,6 +38,7 @@ final class RoomTimelineModel {
     let recipient: String?
     let queryOpening: NMPQueryOpening
     let profileAuthorUpdates = ProfileAuthorUpdates()
+    let messageReceiptStore: MessageReceiptStore
     var lastProfileAuthors: [String]?
 
     init(
@@ -44,13 +46,19 @@ final class RoomTimelineModel {
         groupID: String,
         hostRelay: String,
         recipient: String? = nil,
-        queryOpening: NMPQueryOpening = .live
+        queryOpening: NMPQueryOpening = .live,
+        messageReceiptStore: MessageReceiptStore? = nil
     ) {
         self.engine = engine
         self.groupID = groupID
         self.hostRelay = hostRelay
         self.recipient = recipient
         self.queryOpening = queryOpening
+        self.messageReceiptStore = messageReceiptStore ?? MessageReceiptStore(
+            account: recipient ?? "signed-out",
+            host: hostRelay,
+            groupID: groupID
+        )
         if RoomOpenProbe.shared.isEnabled, RoomOpenProbe.shared.groupID != groupID {
             RoomOpenProbe.shared.begin(groupID: groupID)
         }
@@ -146,6 +154,10 @@ final class RoomTimelineModel {
             group.addTask { [weak self] in
                 guard let self else { return }
                 await self.observeProfiles()
+            }
+            group.addTask { [weak self] in
+                guard let self else { return }
+                await self.observeRetainedMessageReceipts()
             }
         }
     }

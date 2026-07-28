@@ -104,6 +104,7 @@ final class AppModel {
 
         do {
             try NMPEngine.resetPersistentStore(at: storePath)
+            MessageReceiptStore.clearAll()
             let engine = try NMPEngine(
                 config: engineConfig,
                 localAccountStore: localAccountStore

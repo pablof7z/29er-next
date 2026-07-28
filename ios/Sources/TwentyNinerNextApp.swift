@@ -85,6 +85,8 @@ private struct ProofLaunchRootView: View {
             NavigationStack {
                 VoiceProviderListView()
             }
+        case .messageReceipt:
+            MessageReceiptProofView()
         }
     }
 }
@@ -99,12 +101,15 @@ private enum ProofLaunchMode {
     case voiceComposer
     case voiceSettings
     case voiceProvider
+    case messageReceipt
 
     static let current = ProofLaunchMode(arguments: ProcessInfo.processInfo.arguments)
 
     init(arguments: [String]) {
         if arguments.contains("--voice-provider-proof") {
             self = .voiceProvider
+        } else if arguments.contains("--message-receipt-proof") {
+            self = .messageReceipt
         } else if arguments.contains("--voice-settings-proof") {
             self = .voiceSettings
         } else if arguments.contains("--voice-composer-proof") {

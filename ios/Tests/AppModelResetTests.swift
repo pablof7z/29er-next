@@ -22,6 +22,13 @@ final class AppModelResetTests: XCTestCase {
         let appDirectory = support.appendingPathComponent("29er-next", isDirectory: true)
         let unrelated = appDirectory.appendingPathComponent("presentation-state")
         try Data("keep".utf8).write(to: unrelated)
+        let receiptStore = MessageReceiptStore(
+            account: "reset-\(UUID().uuidString)",
+            host: "wss://nip29.f7z.io",
+            groupID: "room"
+        )
+        receiptStore.record(1)
+        XCTAssertEqual(receiptStore.load(), [1])
 
         XCTAssertTrue(model.resetLocalDatabase())
 
@@ -31,5 +38,6 @@ final class AppModelResetTests: XCTestCase {
         XCTAssertEqual(model.state, .starting)
         XCTAssertEqual(model.selectedHost, "wss://nip29.f7z.io")
         XCTAssertEqual(try Data(contentsOf: unrelated), Data("keep".utf8))
+        XCTAssertEqual(receiptStore.load(), [])
     }
 }

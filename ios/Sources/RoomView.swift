@@ -143,6 +143,8 @@ struct RoomView: View {
                 defaultRecipient: model.lastOtherSpeaker,
                 reply: $replyTarget,
                 voiceDraftScope: "\(activePubkey ?? "signed-out")|\(group.hostRelay)|\(group.localID)",
+                deliveryProgress: model.messageDeliveryState.progressMessage,
+                deliveryFailure: model.messageDeliveryState.failureMessage,
                 send: sendMessage
             )
         }

@@ -51,11 +51,12 @@ extension ChatComposer {
         let submittedDraft = draft
         isSending = true
         errorMessage = nil
-        Task {
+        sendTask = Task {
             let error = await send(request)
             guard !Task.isCancelled else { return }
 
             isSending = false
+            sendTask = nil
             if let error {
                 errorMessage = error
                 return

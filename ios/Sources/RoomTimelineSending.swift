@@ -41,6 +41,7 @@ extension RoomTimelineModel {
             return "Messages cannot be empty."
         }
 
+        messageDeliveryState = .progressing(receiptID: nil, progress: .enqueueing)
         do {
             let replyParent = reply.map {
                 GroupReplyParent(eventID: $0.eventID, authorPubkey: $0.author.pubkey)
@@ -53,18 +54,141 @@ extension RoomTimelineModel {
                 reply: replyParent
             )
             let receipt = try await engine.publishComposed(intent)
-            for try await status in receipt.status {
-                if let failure = deliveryFailure(for: status) { return failure }
-                // NMP commits an accepted write into its canonical store -- and
-                // so into this room's live query -- before this status fires
-                // (#2's local-write visibility contract), so the composer can
-                // hand back control here instead of blocking on relay `.acked`.
-                if case .accepted = status { return nil }
-            }
-            return "Message delivery ended before NMP accepted it."
+            return await consumeMessageReceipt(receipt)
         } catch {
+            messageDeliveryState = .failed(
+                receiptID: nil,
+                failure: .observationFailed(reason: error.localizedDescription)
+            )
             return error.localizedDescription
         }
+    }
+
+    func observeRetainedMessageReceipts() async {
+        await withTaskGroup(of: Void.self) { group in
+            for receiptID in messageReceiptStore.load() {
+                group.addTask { [weak self] in
+                    await self?.observeRetainedMessageReceipt(receiptID)
+                }
+            }
+        }
+    }
+
+    private func observeRetainedMessageReceipt(_ receiptID: UInt64) async {
+        guard !Task.isCancelled else { return }
+        do {
+            switch try engine.reattachReceipt(id: receiptID) {
+            case .attached(let receipt):
+                _ = await consumeMessageReceipt(receipt)
+            case .notFound:
+                messageReceiptStore.remove(receiptID)
+                messageDeliveryState = .failed(
+                    receiptID: receiptID,
+                    failure: .receiptNotFound(receiptID: receiptID)
+                )
+            case .retainedButUnreadable:
+                messageDeliveryState = .failed(
+                    receiptID: receiptID,
+                    failure: .retainedButUnreadable(receiptID: receiptID)
+                )
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            messageDeliveryState = .failed(
+                receiptID: receiptID,
+                failure: .observationFailed(reason: error.localizedDescription)
+            )
+        }
+    }
+
+    private func consumeMessageReceipt(_ receipt: Receipt) async -> String? {
+        let receiptID = receipt.id
+        messageReceiptStore.record(receiptID)
+        defer { receipt.status.cancel() }
+
+        do {
+            var convergence = MessageReceiptConvergence()
+            for try await status in receipt.status {
+                guard !Task.isCancelled else { return nil }
+                messageDeliveryState = convergence.apply(status, receiptID: receiptID)
+            }
+            guard !Task.isCancelled else { return nil }
+            guard let finalState = convergence.stateAfterStreamClosed(receiptID: receiptID) else {
+                messageDeliveryState = .failed(
+                    receiptID: receiptID,
+                    failure: .streamEndedWithoutTerminal
+                )
+                return messageDeliveryState.failureMessage
+            }
+            messageDeliveryState = finalState
+            messageReceiptStore.remove(receiptID)
+            return messageDeliveryState.failureMessage
+        } catch let error as NMPError {
+            guard !Task.isCancelled else { return nil }
+            switch error {
+            case .factStreamLagged(let replayID):
+                return await resumeMessageReceipt(id: replayID ?? receiptID)
+            case .receiptReplayUnavailable(let unavailableID):
+                messageDeliveryState = .failed(
+                    receiptID: unavailableID,
+                    failure: .receiptReplayUnavailable(receiptID: unavailableID)
+                )
+            default:
+                messageDeliveryState = .failed(
+                    receiptID: receiptID,
+                    failure: .observationFailed(reason: error.localizedDescription)
+                )
+            }
+            return messageDeliveryState.failureMessage
+        } catch {
+            guard !Task.isCancelled else { return nil }
+            messageDeliveryState = .failed(
+                receiptID: receiptID,
+                failure: .observationFailed(reason: error.localizedDescription)
+            )
+            return messageDeliveryState.failureMessage
+        }
+    }
+
+    private func resumeMessageReceipt(id receiptID: UInt64) async -> String? {
+        do {
+            switch try engine.reattachReceipt(id: receiptID) {
+            case .attached(let receipt):
+                return await consumeMessageReceipt(receipt)
+            case .notFound:
+                messageReceiptStore.remove(receiptID)
+                messageDeliveryState = .failed(
+                    receiptID: receiptID,
+                    failure: .receiptNotFound(receiptID: receiptID)
+                )
+            case .retainedButUnreadable:
+                messageDeliveryState = .failed(
+                    receiptID: receiptID,
+                    failure: .retainedButUnreadable(receiptID: receiptID)
+                )
+            }
+        } catch let error as NMPError {
+            guard !Task.isCancelled else { return nil }
+            switch error {
+            case .receiptReplayUnavailable(let unavailableID):
+                messageDeliveryState = .failed(
+                    receiptID: unavailableID,
+                    failure: .receiptReplayUnavailable(receiptID: unavailableID)
+                )
+            default:
+                messageDeliveryState = .failed(
+                    receiptID: receiptID,
+                    failure: .observationFailed(reason: error.localizedDescription)
+                )
+            }
+        } catch {
+            guard !Task.isCancelled else { return nil }
+            messageDeliveryState = .failed(
+                receiptID: receiptID,
+                failure: .observationFailed(reason: error.localizedDescription)
+            )
+        }
+        return messageDeliveryState.failureMessage
     }
 
     func deliveryFailure(for status: WriteStatus) -> String? {
@@ -75,12 +199,13 @@ extension RoomTimelineModel {
             return reason
         case .gaveUp(let relay):
             return "Could not deliver the message to \(relay)."
-        case .persistenceBlocked(let relay):
-            return "Could not persist the message for \(relay)."
-        case .routePersistenceBlocked(let relay):
-            return "Could not persist message routing for \(relay)."
+        case .cancelled:
+            return "Message delivery was cancelled."
         case .outcomeUnknown(let relay):
             return "Message delivery outcome for \(relay) is unknown."
+        case .replaceableConflict(let expected, let actual):
+            return "The event changed before publication (expected \(expected ?? "none"), "
+                + "found \(actual ?? "none"))."
         default:
             return nil
         }

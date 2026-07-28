@@ -59,10 +59,11 @@ extension ChatComposer {
         isSending = true
         errorMessage = nil
 
-        Task {
+        sendTask = Task {
             let error = await publishVoice(voiceDraft)
             guard !Task.isCancelled else { return }
             isSending = false
+            sendTask = nil
             if let error {
                 let message = "Couldn’t Send — Your text and recording are saved in this chat. \(error)"
                 errorMessage = message

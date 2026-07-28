@@ -57,8 +57,9 @@ extension TTS29PlaybackController {
         switch status {
         case .rejected(_, let reason): "The relay rejected the answer: \(reason)"
         case .gaveUp: "NMP could not deliver the answer to the group relay."
-        case .persistenceBlocked, .routePersistenceBlocked: "The answer could not be persisted."
+        case .cancelled: "Answer delivery was cancelled."
         case .outcomeUnknown: "The answer delivery outcome is unknown."
+        case .replaceableConflict: "The answer event changed before publication."
         case .failed(let reason): "NMP could not publish the answer: \(reason)"
         default: nil
         }
