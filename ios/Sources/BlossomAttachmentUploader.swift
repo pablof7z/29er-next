@@ -51,17 +51,17 @@ struct BlossomAttachmentUploader {
                 throw AttachmentUploadError.signInRequired
             }
 
-            let createdAt = UInt64(now().timeIntervalSince1970)
+            let (createdAt, expiration) = try Self.authorizationTimes(now())
             let hash = Self.sha256Hex(attachment.data)
             let draft = try blossomUploadAuthorizationDraft(
                 authorPubkeyHex: author,
                 blobSha256Hex: hash,
                 createdAt: createdAt,
-                expiration: createdAt + Self.authorizationLifetime,
+                expiration: expiration,
                 description: "Upload \(attachment.filename)"
             )
             let signed = try await engine.signEvent(draft.signRequest)
-            let validationTime = max(createdAt, UInt64(now().timeIntervalSince1970))
+            let validationTime = max(createdAt, try Self.unixTimestamp(now()))
             let authorization = try BlossomAuthorization.validate(
                 signedEvent: signed,
                 verb: .upload,
@@ -117,6 +117,22 @@ struct BlossomAttachmentUploader {
 
     static func sha256Hex(_ data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func authorizationTimes(_ date: Date) throws -> (createdAt: UInt64, expiration: UInt64) {
+        let createdAt = try unixTimestamp(date)
+        let result = createdAt.addingReportingOverflow(authorizationLifetime)
+        guard !result.overflow else {
+            throw AttachmentUploadError.authorizationFailed
+        }
+        return (createdAt, result.partialValue)
+    }
+
+    static func unixTimestamp(_ date: Date) throws -> UInt64 {
+        guard let timestamp = UInt64(exactly: date.timeIntervalSince1970.rounded(.down)) else {
+            throw AttachmentUploadError.authorizationFailed
+        }
+        return timestamp
     }
 }
 
