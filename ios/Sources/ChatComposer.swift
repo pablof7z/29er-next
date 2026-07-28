@@ -12,10 +12,17 @@ import UIKit
 struct ChatComposer: View {
     let canSend: Bool
     let recipients: [ComposerRecipient]
+    /// The most recent speaker other than the signed-in user, if any (#118).
+    /// Auto-tagged into `selectedRecipients` the moment typing starts, so a
+    /// fresh message defaults to continuing the conversation with them --
+    /// unless a reply or a manual mention pick already supplies a target.
+    let defaultRecipient: ComposerRecipient?
     @Binding var reply: ComposerReply?
     let send: (ComposerRequest) async -> String?
+    let draftStore: ComposerDraftStore
 
-    @State var draft = ""
+    // Internal, not private: `ChatComposer+Submission` resets it on send.
+    @State var draft: String
     @State var selectedRecipients: [ComposerRecipient] = []
     @State var attachments: [ComposerAttachment] = []
     @State var isSending = false
@@ -34,6 +41,7 @@ struct ChatComposer: View {
     init(
         canSend: Bool,
         recipients: [ComposerRecipient],
+        defaultRecipient: ComposerRecipient? = nil,
         reply: Binding<ComposerReply?>,
         initialAttachments: [ComposerAttachment] = [],
         voiceDraftScope: String = "default",
@@ -42,11 +50,15 @@ struct ChatComposer: View {
     ) {
         self.canSend = canSend
         self.recipients = recipients
+        self.defaultRecipient = defaultRecipient
         _reply = reply
         _attachments = State(initialValue: initialAttachments)
         _voice = StateObject(
             wrappedValue: voiceCoordinator ?? .live(store: VoiceDraftStore(scope: voiceDraftScope))
         )
+        let draftStore = ComposerDraftStore(scope: voiceDraftScope)
+        self.draftStore = draftStore
+        _draft = State(initialValue: draftStore.load())
         self.send = send
     }
 
@@ -78,6 +90,15 @@ struct ChatComposer: View {
         #endif
         .onChange(of: reply?.id) { _, eventID in
             if eventID != nil { isEditorFocused = true }
+        }
+        .onChange(of: draft.isEmpty) { wasEmpty, isEmptyNow in
+            guard wasEmpty, !isEmptyNow,
+                  reply == nil, selectedRecipients.isEmpty,
+                  let defaultRecipient else { return }
+            selectedRecipients = [defaultRecipient]
+        }
+        .onChange(of: draft) { _, newValue in
+            draftStore.save(newValue)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { voice.sceneBecameInactive() }

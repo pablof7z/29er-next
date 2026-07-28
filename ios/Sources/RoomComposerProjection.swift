@@ -1,24 +1,48 @@
 import Foundation
 
 enum RoomComposerProjection {
+    /// The pickable roster: formal members, currently-live-activity people,
+    /// and -- so the picker never offers a narrower pool than auto-tagging
+    /// (`lastOtherSpeaker`) already draws from -- anyone who has posted a
+    /// chat message in the room, even without formal membership or a still-
+    /// live activity event.
     static func recipients(
         from people: RoomPeople,
+        recentSpeakers: [String] = [],
         profiles: ProfileBook,
         excluding excludedPubkey: String?
     ) -> [ComposerRecipient] {
         var seen = Set<String>()
-        return (people.members + people.activeHere)
+        let pubkeys = people.members.map(\.pubkey) + people.activeHere.map(\.pubkey) + recentSpeakers
+        return pubkeys
             .filter {
-                $0.pubkey != excludedPubkey &&
-                    profiles.profile(for: $0.pubkey)?.isBackend != true &&
-                    seen.insert($0.pubkey).inserted
+                $0 != excludedPubkey &&
+                    profiles.profile(for: $0)?.isBackend != true &&
+                    seen.insert($0).inserted
             }
-            .map { recipient(for: $0.pubkey, people: people, profiles: profiles) }
+            .map { recipient(for: $0, people: people, profiles: profiles) }
             .sorted { lhs, rhs in
                 let comparison = lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
                 if comparison != .orderedSame { return comparison == .orderedAscending }
                 return lhs.pubkey < rhs.pubkey
             }
+    }
+
+    /// The most recent message's author other than `excludedPubkey` (the
+    /// signed-in user) -- the default recipient a composer auto-tags the
+    /// moment typing starts, same value shape a manual mention pick or
+    /// reply already produces so it renders as an identical chip.
+    static func lastOtherSpeaker(
+        in items: [RoomTimelineItem],
+        excluding excludedPubkey: String?,
+        people: RoomPeople,
+        profiles: ProfileBook
+    ) -> ComposerRecipient? {
+        for item in items.reversed() {
+            guard let message = item.message, message.author != excludedPubkey else { continue }
+            return recipient(for: message.author, people: people, profiles: profiles)
+        }
+        return nil
     }
 
     static func reply(

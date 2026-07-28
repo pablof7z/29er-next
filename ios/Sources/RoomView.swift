@@ -140,6 +140,7 @@ struct RoomView: View {
             ChatComposer(
                 canSend: activePubkey != nil,
                 recipients: model.composerRecipients,
+                defaultRecipient: model.lastOtherSpeaker,
                 reply: $replyTarget,
                 voiceDraftScope: "\(group.hostRelay)|\(group.localID)",
                 send: sendMessage
@@ -156,6 +157,7 @@ struct RoomView: View {
     private var peopleView: some View {
         RoomPeopleView(
             people: model.people,
+            profiles: model.profiles,
             hasReceivedMembership: model.hasReceivedMembership,
             hasMembershipMetadata: model.hasMembershipMetadata,
             membershipError: model.membershipError,

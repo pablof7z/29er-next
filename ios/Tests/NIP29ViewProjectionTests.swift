@@ -73,7 +73,7 @@ final class NIP29ViewProjectionTests: XCTestCase {
                 tags: [
                     ["d", "session-7"],
                     ["title", "Rebuild 29er"],
-                    ["status", "busy"],
+                    ["state", "working"],
                     ["host", "laptop"],
                     ["slug", "codex-slate-falcon-434"],
                     ["rel-cwd", "Work/29er-next"],
@@ -100,7 +100,7 @@ final class NIP29ViewProjectionTests: XCTestCase {
                 kind: 30_315,
                 tags: [
                     ["d", "session-7"],
-                    ["status", "idle"]
+                    ["state", "idle"]
                 ],
                 content: ""
             )
@@ -167,7 +167,7 @@ final class NIP29ViewProjectionTests: XCTestCase {
             kind: 30_315,
             tags: [
                 ["d", "session-\(createdAt)"],
-                ["status", "busy"],
+                ["state", "working"],
                 ["expiration", "\(createdAt + 90)"]
             ],
             content: "working"

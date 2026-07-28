@@ -74,7 +74,7 @@ extension ComposerAttachment {
     /// moment that callback returns).
     @MainActor
     static func load(from provider: NSItemProvider) async throws -> ComposerAttachment {
-        guard let typeIdentifier = provider.registeredTypeIdentifiers.first else {
+        guard let typeIdentifier = provider.preferredTypeIdentifier else {
             throw ComposerAttachmentError.empty(filename: "Pasted item")
         }
 
@@ -102,6 +102,24 @@ extension ComposerAttachment {
         defer { try? FileManager.default.removeItem(at: temporaryURL) }
 
         return try ComposerAttachment.load(from: temporaryURL)
+    }
+}
+
+private extension NSItemProvider {
+    /// A pasted image often registers several type identifiers at once --
+    /// e.g. `public.png` alongside an opaque `com.apple.uikit.image` archive
+    /// of the serialized `UIImage`. `registeredTypeIdentifiers.first` isn't
+    /// reliably the real content: prefer the first identifier that conforms
+    /// to a concrete kind we actually want to attach, falling back to
+    /// whatever's registered first only if none of them do.
+    var preferredTypeIdentifier: String? {
+        let preferredConformances: [UTType] = [.image, .movie, .audio, .pdf, .data]
+        for conformance in preferredConformances {
+            if let match = registeredTypeIdentifiers.first(where: { UTType($0)?.conforms(to: conformance) == true }) {
+                return match
+            }
+        }
+        return registeredTypeIdentifiers.first
     }
 }
 
