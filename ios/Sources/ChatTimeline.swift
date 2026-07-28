@@ -178,6 +178,15 @@ private struct MessageTimelineView: View {
                     guard isPinnedToBottom else { return }
                     scrollToBottom(proxy)
                 }
+                .onChange(of: viewport.size.height) { _, _ in
+                    // The composer growing (typing a multi-line draft, a
+                    // mention chip appearing, the keyboard showing) shrinks
+                    // this safe-area-adjusted viewport without any new
+                    // message arriving -- follow it the same way, or the
+                    // newest content ends up hidden behind the composer.
+                    guard isPinnedToBottom else { return }
+                    scrollToBottom(proxy)
+                }
                 .onChange(of: messages.count) { _, _ in
                     focusIfNeeded(proxy)
                 }

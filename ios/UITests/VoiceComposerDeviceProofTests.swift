@@ -25,6 +25,20 @@ final class VoiceComposerDeviceProofTests: XCTestCase {
         XCTAssertTrue(app.buttons["room-message-mic"].waitForExistence(timeout: 10))
     }
 
+    func testIdleComposerAcceptsKeyboardFocus() {
+        let app = launch("idle")
+        let editor = app.textFields["room-message-composer"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+
+        editor.tap()
+        editor.typeText("x")
+
+        XCTAssertEqual(editor.value as? String, "x")
+        XCTAssertTrue(app.buttons["room-message-send"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["room-message-send"].isHittable)
+        XCTAssertTrue(app.buttons["room-message-attach"].isHittable)
+    }
+
     /// Tap-once: a single mic tap drops straight into the locked recording bar, which
     /// exposes cancel (✕), stop (◼ → review), and send (↑) — no held panel, no slide-to-
     /// lock rail, no slide-to-cancel track, no pause.

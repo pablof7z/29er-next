@@ -1,6 +1,7 @@
 import SwiftUI
 #if os(iOS)
 import PhotosUI
+import UIKit
 #endif
 
 extension ChatComposer {
@@ -53,6 +54,7 @@ extension ChatComposer {
         Task {
             let error = await send(request)
             guard !Task.isCancelled else { return }
+
             isSending = false
             if let error {
                 errorMessage = error

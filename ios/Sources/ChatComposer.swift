@@ -12,10 +12,17 @@ import UIKit
 struct ChatComposer: View {
     let canSend: Bool
     let recipients: [ComposerRecipient]
+    /// The most recent speaker other than the signed-in user, if any (#118).
+    /// Auto-tagged into `selectedRecipients` the moment typing starts, so a
+    /// fresh message defaults to continuing the conversation with them --
+    /// unless a reply or a manual mention pick already supplies a target.
+    let defaultRecipient: ComposerRecipient?
     @Binding var reply: ComposerReply?
     let send: (ComposerRequest) async -> String?
+    let draftStore: ComposerDraftStore
 
-    @State var draft = ""
+    // Internal, not private: `ChatComposer+Submission` resets it on send.
+    @State var draft: String
     @State var selectedRecipients: [ComposerRecipient] = []
     @State var attachments: [ComposerAttachment] = []
     @State var isSending = false
@@ -38,6 +45,7 @@ struct ChatComposer: View {
     init(
         canSend: Bool,
         recipients: [ComposerRecipient],
+        defaultRecipient: ComposerRecipient? = nil,
         reply: Binding<ComposerReply?>,
         initialAttachments: [ComposerAttachment] = [],
         voiceDraftScope: String = "default",
@@ -46,11 +54,15 @@ struct ChatComposer: View {
     ) {
         self.canSend = canSend
         self.recipients = recipients
+        self.defaultRecipient = defaultRecipient
         _reply = reply
         _attachments = State(initialValue: initialAttachments)
         _voice = StateObject(
             wrappedValue: voiceCoordinator ?? .live(store: VoiceDraftStore(scope: voiceDraftScope))
         )
+        let draftStore = ComposerDraftStore(scope: voiceDraftScope)
+        self.draftStore = draftStore
+        _draft = State(initialValue: draftStore.load())
         self.send = send
     }
 
@@ -137,6 +149,15 @@ struct ChatComposer: View {
         presentationContent
         .onChange(of: reply?.id) { _, eventID in
             if eventID != nil { isEditorFocused = true }
+        }
+        .onChange(of: draft.isEmpty) { wasEmpty, isEmptyNow in
+            guard wasEmpty, !isEmptyNow,
+                  reply == nil, selectedRecipients.isEmpty,
+                  let defaultRecipient else { return }
+            selectedRecipients = [defaultRecipient]
+        }
+        .onChange(of: draft) { _, newValue in
+            draftStore.save(newValue)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { voice.sceneBecameInactive() }
@@ -232,34 +253,9 @@ struct ChatComposer: View {
             || reply != nil
     }
 
-    /// iOS text composer with the two-state focus reflow.
-    @ViewBuilder
+    /// iOS text composer with one stable editor that moves between the resting row and
+    /// the expanded writing layout without surrendering keyboard focus.
     var textComposer: some View {
-        if isComposerExpanded {
-            expandedTextComposer
-        } else {
-            collapsedTextComposer
-        }
-    }
-
-    /// Resting state: one line, `+` on the leading edge, mic/send on the trailing edge.
-    private var collapsedTextComposer: some View {
-        HStack(alignment: .center, spacing: 8) {
-            plusMenu
-            TextField("Message", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1)
-                .focused($isEditorFocused)
-                .disabled(isSending)
-                .accessibilityIdentifier("room-message-composer")
-            actionButton
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    /// Writing state: reply/attachments/text take the full width on top, and the controls
-    /// drop into a single bottom row — `+`, inline mention pills, then mic/send.
-    private var expandedTextComposer: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !attachments.isEmpty {
                 ComposerAttachmentPreviewStrip(
@@ -269,34 +265,26 @@ struct ChatComposer: View {
                     removeAttachment(id)
                 }
             }
-            TextField("Message", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...6)
-                .focused($isEditorFocused)
-                .disabled(isSending)
-                .padding(.horizontal, 4)
-                .padding(.top, 2)
-                .accessibilityIdentifier("room-message-composer")
-            bottomRow
+            ComposerTextReflowLayout(isExpanded: isComposerExpanded) {
+                plusMenu
+                composerEditor
+                mentionPillsInline
+                actionButton
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 2)
+        .padding(.horizontal, isComposerExpanded ? 2 : 0)
     }
 
-    /// The bottom control row shown while expanded.
-    private var bottomRow: some View {
-        HStack(spacing: 8) {
-            plusMenu
-            if visibleRecipients.isEmpty {
-                Spacer(minLength: 0)
-            } else {
-                mentionPillsInline
-            }
-            if canSubmit, attachments.count < 10 {
-                voiceRecordButton
-            }
-            actionButton
-        }
+    private var composerEditor: some View {
+        TextField("Message", text: $draft, axis: .vertical)
+            .textFieldStyle(.plain)
+            .lineLimit(isComposerExpanded ? 1...6 : 1...1)
+            .focused($isEditorFocused)
+            .disabled(isSending)
+            .padding(.horizontal, isComposerExpanded ? 4 : 0)
+            .padding(.top, isComposerExpanded ? 2 : 0)
+            .accessibilityIdentifier("room-message-composer")
     }
 
     /// Mention pills, inline in the bottom row right after the `+`. Scrolls horizontally
@@ -470,16 +458,6 @@ struct ChatComposer: View {
     }
 
     #if os(iOS)
-    private var voiceRecordButton: some View {
-        VoiceComposerActionButton(
-            showsMic: true,
-            canSubmit: false,
-            isSending: isSending,
-            record: beginVoiceRecording,
-            submit: {}
-        )
-    }
-
     private func beginVoiceRecording() {
         voice.beginHandsFree(originalText: draft)
     }
@@ -489,5 +467,4 @@ struct ChatComposer: View {
         RoundedRectangle(cornerRadius: 21)
             .stroke(PlatformSupport.separator.opacity(0.55), lineWidth: 0.5)
     }
-
 }

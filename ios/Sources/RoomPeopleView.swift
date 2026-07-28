@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RoomPeopleView: View {
     let people: RoomPeople
+    let profiles: ProfileBook
     let hasReceivedMembership: Bool
     let hasMembershipMetadata: Bool
     let membershipError: String?
@@ -38,6 +39,7 @@ struct RoomPeopleView: View {
                         title: "Members",
                         detail: "Listed by the room relay",
                         people: visibleMembers,
+                        profiles: profiles,
                         isActivityLoading: !hasReceivedActivities
                     )
                 } else if hasMembershipMetadata {
@@ -53,6 +55,7 @@ struct RoomPeopleView: View {
                         title: "Active here",
                         detail: "Live sessions not present in the room's member list",
                         people: visibleActiveHere,
+                        profiles: profiles,
                         isActivityLoading: false
                     )
                 }
@@ -167,6 +170,7 @@ private struct PersonSection: View {
     let title: String
     let detail: String
     let people: [RoomPerson]
+    let profiles: ProfileBook
     let isActivityLoading: Bool
 
     var body: some View {
@@ -189,7 +193,7 @@ private struct PersonSection: View {
 
             LazyVStack(spacing: 0) {
                 ForEach(Array(people.enumerated()), id: \.element.id) { index, person in
-                    PersonRow(person: person, isActivityLoading: isActivityLoading)
+                    PersonRow(person: person, profiles: profiles, isActivityLoading: isActivityLoading)
                     if index < people.count - 1 {
                         Divider().padding(.leading, 68)
                     }
@@ -203,14 +207,19 @@ private struct PersonSection: View {
 
 private struct PersonRow: View {
     let person: RoomPerson
+    let profiles: ProfileBook
     let isActivityLoading: Bool
+
+    private var displayName: String {
+        profiles.displayName(for: person.pubkey, fallback: person.authorLabel)
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             avatar
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(person.authorLabel)
+                Text(displayName)
                     .font(.headline)
                     .lineLimit(1)
 
@@ -252,8 +261,8 @@ private struct PersonRow: View {
         ZStack(alignment: .bottomTrailing) {
             AuthorAvatar(
                 pubkey: person.pubkey,
-                displayName: person.authorLabel,
-                pictureURL: nil,
+                displayName: displayName,
+                pictureURL: profiles.pictureURL(for: person.pubkey),
                 size: 42
             )
 

@@ -33,20 +33,12 @@ struct MessageBody: View {
             ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
                 switch block {
                 case .inline(let segments):
-                    Text(MessageContent.attributed(segments, resolveMention: resolveMention))
-                        .foregroundStyle(.primary)
-                        .tint(.accentColor)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .environment(\.openURL, OpenURLAction { url in
-                            onOpenLink(url)
-                            return .handled
-                        })
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            PlatformSupport.performLightImpact()
-                            onReply()
-                        }
+                    MessageMarkdownText(
+                        segments: segments,
+                        resolveMention: resolveMention,
+                        onOpenLink: onOpenLink,
+                        onReply: onReply
+                    )
                 case .audio(_, let url):
                     AudioAttachmentView(
                         id: AudioAttachmentID(
