@@ -18,7 +18,6 @@ final class RoomTimelineModel {
     private(set) var members: [RoomMember] = []
     private(set) var admins: [String] = []
     var profiles = ProfileBook()
-
     private(set) var chatError: String?
     private(set) var membershipError: String?
     private(set) var activityError: String?
@@ -26,7 +25,6 @@ final class RoomTimelineModel {
     private(set) var reactionError: String?
     var reactionDeliveryFailure: String?
     var profileError: String?
-
     private(set) var hasReceivedChat = false
     private(set) var hasReceivedMembership = false
     private(set) var hasReceivedActivities = false
