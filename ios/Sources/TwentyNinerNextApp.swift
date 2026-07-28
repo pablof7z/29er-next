@@ -72,6 +72,8 @@ private struct ProofLaunchRootView: View {
             AudioPlayerProofView()
         case .attachmentComposer:
             AttachmentComposerProofView()
+        case .markdownMessage:
+            MarkdownMessageProofView()
         case .voiceComposer:
             VoiceComposerProofView()
         }
@@ -84,6 +86,7 @@ private enum ProofLaunchMode {
     case roomOpenProof
     case audioPlayer
     case attachmentComposer
+    case markdownMessage
     case voiceComposer
 
     static let current = ProofLaunchMode(arguments: ProcessInfo.processInfo.arguments)
@@ -95,6 +98,8 @@ private enum ProofLaunchMode {
             self = .audioPlayer
         } else if arguments.contains("--attachment-composer-proof") {
             self = .attachmentComposer
+        } else if arguments.contains("--markdown-message-proof") {
+            self = .markdownMessage
         } else if arguments.contains("--nmp-room-open-proof") {
             self = .roomOpenProof
         } else if arguments.contains("--nmp-corpus-preflight") {
