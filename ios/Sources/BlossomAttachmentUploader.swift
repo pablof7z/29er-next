@@ -3,185 +3,189 @@ import Foundation
 import NMP
 
 struct BlossomAttachmentUploader {
+    typealias Upload = @Sendable (
+        _ serverURL: String,
+        _ blob: Data,
+        _ contentType: String?,
+        _ authorization: BlossomAuthorization
+    ) async throws -> String
+
     private static let authorizationLifetime: UInt64 = 5 * 60
 
     let engine: NMPEngine
-    var session: URLSession = .shared
-    var now: @Sendable () -> Date = Date.init
+    var now: @Sendable () -> Date
+    private let upload: Upload
 
-    func upload(_ attachment: ComposerAttachment, to relay: String) async throws -> URL {
-        let server = try Self.serverURL(for: relay)
-        let hash = Self.sha256Hex(attachment.data)
-        let authorization = try await authorizationHeader(server: server, hash: hash)
-        let uploadURL = server.appendingPathComponent("upload", isDirectory: false)
-
-        var request = URLRequest(url: uploadURL, timeoutInterval: 5 * 60)
-        request.httpMethod = "PUT"
-        request.httpBody = attachment.data
-        request.setValue(authorization, forHTTPHeaderField: "Authorization")
-        request.setValue(attachment.contentType, forHTTPHeaderField: "Content-Type")
-        request.setValue(hash, forHTTPHeaderField: "X-SHA-256")
-
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw BlossomUploadError.invalidResponse
+    init(
+        engine: NMPEngine,
+        client: BlossomClient = BlossomClient(),
+        now: @escaping @Sendable () -> Date = Date.init
+    ) {
+        self.engine = engine
+        self.now = now
+        upload = { serverURL, blob, contentType, authorization in
+            try await client.upload(
+                serverURL: serverURL,
+                blob: blob,
+                contentType: contentType,
+                authorization: authorization
+            ).url
         }
-        guard (200...299).contains(http.statusCode) else {
-            let detail = (String(bytes: data.prefix(500), encoding: .utf8) ?? "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            throw BlossomUploadError.server(status: http.statusCode, detail: detail)
-        }
-
-        let descriptor: BlossomDescriptor
-        do {
-            descriptor = try JSONDecoder().decode(BlossomDescriptor.self, from: data)
-        } catch {
-            throw BlossomUploadError.malformedDescriptor
-        }
-        return try Self.validatedURL(
-            descriptor: descriptor,
-            expectedHash: hash,
-            expectedSize: attachment.data.count
-        )
     }
 
-    static func serverURL(for relay: String) throws -> URL {
+    init(
+        engine: NMPEngine,
+        now: @escaping @Sendable () -> Date,
+        upload: @escaping Upload
+    ) {
+        self.engine = engine
+        self.now = now
+        self.upload = upload
+    }
+
+    func upload(_ attachment: ComposerAttachment, to relay: String) async throws -> URL {
+        do {
+            try Task.checkCancellation()
+            let serverURL = try Self.serverURL(for: relay)
+            guard let author = try engine.activeAccount() else {
+                throw AttachmentUploadError.signInRequired
+            }
+
+            let createdAt = UInt64(now().timeIntervalSince1970)
+            let hash = Self.sha256Hex(attachment.data)
+            let draft = try blossomUploadAuthorizationDraft(
+                authorPubkeyHex: author,
+                blobSha256Hex: hash,
+                createdAt: createdAt,
+                expiration: createdAt + Self.authorizationLifetime,
+                description: "Upload \(attachment.filename)"
+            )
+            let signed = try await engine.signEvent(draft.signRequest)
+            let validationTime = max(createdAt, UInt64(now().timeIntervalSince1970))
+            let authorization = try BlossomAuthorization.validate(
+                signedEvent: signed,
+                verb: .upload,
+                blobSha256Hex: hash,
+                now: validationTime
+            )
+
+            let descriptorURL = try await upload(
+                serverURL,
+                attachment.data,
+                attachment.contentType,
+                authorization
+            )
+            guard let url = URL(string: descriptorURL), MessageContent.isSupportedWebURL(url) else {
+                throw AttachmentUploadError.invalidResponse
+            }
+            return url
+        } catch let error as AttachmentUploadError {
+            throw error
+        } catch is CancellationError {
+            throw AttachmentUploadError.cancelled
+        } catch let error as NMP.BlossomUploadError {
+            throw AttachmentUploadError(error)
+        } catch is BlossomAuthError {
+            throw AttachmentUploadError.authorizationFailed
+        } catch let error as NMPError {
+            throw AttachmentUploadError(error)
+        } catch {
+            throw AttachmentUploadError.uploadUnavailable
+        }
+    }
+
+    static func serverURL(for relay: String) throws -> String {
         guard var components = URLComponents(string: relay) else {
-            throw BlossomUploadError.invalidRelay
+            throw AttachmentUploadError.invalidServer
         }
         switch components.scheme?.lowercased() {
-        case "wss", "https": components.scheme = "https"
-        case "ws", "http": components.scheme = "http"
-        default: throw BlossomUploadError.invalidRelay
+        case "wss", "https":
+            components.scheme = "https"
+        case "ws", "http":
+            components.scheme = "http"
+        default:
+            throw AttachmentUploadError.invalidServer
         }
         components.path = "/"
         components.query = nil
         components.fragment = nil
-        guard let url = components.url, url.host != nil else {
-            throw BlossomUploadError.invalidRelay
+        guard let serverURL = components.string else {
+            throw AttachmentUploadError.invalidServer
         }
-        return url
+        return serverURL
     }
 
     static func sha256Hex(_ data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
-
-    private func authorizationHeader(server: URL, hash: String) async throws -> String {
-        let createdAt = UInt64(now().timeIntervalSince1970)
-        let unsigned = try Self.authorizationEvent(
-            server: server,
-            hash: hash,
-            createdAt: createdAt
-        )
-        let signed = try await engine.signEvent(unsigned)
-        let event = BlossomAuthorizationEvent(signed)
-        let json = try JSONEncoder().encode(event)
-        return "Nostr \(json.base64EncodedString())"
-    }
-
-    static func authorizationEvent(
-        server: URL,
-        hash: String,
-        createdAt: UInt64
-    ) throws -> NMPUnsignedEvent {
-        guard let host = server.host?.lowercased() else {
-            throw BlossomUploadError.invalidRelay
-        }
-        return NMPUnsignedEvent(
-            createdAt: createdAt,
-            kind: 24_242,
-            tags: [
-                ["t", "upload"],
-                ["expiration", String(createdAt + Self.authorizationLifetime)],
-                ["x", hash],
-                ["server", host]
-            ],
-            content: "Upload Blob"
-        )
-    }
-
-    static func validatedURL(
-        descriptor: BlossomDescriptor,
-        expectedHash: String,
-        expectedSize: Int
-    ) throws -> URL {
-        guard descriptor.sha256.caseInsensitiveCompare(expectedHash) == .orderedSame else {
-            throw BlossomUploadError.hashMismatch
-        }
-        guard descriptor.size == expectedSize,
-              !descriptor.type.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              descriptor.uploaded > 0 else {
-            throw BlossomUploadError.incompleteDescriptor
-        }
-        guard let url = URL(string: descriptor.url),
-              ["http", "https"].contains(url.scheme?.lowercased()),
-              url.path.lowercased().contains(expectedHash.lowercased()) else {
-            throw BlossomUploadError.invalidPublicURL
-        }
-        return url
-    }
 }
 
-struct BlossomDescriptor: Decodable {
-    let url: String
-    let sha256: String
-    let size: Int
-    let type: String
-    let uploaded: UInt64
-}
-
-private struct BlossomAuthorizationEvent: Encodable {
-    let id: String
-    let pubkey: String
-    let createdAt: UInt64
-    let kind: UInt16
-    let tags: [[String]]
-    let content: String
-    let sig: String
-
-    init(_ event: NMPSignedEvent) {
-        id = event.id
-        pubkey = event.pubkey
-        createdAt = event.createdAt
-        kind = event.kind
-        tags = event.tags
-        content = event.content
-        sig = event.signature
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case id, pubkey, kind, tags, content, sig
-        case createdAt = "created_at"
-    }
-}
-
-enum BlossomUploadError: LocalizedError, Equatable {
-    case invalidRelay
+enum AttachmentUploadError: LocalizedError, Equatable {
+    case signInRequired
+    case invalidServer
+    case authorizationFailed
+    case authorizationRejected(status: UInt16, reason: String?)
+    case serverRejected(status: UInt16, reason: String?)
+    case integrityCheckFailed
     case invalidResponse
-    case server(status: Int, detail: String)
-    case malformedDescriptor
-    case hashMismatch
-    case incompleteDescriptor
-    case invalidPublicURL
+    case uploadUnavailable
+    case cancelled
+
+    init(_ error: NMP.BlossomUploadError) {
+        switch error {
+        case .invalidServerUrl, .localHostNotAdmitted:
+            self = .invalidServer
+        case .runtimeUnavailable, .clientBuild, .network:
+            self = .uploadUnavailable
+        case .redirectRefused, .responseTooLarge, .descriptorInvalid:
+            self = .invalidResponse
+        case .authRejected(let status, let reason):
+            self = .authorizationRejected(status: status, reason: reason)
+        case .serverRejected(let status, let reason), .serverError(let status, let reason):
+            self = .serverRejected(status: status, reason: reason)
+        case .authorizationBlobMismatch, .sha256Mismatch:
+            self = .integrityCheckFailed
+        }
+    }
+
+    init(_ error: NMPError) {
+        switch error {
+        case .noActiveSigner:
+            self = .signInRequired
+        case .invalidSignRequest, .invalidSignerOutput, .invalidSignature, .signerRejected:
+            self = .authorizationFailed
+        case .signerUnavailable, .engineClosed:
+            self = .uploadUnavailable
+        default:
+            self = .uploadUnavailable
+        }
+    }
 
     var errorDescription: String? {
         switch self {
-        case .invalidRelay:
-            return "This room relay does not provide a valid Blossom upload address."
+        case .signInRequired:
+            "Sign in to upload attachments."
+        case .invalidServer:
+            "This room does not provide a safe attachment server."
+        case .authorizationFailed:
+            "The attachment upload could not be authorized."
+        case .authorizationRejected(let status, let reason):
+            Self.statusMessage("The attachment server rejected authorization", status, reason)
+        case .serverRejected(let status, let reason):
+            Self.statusMessage("The attachment server rejected the upload", status, reason)
+        case .integrityCheckFailed:
+            "The attachment server returned data that did not match the uploaded file."
         case .invalidResponse:
-            return "The attachment server returned an invalid response."
-        case .server(let status, let detail):
-            let suffix = detail.isEmpty ? "" : ": \(detail)"
-            return "Attachment upload failed with HTTP \(status)\(suffix)"
-        case .malformedDescriptor:
-            return "The attachment server returned a malformed upload descriptor."
-        case .hashMismatch:
-            return "The attachment server returned a different file hash."
-        case .incompleteDescriptor:
-            return "The attachment server returned an incomplete upload descriptor."
-        case .invalidPublicURL:
-            return "The attachment server returned an invalid public URL."
+            "The attachment server returned an unsafe or invalid response."
+        case .uploadUnavailable:
+            "The attachment upload could not be completed."
+        case .cancelled:
+            "The attachment upload was cancelled."
         }
+    }
+
+    private static func statusMessage(_ prefix: String, _ status: UInt16, _ reason: String?) -> String {
+        let detail = reason?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return detail.isEmpty ? "\(prefix) (HTTP \(status))." : "\(prefix) (HTTP \(status)): \(detail)"
     }
 }
