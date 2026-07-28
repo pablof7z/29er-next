@@ -4,12 +4,13 @@ import SwiftUI
 /// The trailing composer button. Shows the send arrow when there is substantive text/an
 /// attachment, otherwise a microphone. A single tap starts a hands-free recording — no
 /// press-and-hold, no release-to-send — so the interaction is one deliberate tap and the
-/// locked recording bar (pause, delete, send) takes over from there.
+/// locked recording bar (cancel, stop for transcription, send after transcription)
+/// takes over from there.
 struct VoiceComposerActionButton: View {
-    @ObservedObject var coordinator: VoiceComposerCoordinator
     let showsMic: Bool
     let canSubmit: Bool
     let isSending: Bool
+    let record: () -> Void
     let submit: () -> Void
 
     var body: some View {
@@ -25,7 +26,7 @@ struct VoiceComposerActionButton: View {
     }
 
     private var micButton: some View {
-        Button { coordinator.beginHandsFree() } label: {
+        Button(action: record) {
             Image(systemName: "mic.fill")
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(.white)
@@ -36,7 +37,7 @@ struct VoiceComposerActionButton: View {
         .frame(width: 44, height: 44)
         .contentShape(Circle())
         .accessibilityLabel("Record voice message")
-        .accessibilityHint("Starts a hands-free recording you can pause, review, or send.")
+        .accessibilityHint("Starts a hands-free recording you can stop or send after transcription.")
         .accessibilityAddTraits(.startsMediaSession)
         .accessibilityIdentifier("room-message-mic")
     }

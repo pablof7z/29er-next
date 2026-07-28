@@ -2,8 +2,8 @@ import Foundation
 
 /// The single source of truth for voice composer transitions. Pure: `(state, event) →
 /// effects`, no SwiftUI, AVFoundation, clock, or I/O. Everything the product must never
-/// do — auto-send across a permission prompt, send a system-cancelled gesture, send a
-/// sub-minimum tap, double-publish — is enforced here and covered by unit tests.
+/// do — auto-send across a permission prompt, send a system-cancelled gesture, discard
+/// a short capture, or double-publish — is enforced here and covered by unit tests.
 enum VoiceComposerReducer {
     static func reduce(_ state: inout VoiceComposerState, _ event: VoiceEvent) -> [VoiceEffect] {
         switch event {
@@ -25,12 +25,23 @@ enum VoiceComposerReducer {
         case .resume: return resume(&state)
         case .stopForReview: return stopForReview(&state)
         case .send: return send(&state)
+        case .retryTranscription: return retryTranscription(&state)
         case .discard: return discard(&state)
 
         case .recorderStarted: return []
         case .recorderStartFailed(let detail): return recorderStartFailed(&state, detail)
         case .recorderFinished(let draft): return recorderFinished(&state, draft)
         case .recorderFinishFailed(let detail): return recorderStartFailed(&state, detail)
+        case .transcriptionSucceeded(let draft):
+            return transcriptionSucceeded(&state, draft)
+        case .transcriptionFailed(let draft, let detail):
+            return transcriptionFailed(&state, draft, detail)
+        case .transcriptIntegrated:
+            return transcriptIntegrated(&state)
+        case .publishStarted(let draft):
+            return publishStarted(&state, draft)
+        case .audioOnlyPublishStarted(let draft):
+            return audioOnlyPublishStarted(&state, draft)
         case .audioInterruption, .routeChange, .appBackgrounded:
             return preserveForSystem(&state)
 
@@ -117,7 +128,7 @@ enum VoiceComposerReducer {
         guard state.capture == .requestingPermission else { return [] }
         // Return to idle: never start or auto-send from the invalidated press.
         state.capture = .idle
-        return [.announce("Microphone enabled — hold to record")]
+        return [.announce("Microphone enabled — tap the microphone to record")]
     }
 
     private static func permissionDenied(_ state: inout VoiceComposerState) -> [VoiceEffect] {
@@ -152,17 +163,41 @@ enum VoiceComposerReducer {
         case .recording where state.mode == .locked, .paused:
             return beginFinalize(&state, intent: .send)
         case .review(let draft):
-            state.capture = .publishing(draft)
-            return [.publish(draft)]
+            var queued = draft
+            queued.intent = .send
+            queued.status = .transcribing
+            state.capture = .transcribing(queued)
+            return [.persistDraft(queued), .transcribe(queued)]
+        case .transcriptReady(let draft) where draft.intent == .send:
+            return publishStarted(&state, draft)
         case .failed(let failure):
             guard let draft = failure.draft else { return [] }
-            state.capture = .publishing(draft)
-            return [.publish(draft)]
+            if case .publish = failure {
+                var sending = draft
+                sending.status = .sending
+                state.capture = .publishing(sending)
+                return [.persistDraft(sending)]
+            }
+            return retryTranscription(&state)
         default:
             // finalizing / publishing / held / idle: ignore so repeated taps cannot
             // duplicate finalization or publication.
             return []
         }
+    }
+
+    private static func retryTranscription(_ state: inout VoiceComposerState) -> [VoiceEffect] {
+        guard case .failed(let failure) = state.capture, var draft = failure.draft else {
+            return []
+        }
+        if draft.transcript?.isEmpty == false, draft.intent == .send {
+            draft.status = .transcriptReady
+            state.capture = .transcriptReady(draft)
+            return [.persistDraft(draft)]
+        }
+        draft.status = .transcribing
+        state.capture = .transcribing(draft)
+        return [.persistDraft(draft), .transcribe(draft)]
     }
 
     private static func discard(_ state: inout VoiceComposerState) -> [VoiceEffect] {
@@ -205,22 +240,20 @@ enum VoiceComposerReducer {
         _ draft: VoiceDraft?
     ) -> [VoiceEffect] {
         guard case .finalizing(let intent) = state.capture else { return [] }
-        guard let draft, draft.duration >= state.metrics.minimumDuration else {
-            // Undersized recording: discard quietly, never surface as an upload error.
+        guard var draft else {
             state.capture = .idle
             state.mode = .held
             state.gesture = .inactive
             state.resetTelemetry()
-            return [.deleteDraft, .announce("Recording too short to send")]
+            return [.announce("The recording could not be finalized.")]
         }
-        switch intent {
-        case .review:
-            state.capture = .review(draft)
-            return [.announce("Voice message ready to review")]
-        case .send:
-            state.capture = .publishing(draft)
-            return [.publish(draft)]
-        }
+        draft.intent = intent
+        draft.status = .transcribing
+        state.capture = .transcribing(draft)
+        let message = intent == .send
+            ? "Transcribing, then sending"
+            : "Transcribing voice message"
+        return [.persistDraft(draft), .transcribe(draft), .announce(message)]
     }
 
     private static func preserveForSystem(_ state: inout VoiceComposerState) -> [VoiceEffect] {
@@ -251,20 +284,101 @@ enum VoiceComposerReducer {
         _ state: inout VoiceComposerState,
         _ detail: String
     ) -> [VoiceEffect] {
-        guard case .publishing(let draft) = state.capture else { return [] }
+        guard case .publishing(var draft) = state.capture else { return [] }
+        draft.status = .sendInterrupted
         state.capture = .failed(.publish(draft, detail))
-        return [.haptic(.failure), .announce("Sending failed. \(detail)")]
+        return [
+            .persistDraft(draft),
+            .haptic(.failure),
+            .announce("Sending failed. \(detail)")
+        ]
     }
 
     private static func recoveredDraft(
         _ state: inout VoiceComposerState,
         _ draft: VoiceDraft
     ) -> [VoiceEffect] {
-        // Only surface a recovered draft over a clean composer; never clobber live capture.
+        // Only surface a recovered draft over a clean composer; never clobber live capture
+        // or auto-send an operation that was interrupted before its receipt was known.
         guard state.capture == .idle else { return [] }
-        state.capture = .review(draft)
+        if draft.transcript?.isEmpty == false, draft.intent == .review {
+            state.capture = .transcriptReady(draft)
+        } else {
+            state.capture = .failed(
+                .recovered(
+                    draft,
+                    "Recovered Voice Draft — This recording wasn’t sent. It’s saved on this iPhone."
+                )
+            )
+        }
         state.mode = .held
         return [.announce("Recovered an unsent voice message")]
+    }
+
+    private static func transcriptionSucceeded(
+        _ state: inout VoiceComposerState,
+        _ draft: VoiceDraft
+    ) -> [VoiceEffect] {
+        guard case .transcribing(let active) = state.capture, active.id == draft.id else {
+            return []
+        }
+        state.capture = .transcriptReady(draft)
+        return [.persistDraft(draft), .announce("Transcription ready")]
+    }
+
+    private static func transcriptionFailed(
+        _ state: inout VoiceComposerState,
+        _ draft: VoiceDraft,
+        _ detail: String
+    ) -> [VoiceEffect] {
+        switch state.capture {
+        case .transcribing(let active), .transcriptReady(let active):
+            guard active.id == draft.id else { return [] }
+        default:
+            return []
+        }
+        var failed = draft
+        failed.status = .transcriptionFailed
+        state.capture = .failed(.transcription(failed, detail))
+        return [.persistDraft(failed), .haptic(.failure), .announce(detail)]
+    }
+
+    private static func transcriptIntegrated(_ state: inout VoiceComposerState) -> [VoiceEffect] {
+        guard case .transcriptReady(let draft) = state.capture, draft.intent == .review else {
+            return []
+        }
+        state.capture = .idle
+        state.mode = .held
+        state.gesture = .inactive
+        state.resetTelemetry()
+        return [.releaseDraft, .announce("Transcription added to message")]
+    }
+
+    private static func publishStarted(
+        _ state: inout VoiceComposerState,
+        _ draft: VoiceDraft
+    ) -> [VoiceEffect] {
+        guard case .transcriptReady(let active) = state.capture,
+              active.id == draft.id,
+              draft.intent == .send else { return [] }
+        var sending = draft
+        sending.status = .sending
+        state.capture = .publishing(sending)
+        return [.persistDraft(sending)]
+    }
+
+    private static func audioOnlyPublishStarted(
+        _ state: inout VoiceComposerState,
+        _ draft: VoiceDraft
+    ) -> [VoiceEffect] {
+        guard case .failed(let failure) = state.capture,
+              failure.draft?.id == draft.id else { return [] }
+        var sending = draft
+        sending.transcript = nil
+        sending.intent = .send
+        sending.status = .sending
+        state.capture = .publishing(sending)
+        return [.persistDraft(sending)]
     }
 
     // MARK: Telemetry

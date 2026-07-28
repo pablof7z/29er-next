@@ -21,7 +21,10 @@ struct VoiceGestureMetrics: Equatable, Sendable {
     /// Recordings shorter than this (active seconds) are discarded quietly, never sent.
     var minimumDuration: TimeInterval = 0.6
     /// Hard ceiling; capture finalizes into a reviewable draft before crossing it.
-    var maximumDuration: TimeInterval = 300
+    /// A generous safety ceiling that still allows long-form dictation. Reaching it
+    /// finalizes to a saved review draft; it never discards or auto-sends audio.
+    /// Twelve minutes of 16 kHz mono PCM stays below the composer's 25 MB limit.
+    var maximumDuration: TimeInterval = 12 * 60
 
     static let `default` = VoiceGestureMetrics()
 

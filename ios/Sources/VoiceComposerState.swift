@@ -3,18 +3,62 @@ import Foundation
 /// A finalized, playable local voice recording. Produced only after the recorder
 /// stops cleanly; `duration` is *active* seconds (paused wall-clock excluded).
 struct VoiceDraft: Equatable, Sendable {
-    let url: URL
-    let duration: TimeInterval
-    let waveform: [Float]
+    var id: UUID
+    var url: URL
+    var createdAt: Date
+    var duration: TimeInterval
+    var waveform: [Float]
+    var originalText: String
+    var intent: VoiceFinalizeIntent?
+    var transcript: String?
+    var providerConfigurationID: UUID?
+    var providerName: String?
+    var status: VoiceDraftStatus
+
+    init(
+        id: UUID = UUID(),
+        url: URL,
+        createdAt: Date = Date(),
+        duration: TimeInterval,
+        waveform: [Float],
+        originalText: String = "",
+        intent: VoiceFinalizeIntent? = nil,
+        transcript: String? = nil,
+        providerConfigurationID: UUID? = nil,
+        providerName: String? = nil,
+        status: VoiceDraftStatus = .ready
+    ) {
+        self.id = id
+        self.url = url
+        self.createdAt = createdAt
+        self.duration = duration
+        self.waveform = waveform
+        self.originalText = originalText
+        self.intent = intent
+        self.transcript = transcript
+        self.providerConfigurationID = providerConfigurationID
+        self.providerName = providerName
+        self.status = status
+    }
 
     /// Presentation title that never leaks the generated UUID filename.
     var accessibleTitle: String { "Voice message, \(VoiceDurationText.spoken(duration))" }
 }
 
 /// Whether a finalize was requested to publish immediately or to stop for review.
-enum VoiceFinalizeIntent: Equatable, Sendable {
+enum VoiceFinalizeIntent: String, Codable, Equatable, Sendable {
     case send
     case review
+}
+
+enum VoiceDraftStatus: String, Codable, Equatable, Sendable {
+    case capturing
+    case ready
+    case transcribing
+    case transcriptReady
+    case transcriptionFailed
+    case sending
+    case sendInterrupted
 }
 
 /// Microphone authorization as the reducer understands it — seeded and updated by the
@@ -34,6 +78,8 @@ enum VoiceCapture: Equatable, Sendable {
     case paused
     case finalizing(VoiceFinalizeIntent)
     case review(VoiceDraft)
+    case transcribing(VoiceDraft)
+    case transcriptReady(VoiceDraft)
     case publishing(VoiceDraft)
     case failed(VoiceFailure)
 }
@@ -79,6 +125,8 @@ enum VoiceGesturePhase: Equatable, Sendable {
 enum VoiceFailure: Equatable, Sendable {
     case permissionDenied
     case recorder(String)
+    case transcription(VoiceDraft, String)
+    case recovered(VoiceDraft, String)
     case publish(VoiceDraft, String)
 
     var message: String {
@@ -87,6 +135,8 @@ enum VoiceFailure: Equatable, Sendable {
             "Microphone access is off. Open Settings to record voice messages."
         case .recorder(let detail):
             detail
+        case .transcription(_, let detail), .recovered(_, let detail):
+            detail
         case .publish(_, let detail):
             detail
         }
@@ -94,8 +144,12 @@ enum VoiceFailure: Equatable, Sendable {
 
     /// A draft the user can retry sending or delete, when the failure preserved one.
     var draft: VoiceDraft? {
-        if case .publish(let draft, _) = self { return draft }
-        return nil
+        switch self {
+        case .transcription(let draft, _), .recovered(let draft, _), .publish(let draft, _):
+            draft
+        default:
+            nil
+        }
     }
 
     var isPermissionDenied: Bool { self == .permissionDenied }
@@ -139,7 +193,7 @@ struct VoiceComposerState: Equatable, Sendable {
     var isLockedActive: Bool {
         guard mode == .locked else { return false }
         switch capture {
-        case .recording, .paused, .finalizing, .publishing: return true
+        case .recording, .paused, .finalizing, .transcribing, .publishing: return true
         default: return false
         }
     }
@@ -148,7 +202,7 @@ struct VoiceComposerState: Equatable, Sendable {
 
     var isFinalizingOrPublishing: Bool {
         switch capture {
-        case .finalizing, .publishing: true
+        case .finalizing, .transcribing, .publishing: true
         default: false
         }
     }
@@ -161,6 +215,16 @@ struct VoiceComposerState: Equatable, Sendable {
     /// The draft currently being pushed through the canonical send path, if any.
     var publishingDraft: VoiceDraft? {
         if case .publishing(let draft) = capture { return draft }
+        return nil
+    }
+
+    var transcribingDraft: VoiceDraft? {
+        if case .transcribing(let draft) = capture { return draft }
+        return nil
+    }
+
+    var transcriptReadyDraft: VoiceDraft? {
+        if case .transcriptReady(let draft) = capture { return draft }
         return nil
     }
 

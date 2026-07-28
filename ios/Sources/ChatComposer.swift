@@ -32,10 +32,14 @@ struct ChatComposer: View {
     #if os(iOS)
     @State private var isPhotoPickerPresented = false
     @State var photoPickerSelection: [PhotosPickerItem] = []
+    @State var isVoiceSettingsPresented = false
+    @State var isVoiceDeleteConfirmationPresented = false
+    @State var pendingVoiceAttachmentRemoval: UUID?
+    @Environment(VoiceProviderStore.self) var voiceProviders
     #endif
     @State var didConfigureVoice = false
     @StateObject var voice: VoiceComposerCoordinator
-    @FocusState private var isEditorFocused: Bool
+    @FocusState var isEditorFocused: Bool
     @Environment(\.scenePhase) private var scenePhase
 
     init(
@@ -63,6 +67,10 @@ struct ChatComposer: View {
     }
 
     var body: some View {
+        lifecycleContent
+    }
+
+    private var commonPresentationContent: some View {
         content
         .sheet(isPresented: $isRecipientPickerPresented) {
             ComposerRecipientPicker(
@@ -77,7 +85,20 @@ struct ChatComposer: View {
             allowsMultipleSelection: true,
             onCompletion: handlePickedFiles
         )
+    }
+
+    @ViewBuilder
+    private var presentationContent: some View {
         #if os(iOS)
+        iosPresentationContent
+        #else
+        commonPresentationContent
+        #endif
+    }
+
+    #if os(iOS)
+    private var iosPresentationContent: some View {
+        commonPresentationContent
         .photosPicker(
             isPresented: $isPhotoPickerPresented,
             selection: $photoPickerSelection,
@@ -87,7 +108,45 @@ struct ChatComposer: View {
         .onChange(of: photoPickerSelection) { _, items in
             handlePickedPhotos(items)
         }
-        #endif
+        .sheet(isPresented: $isVoiceSettingsPresented) {
+            NavigationStack {
+                VoiceSettingsView()
+            }
+        }
+        .confirmationDialog(
+            "Delete Recording?",
+            isPresented: $isVoiceDeleteConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Recording", role: .destructive) {
+                voice.discard()
+            }
+            Button("Keep Recording", role: .cancel) {}
+        } message: {
+            Text("This is the only action that permanently removes the saved recording.")
+        }
+        .confirmationDialog(
+            "Delete Saved Recording?",
+            isPresented: voiceAttachmentRemovalPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Recording", role: .destructive) {
+                if let id = pendingVoiceAttachmentRemoval {
+                    removeAttachmentImmediately(id)
+                }
+                pendingVoiceAttachmentRemoval = nil
+            }
+            Button("Keep Recording", role: .cancel) {
+                pendingVoiceAttachmentRemoval = nil
+            }
+        } message: {
+            Text("The audio and its recoverable transcript will be permanently removed.")
+        }
+    }
+    #endif
+
+    private var lifecycleContent: some View {
+        presentationContent
         .onChange(of: reply?.id) { _, eventID in
             if eventID != nil { isEditorFocused = true }
         }
@@ -106,6 +165,10 @@ struct ChatComposer: View {
         .onChange(of: voice.state.publishingDraft?.url) { _, url in
             guard url != nil, let draft = voice.state.publishingDraft else { return }
             runVoicePublish(draft)
+        }
+        .onChange(of: voice.state.transcriptReadyDraft?.id) { _, id in
+            guard id != nil, let draft = voice.state.transcriptReadyDraft else { return }
+            handleTranscriptReady(draft)
         }
         .onChange(of: voice.state.failure) { _, failure in
             errorMessage = failure?.isPermissionDenied == true ? nil : failure?.message
@@ -383,10 +446,10 @@ struct ChatComposer: View {
     var actionButton: some View {
         #if os(iOS)
         VoiceComposerActionButton(
-            coordinator: voice,
             showsMic: showsVoiceAction,
             canSubmit: canSubmit,
             isSending: isSending,
+            record: beginVoiceRecording,
             submit: submit
         )
         #else
@@ -394,59 +457,14 @@ struct ChatComposer: View {
         #endif
     }
 
+    #if os(iOS)
+    private func beginVoiceRecording() {
+        voice.beginHandsFree(originalText: draft)
+    }
+    #endif
+
     private var composerBorder: some View {
         RoundedRectangle(cornerRadius: 21)
             .stroke(PlatformSupport.separator.opacity(0.55), lineWidth: 0.5)
-    }
-
-    private var editorPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let reply {
-                ComposerReplySummary(reply: reply) { self.reply = nil }
-            }
-            if !visibleRecipients.isEmpty {
-                recipientChips
-            }
-            if !attachments.isEmpty {
-                ComposerAttachmentPreviewStrip(
-                    attachments: attachments,
-                    isDisabled: isSending
-                ) { id in
-                    removeAttachment(id)
-                }
-            }
-            TextField("Message", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...5)
-                .focused($isEditorFocused)
-                .disabled(isSending)
-                .accessibilityIdentifier("room-message-composer")
-        }
-    }
-
-    private var recipientChips: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 6) {
-                ForEach(visibleRecipients) { recipient in
-                    ComposerMentionChip(
-                        recipient: recipient,
-                        isRequired: reply?.author.id == recipient.id
-                    ) {
-                        selectedRecipients.removeAll { $0.id == recipient.id }
-                    }
-                }
-            }
-        }
-        .scrollIndicators(.hidden)
-    }
-
-    private var signedOutComposer: some View {
-        Label("Sign in to write", systemImage: "lock.fill")
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .accessibilityIdentifier("room-composer-signed-out")
     }
 }

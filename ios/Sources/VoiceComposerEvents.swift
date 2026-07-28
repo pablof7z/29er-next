@@ -21,6 +21,7 @@ enum VoiceEvent: Equatable, Sendable {
     case resume
     case stopForReview
     case send
+    case retryTranscription
     case discard
 
     // Recorder + system callbacks
@@ -28,6 +29,11 @@ enum VoiceEvent: Equatable, Sendable {
     case recorderStartFailed(String)
     case recorderFinished(VoiceDraft?)
     case recorderFinishFailed(String)
+    case transcriptionSucceeded(VoiceDraft)
+    case transcriptionFailed(VoiceDraft, String)
+    case transcriptIntegrated
+    case publishStarted(VoiceDraft)
+    case audioOnlyPublishStarted(VoiceDraft)
     case audioInterruption
     case routeChange
     case appBackgrounded
@@ -55,8 +61,9 @@ enum VoiceEffect: Equatable, Sendable {
     /// Stop capture; `deliver` true asks the engine to finalize a playable file.
     case stopRecorder(deliver: Bool)
     case deleteDraft
-    /// Hand the finalized draft to the canonical upload + NMP publication path.
-    case publish(VoiceDraft)
+    case releaseDraft
+    case persistDraft(VoiceDraft)
+    case transcribe(VoiceDraft)
     case haptic(VoiceHaptic)
     case announce(String)
 }

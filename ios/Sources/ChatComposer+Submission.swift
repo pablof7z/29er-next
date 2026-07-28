@@ -71,9 +71,29 @@ extension ChatComposer {
 
     func removeAttachment(_ id: UUID) {
         guard let attachment = attachments.first(where: { $0.id == id }) else { return }
+        #if os(iOS)
+        if attachment.localDraftURL != nil {
+            pendingVoiceAttachmentRemoval = id
+            return
+        }
+        #endif
+        removeAttachmentImmediately(id)
+    }
+
+    func removeAttachmentImmediately(_ id: UUID) {
+        guard let attachment = attachments.first(where: { $0.id == id }) else { return }
         attachment.removeLocalDraft()
         attachments.removeAll { $0.id == id }
     }
+
+    #if os(iOS)
+    var voiceAttachmentRemovalPresented: Binding<Bool> {
+        Binding(
+            get: { pendingVoiceAttachmentRemoval != nil },
+            set: { if !$0 { pendingVoiceAttachmentRemoval = nil } }
+        )
+    }
+    #endif
 
     func handlePickedFiles(_ result: Result<[URL], Error>) {
         do {

@@ -44,6 +44,7 @@ targets:
           - wss://purplepag.es
         NMPGroupRelay: wss://nip29.f7z.io
         NSMicrophoneUsageDescription: Record voice messages to share in your group chats.
+        NSSpeechRecognitionUsageDescription: Transcribe your saved voice messages into editable chat text.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
@@ -54,7 +55,7 @@ targets:
         PRODUCT_MODULE_NAME: TwentyNinerNext
         PRODUCT_NAME: TwentyNinerNext
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        CURRENT_PROJECT_VERSION: "3"
+        CURRENT_PROJECT_VERSION: "4"
         DEVELOPMENT_TEAM: 456SHKPP26
         MARKETING_VERSION: 0.1.0
         TARGETED_DEVICE_FAMILY: "1"
@@ -88,6 +89,7 @@ targets:
           - wss://purplepag.es
         NMPGroupRelay: wss://nip29.f7z.io
         NSMicrophoneUsageDescription: Record voice messages to validate the composer experience.
+        NSSpeechRecognitionUsageDescription: Transcribe saved voice messages for device validation.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
