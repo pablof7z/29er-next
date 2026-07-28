@@ -156,16 +156,24 @@ private struct MessageTimelineView: View {
                             }
                         }
 
-                        // Sentinel that tracks whether the newest timeline item is on screen.
+                        // Scroll target for `scrollTo(bottomAnchorID, ...)`. Its own
+                        // visibility is NOT what drives `isPinnedToBottom` below --
+                        // being inside the LazyVStack, it can be de-instantiated
+                        // while scrolled far away, which would freeze that signal
+                        // at a stale value instead of updating to "not visible".
                         Color.clear
                             .frame(height: 1)
                             .id(bottomAnchorID)
-                            .anchorPreference(
-                                key: BottomAnchorBoundsKey.self,
-                                value: .bounds,
-                                transform: { $0 }
-                            )
                     }
+                    // Reported on the LazyVStack itself, not a lazily-instantiated
+                    // child: SwiftUI always tracks a LazyVStack's own bounds (it
+                    // needs them to size/scroll the container), so this anchor
+                    // keeps updating even when scrolled well away from the bottom.
+                    .anchorPreference(
+                        key: BottomAnchorBoundsKey.self,
+                        value: .bounds,
+                        transform: { $0 }
+                    )
                 }
                 .coordinateSpace(name: scrollSpace)
                 .defaultScrollAnchor(.bottom)
@@ -195,8 +203,8 @@ private struct MessageTimelineView: View {
                     if let anchor {
                         GeometryReader { geometry in
                             let frame = geometry[anchor]
-                            let isVisible = ChatTimelineViewport.bottomAnchorIsVisible(
-                                frame: frame,
+                            let isVisible = ChatTimelineViewport.isScrolledToBottom(
+                                contentFrame: frame,
                                 viewportHeight: geometry.size.height
                             )
                             Color.clear

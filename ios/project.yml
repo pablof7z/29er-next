@@ -55,6 +55,7 @@ targets:
         PRODUCT_MODULE_NAME: TwentyNinerNext
         PRODUCT_NAME: TwentyNinerNext
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CURRENT_PROJECT_VERSION: "4"
         DEVELOPMENT_TEAM: 456SHKPP26
         MARKETING_VERSION: 0.1.0
@@ -144,6 +145,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.f7z.app29er.next.macos
         PRODUCT_MODULE_NAME: TwentyNinerNext
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         DEVELOPMENT_TEAM: 456SHKPP26
   TwentyNinerNextMacTests:
     type: bundle.unit-test
