@@ -94,4 +94,42 @@ enum ChatComposerState {
         }
         return recipients
     }
+
+    /// True once every pickable recipient is already tagged. A
+    /// `requiredRecipientID` (the reply author, if any) always counts as
+    /// selected even if `selectedRecipients` doesn't literally contain it.
+    static func everyoneIsSelected(
+        pickable: [ComposerRecipient],
+        selectedRecipients: [ComposerRecipient],
+        requiredRecipientID: String?
+    ) -> Bool {
+        pickable.allSatisfy { recipient in
+            recipient.id == requiredRecipientID
+                || selectedRecipients.contains { $0.id == recipient.id }
+        }
+    }
+
+    /// Toggles a bulk "@everyone" selection: tags every pickable recipient at
+    /// once (the same result as tapping each row individually, so it's
+    /// ordinary per-person mentions, not a new "everyone" concept at the
+    /// protocol level), or -- if everyone is already tagged -- clears back
+    /// down to just the required recipient, if any.
+    static func togglingEveryone(
+        pickable: [ComposerRecipient],
+        selectedRecipients: [ComposerRecipient],
+        requiredRecipientID: String?
+    ) -> [ComposerRecipient] {
+        if everyoneIsSelected(
+            pickable: pickable,
+            selectedRecipients: selectedRecipients,
+            requiredRecipientID: requiredRecipientID
+        ) {
+            return selectedRecipients.filter { $0.id == requiredRecipientID }
+        }
+        var updated = selectedRecipients
+        for recipient in pickable where !updated.contains(where: { $0.id == recipient.id }) {
+            updated.append(recipient)
+        }
+        return updated
+    }
 }

@@ -88,4 +88,77 @@ final class ChatComposerTests: XCTestCase {
         XCTAssertFalse(ChatComposerState.showsVoiceAction(draft: "hello", attachments: []))
         XCTAssertFalse(ChatComposerState.showsVoiceAction(draft: "", attachments: [attachment]))
     }
+
+    func testEveryoneIsNotSelectedUntilAllPickableRecipientsAreTagged() {
+        let a = recipient("a", name: "agent1")
+        let b = recipient("b", name: "agent2")
+
+        XCTAssertFalse(
+            ChatComposerState.everyoneIsSelected(
+                pickable: [a, b],
+                selectedRecipients: [a],
+                requiredRecipientID: nil
+            )
+        )
+        XCTAssertTrue(
+            ChatComposerState.everyoneIsSelected(
+                pickable: [a, b],
+                selectedRecipients: [a, b],
+                requiredRecipientID: nil
+            )
+        )
+    }
+
+    func testEveryoneIsSelectedCountsTheRequiredReplyRecipientEvenIfNotInSelection() {
+        let a = recipient("a", name: "agent1")
+        let b = recipient("b", name: "agent2")
+
+        XCTAssertTrue(
+            ChatComposerState.everyoneIsSelected(
+                pickable: [a, b],
+                selectedRecipients: [b],
+                requiredRecipientID: "a"
+            )
+        )
+    }
+
+    func testTogglingEveryoneAddsEveryPickableRecipientOnce() {
+        let a = recipient("a", name: "agent1")
+        let b = recipient("b", name: "agent2")
+        let c = recipient("c", name: "agent3")
+
+        let toggled = ChatComposerState.togglingEveryone(
+            pickable: [a, b, c],
+            selectedRecipients: [b],
+            requiredRecipientID: nil
+        )
+
+        XCTAssertEqual(Set(toggled.map(\.pubkey)), ["a", "b", "c"])
+    }
+
+    func testTogglingEveryoneAgainClearsBackToJustTheRequiredRecipient() {
+        let a = recipient("a", name: "agent1")
+        let b = recipient("b", name: "agent2")
+
+        let toggled = ChatComposerState.togglingEveryone(
+            pickable: [a, b],
+            selectedRecipients: [a, b],
+            requiredRecipientID: "a"
+        )
+
+        XCTAssertEqual(toggled.map(\.pubkey), ["a"])
+    }
+
+    func testTogglingEveryoneAgainWithNoRequiredRecipientClearsEntirely() {
+        let a = recipient("a", name: "agent1")
+        let b = recipient("b", name: "agent2")
+
+        let toggled = ChatComposerState.togglingEveryone(
+            pickable: [a, b],
+            selectedRecipients: [a, b],
+            requiredRecipientID: nil
+        )
+
+        XCTAssertTrue(toggled.isEmpty)
+    }
 }
