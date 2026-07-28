@@ -59,10 +59,10 @@ extension AppModel {
 
             for try await batch in query {
                 guard !Task.isCancelled, generation == engineGeneration else { return }
-                let row = batch.rows.first(where: { $0.kind == 10_009 })
+                let row = batch.rows.first
                 let snapshot = row.map {
                     RememberedGroupSnapshot(
-                        decodeRememberedGroups($0),
+                        parseSimpleGroupsListTolerant($0),
                         sourceEvent: FavoriteRelayListEvent($0)
                     )
                 } ?? .empty

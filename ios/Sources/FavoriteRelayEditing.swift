@@ -195,7 +195,7 @@ extension AppModel {
 
     private static func favoriteRelayPublishFailureMessage(_ error: Error) -> String {
         switch error as? NMPError {
-        case .noActiveAccount, .noActiveSigner:
+        case .noActiveSigner:
             return "Sign in to edit your favorite relays."
         case .engineClosed:
             return "NMP closed before the relay list could be updated."

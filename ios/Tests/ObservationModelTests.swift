@@ -1,4 +1,5 @@
 import NMP
+import NMPContent
 import XCTest
 @testable import TwentyNinerNext
 
@@ -32,8 +33,8 @@ private actor QueryOpeningProbe {
 
 @MainActor
 final class ObservationModelTests: XCTestCase {
-    func testRoomChatDemandIsBoundedAndPinnedToSelectedHost() throws {
-        let demand = try roomChatDemand(
+    func testRoomChatDemandIsBoundedAndPinnedToSelectedHost() {
+        let demand = roomChatDemand(
             host: "wss://nip29.f7z.io",
             groupID: "29er-next"
         )
@@ -44,14 +45,26 @@ final class ObservationModelTests: XCTestCase {
         assertPinned(demand, to: "wss://nip29.f7z.io")
     }
 
-    func testActivityDemandIsIndependentBoundedAndPinned() throws {
-        let demand = try roomActivityDemand(
+    func testActivityDemandIsIndependentBoundedAndPinned() {
+        let demand = roomActivityDemand(
             host: "wss://nip29.f7z.io",
             groupID: "29er-next"
         )
 
         XCTAssertEqual(demand.selection.kinds, [30_315])
         XCTAssertEqual(demand.selection.limit, 100)
+        XCTAssertEqual(demand.selection.tags["h"], .literal(["29er-next"]))
+        assertPinned(demand, to: "wss://nip29.f7z.io")
+    }
+
+    func testReactionDemandIsIndependentBoundedAndPinned() {
+        let demand = roomReactionDemand(
+            host: "wss://nip29.f7z.io",
+            groupID: "29er-next"
+        )
+
+        XCTAssertEqual(demand.selection.kinds, [7])
+        XCTAssertEqual(demand.selection.limit, 1_000)
         XCTAssertEqual(demand.selection.tags["h"], .literal(["29er-next"]))
         assertPinned(demand, to: "wss://nip29.f7z.io")
     }
@@ -89,6 +102,54 @@ final class ObservationModelTests: XCTestCase {
         XCTAssertEqual(demand.selection.tags["d"], .literal(["29er-next"]))
         XCTAssertEqual(demand.cache, .strict)
         assertPinned(demand, to: "wss://nip29.f7z.io")
+    }
+
+    func testChannelPreviewProfileDemandIgnoresAuthoredRelayHints() throws {
+        let demand = try channelPreviewReferenceDemand(
+            for: .profile(
+                pubkey: "profile-author",
+                relayHints: ["ws://127.0.0.1:7777", "wss://untrusted.example"]
+            )
+        )
+
+        XCTAssertEqual(demand.selection.kinds, [0])
+        XCTAssertEqual(demand.selection.authors, .literal(["profile-author"]))
+        XCTAssertEqual(demand.selection.limit, 1)
+        XCTAssertEqual(demand.source, .authorOutboxes)
+    }
+
+    func testChannelPreviewEventDemandUsesOnlyAddressedID() throws {
+        let demand = try channelPreviewReferenceDemand(
+            for: .event(
+                id: "event-id",
+                authorHint: "misleading-author",
+                kindHint: 30_023,
+                relayHints: ["wss://untrusted.example"]
+            )
+        )
+
+        XCTAssertEqual(demand.selection.ids, .literal(["event-id"]))
+        XCTAssertNil(demand.selection.kinds)
+        XCTAssertNil(demand.selection.authors)
+        XCTAssertEqual(demand.selection.limit, 1)
+        XCTAssertEqual(demand.source, .public)
+    }
+
+    func testChannelPreviewCoordinateDemandUsesCanonicalAddress() throws {
+        let demand = try channelPreviewReferenceDemand(
+            for: .coordinate(
+                kind: 30_023,
+                author: "article-author",
+                identifier: "article-id",
+                relayHints: ["wss://untrusted.example"]
+            )
+        )
+
+        XCTAssertEqual(demand.selection.kinds, [30_023])
+        XCTAssertEqual(demand.selection.authors, .literal(["article-author"]))
+        XCTAssertEqual(demand.selection.tags["d"], .literal(["article-id"]))
+        XCTAssertEqual(demand.selection.limit, 1)
+        XCTAssertEqual(demand.source, .authorOutboxes)
     }
 
     private func assertPinned(_ demand: NMPDemand, to host: String) {

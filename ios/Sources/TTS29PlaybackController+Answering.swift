@@ -66,7 +66,7 @@ extension TTS29PlaybackController {
 
     private static func publishFailureMessage(_ error: Error) -> String {
         switch error as? NMPError {
-        case .noActiveAccount, .noActiveSigner: "Sign in to answer."
+        case .noActiveSigner: "Sign in to answer."
         case .engineClosed: "The engine closed before the answer could be sent."
         default: "NMP could not start the answer publish."
         }

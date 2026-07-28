@@ -152,7 +152,7 @@ final class RoomTimelineModel {
 
     private func observeChat() async {
         do {
-            let demand = try roomChatDemand(host: hostRelay, groupID: groupID)
+            let demand = roomChatDemand(host: hostRelay, groupID: groupID)
             let clock = ContinuousClock()
             let started = clock.now
             let query = try await queryOpening.demand(engine, demand)
@@ -178,7 +178,7 @@ final class RoomTimelineModel {
 
     private func observeActivities() async {
         do {
-            let demand = try roomActivityDemand(host: hostRelay, groupID: groupID)
+            let demand = roomActivityDemand(host: hostRelay, groupID: groupID)
             let clock = ContinuousClock()
             let started = clock.now
             let query = try await queryOpening.demand(engine, demand)
@@ -205,7 +205,7 @@ final class RoomTimelineModel {
 
     private func observeReactions() async {
         do {
-            let demand = try roomReactionsDemand(host: hostRelay, groupID: groupID)
+            let demand = roomReactionsDemand(host: hostRelay, groupID: groupID)
             let query = try await queryOpening.demand(engine, demand)
             defer { query.cancel() }
 
@@ -241,7 +241,7 @@ final class RoomTimelineModel {
                 RoomOpenProbe.shared.recordSnapshot(.membership, rows: batch.rows)
                 membershipError = nil
                 hasReceivedMembership = true
-                hasMembershipMetadata = batch.rows.contains { $0.kind == 39_002 }
+                hasMembershipMetadata = !batch.rows.isEmpty
                 publishProfileAuthors()
             }
         } catch {
