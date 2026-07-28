@@ -7,7 +7,10 @@ extension RoomTimelineModel {
     /// directly -- `h`-tagged to this room so `roomReactionsDemand` (the
     /// same `h`-scoped read this model already observes) picks it back up.
     func reactToMessage(_ message: RoomMessage, emoji: String) async -> String? {
-        guard let viewer = recipient else { return "Sign in to react." }
+        guard let viewer = recipient else {
+            return finishReaction(failure: "Sign in to react.")
+        }
+        reactionDeliveryFailure = nil
 
         do {
             let intent = WriteIntent(
@@ -22,13 +25,27 @@ extension RoomTimelineModel {
                 routing: .authorOutbox
             )
             let receipt = try await engine.publish(intent)
+            defer { receipt.status.cancel() }
+            var convergence = MessageReceiptConvergence()
             for try await status in receipt.status {
-                if let failure = deliveryFailure(for: status) { return failure }
-                if case .acked = status { return nil }
+                guard !Task.isCancelled else { return nil }
+                _ = convergence.apply(status, receiptID: receipt.id)
             }
-            return "Reaction delivery ended without relay acknowledgement."
+            guard !Task.isCancelled else { return nil }
+            guard let finalState = convergence.stateAfterStreamClosed(receiptID: receipt.id) else {
+                return finishReaction(
+                    failure: "Reaction delivery ended without a terminal NMP outcome."
+                )
+            }
+            return finishReaction(failure: finalState.failureMessage)
         } catch {
-            return error.localizedDescription
+            guard !Task.isCancelled else { return nil }
+            return finishReaction(failure: error.localizedDescription)
         }
+    }
+
+    private func finishReaction(failure: String?) -> String? {
+        reactionDeliveryFailure = failure
+        return failure
     }
 }

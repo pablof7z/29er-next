@@ -5,6 +5,7 @@ import SwiftUI
 struct MessageReceiptProofView: View {
     private let receiptID: UInt64 = 77
     @State private var state = MessageDeliveryState.idle
+    @State private var reactionFailure: String?
 
     var body: some View {
         VStack(spacing: 18) {
@@ -45,8 +46,14 @@ struct MessageReceiptProofView: View {
                 )
             }
             .accessibilityIdentifier("message-receipt-proof-ambiguous")
+
+            Button("Reaction Failure") {
+                reactionFailure = "wss://groups.example rejected the reaction: permission denied"
+            }
+            .accessibilityIdentifier("message-receipt-proof-reaction-failure")
         }
         .padding()
+        .reactionFailureAlert($reactionFailure)
     }
 
     private var report: String {

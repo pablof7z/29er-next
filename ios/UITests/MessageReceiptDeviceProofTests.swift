@@ -41,6 +41,17 @@ final class MessageReceiptDeviceProofTests: XCTestCase {
             report,
             contains: "Message delivery outcome for wss://groups.example is unknown."
         )
+
+        app.buttons["message-receipt-proof-reaction-failure"].tap()
+        let alert = app.alerts["Couldn’t Send Reaction"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            alert.staticTexts[
+                "wss://groups.example rejected the reaction: permission denied"
+            ].exists
+        )
+        alert.buttons["OK"].tap()
+        XCTAssertFalse(alert.waitForExistence(timeout: 2))
     }
 
     private func assert(_ element: XCUIElement, contains text: String) {

@@ -24,6 +24,7 @@ final class RoomTimelineModel {
     private(set) var activityError: String?
     private(set) var adminError: String?
     private(set) var reactionError: String?
+    var reactionDeliveryFailure: String?
     var profileError: String?
 
     private(set) var hasReceivedChat = false
@@ -31,6 +32,7 @@ final class RoomTimelineModel {
     private(set) var hasReceivedActivities = false
     private(set) var hasMembershipMetadata = false
     var messageDeliveryState = MessageDeliveryState.idle
+    var messageReceiptPresentation = MessageReceiptPresentation()
 
     let engine: NMPEngine
     let groupID: String

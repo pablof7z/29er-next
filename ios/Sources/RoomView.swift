@@ -97,6 +97,7 @@ struct RoomView: View {
                     .accessibilityIdentifier("room-open-proof")
             }
         }
+        .reactionFailureAlert(model.reactionDeliveryFailureBinding)
         #if os(iOS)
         .fullScreenCover(item: $presentedImage) { item in
             ZoomableRemoteImage(url: item.url)
@@ -143,8 +144,8 @@ struct RoomView: View {
                 defaultRecipient: model.lastOtherSpeaker,
                 reply: $replyTarget,
                 voiceDraftScope: "\(activePubkey ?? "signed-out")|\(group.hostRelay)|\(group.localID)",
-                deliveryProgress: model.messageDeliveryState.progressMessage,
-                deliveryFailure: model.messageDeliveryState.failureMessage,
+                deliveryProgress: model.messageDeliveryProgress,
+                deliveryFailure: model.messageDeliveryFailure,
                 send: sendMessage
             )
         }
