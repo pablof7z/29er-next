@@ -114,6 +114,17 @@ enum MessageDeliveryState: Equatable, Sendable {
         }
     }
 
+    var receiptID: UInt64? {
+        switch self {
+        case .idle, .progressing(receiptID: nil, _), .failed(receiptID: nil, _):
+            return nil
+        case .progressing(let receiptID?, _), .failed(let receiptID?, _):
+            return receiptID
+        case .acknowledged(let receiptID, _), .converged(let receiptID, _, _):
+            return receiptID
+        }
+    }
+
     static func applying(_ status: WriteStatus, receiptID: UInt64) -> MessageDeliveryState {
         switch status {
         case .accepted:
@@ -224,50 +235,5 @@ struct MessageReceiptConvergence: Equatable, Sendable {
             acknowledgedRelays: acknowledgedRelays,
             failures: failures
         )
-    }
-}
-
-@MainActor
-struct MessageReceiptStore {
-    private static let keyPrefix = "message.receipts.v1."
-    private let defaults: UserDefaults
-    private let key: String
-
-    init(
-        defaults: UserDefaults = .standard,
-        account: String,
-        host: String,
-        groupID: String
-    ) {
-        self.defaults = defaults
-        key = "\(Self.keyPrefix)\(account)|\(host)|\(groupID)"
-    }
-
-    func load() -> [UInt64] {
-        (defaults.stringArray(forKey: key) ?? [])
-            .compactMap(UInt64.init)
-            .sorted()
-    }
-
-    func record(_ receiptID: UInt64) {
-        var ids = Set(load())
-        ids.insert(receiptID)
-        defaults.set(ids.sorted().map(String.init), forKey: key)
-    }
-
-    func remove(_ receiptID: UInt64) {
-        let ids = load().filter { $0 != receiptID }
-        if ids.isEmpty {
-            defaults.removeObject(forKey: key)
-        } else {
-            defaults.set(ids.map(String.init), forKey: key)
-        }
-    }
-
-    static func clearAll(defaults: UserDefaults = .standard) {
-        for key in defaults.dictionaryRepresentation().keys
-            where key.hasPrefix(keyPrefix) {
-            defaults.removeObject(forKey: key)
-        }
     }
 }

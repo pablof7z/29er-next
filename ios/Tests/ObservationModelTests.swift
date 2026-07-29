@@ -135,6 +135,7 @@ final class ObservationModelTests: XCTestCase {
             engine: engine,
             groupID: "room",
             hostRelay: "wss://nip29.f7z.io",
+            storeGeneration: "observation-test",
             queryOpening: .failing
         )
 
@@ -195,6 +196,7 @@ final class ObservationModelTests: XCTestCase {
             engine: engine,
             groupID: "room",
             hostRelay: "wss://nip29.f7z.io",
+            storeGeneration: "observation-test",
             queryOpening: opening
         )
         let observation = Task { await model.observe() }

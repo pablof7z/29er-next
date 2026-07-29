@@ -138,6 +138,7 @@ struct MacRootView: View {
                     group: selectedGroup,
                     allGroups: model.groups,
                     engine: engine,
+                    storeGeneration: model.storeGeneration,
                     activePubkey: model.activePubkey,
                     reads: reads,
                     onOpen: { directory?.markRead(selectedGroup) }

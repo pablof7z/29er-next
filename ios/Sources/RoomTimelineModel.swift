@@ -23,7 +23,6 @@ final class RoomTimelineModel {
     private(set) var activityError: String?
     private(set) var adminError: String?
     private(set) var reactionError: String?
-    var reactionDeliveryFailure: String?
     var profileError: String?
     private(set) var hasReceivedChat = false
     private(set) var hasReceivedMembership = false
@@ -31,30 +30,43 @@ final class RoomTimelineModel {
     private(set) var hasMembershipMetadata = false
     var messageDeliveryState = MessageDeliveryState.idle
     var messageReceiptPresentation = MessageReceiptPresentation()
-
+    var reactionReceiptPresentation = ReactionReceiptPresentation()
+    @ObservationIgnored var reactionTasks: [UUID: Task<Void, Never>] = [:]
     let engine: NMPEngine
     let groupID: String
     let hostRelay: String
     let recipient: String?
     let queryOpening: NMPQueryOpening
     let profileAuthorUpdates = ProfileAuthorUpdates()
-    let messageReceiptStore: MessageReceiptStore
+    let messageReceiptStore: DurableReceiptStore
+    let reactionReceiptStore: DurableReceiptStore
     var lastProfileAuthors: [String]?
 
     init(
         engine: NMPEngine,
         groupID: String,
         hostRelay: String,
+        storeGeneration: String,
         recipient: String? = nil,
         queryOpening: NMPQueryOpening = .live,
-        messageReceiptStore: MessageReceiptStore? = nil
+        messageReceiptStore: DurableReceiptStore? = nil,
+        reactionReceiptStore: DurableReceiptStore? = nil
     ) {
         self.engine = engine
         self.groupID = groupID
         self.hostRelay = hostRelay
         self.recipient = recipient
         self.queryOpening = queryOpening
-        self.messageReceiptStore = messageReceiptStore ?? MessageReceiptStore(
+        self.messageReceiptStore = messageReceiptStore ?? DurableReceiptStore(
+            storeGeneration: storeGeneration,
+            scope: .message,
+            account: recipient ?? "signed-out",
+            host: hostRelay,
+            groupID: groupID
+        )
+        self.reactionReceiptStore = reactionReceiptStore ?? DurableReceiptStore(
+            storeGeneration: storeGeneration,
+            scope: .reaction,
             account: recipient ?? "signed-out",
             host: hostRelay,
             groupID: groupID
@@ -62,67 +74,6 @@ final class RoomTimelineModel {
         if RoomOpenProbe.shared.isEnabled, RoomOpenProbe.shared.groupID != groupID {
             RoomOpenProbe.shared.begin(groupID: groupID)
         }
-    }
-
-    var timelineItems: [RoomTimelineItem] {
-        NIP29ViewProjection.timelineItems(from: chatRows)
-    }
-
-    /// TTS29 spoken items present in the room's chat rows, indexed by event id
-    /// with their narrated branches assembled.
-    var tts29Catalog: TTS29Catalog {
-        TTS29Catalog(rows: chatRows)
-    }
-
-    var mentionIDs: Set<String> {
-        guard let recipient else { return [] }
-        return MentionProjection.mentionIDs(from: chatRows, recipient: recipient)
-    }
-
-    var activities: [AgentActivity] {
-        NIP29ViewProjection.activities(from: activityRows)
-    }
-
-    var reactionsByMessage: [String: [RoomReactionGroup]] {
-        RoomReactionProjection.summaries(
-            from: RoomReactionProjection.reactions(from: reactionRows),
-            viewer: recipient
-        )
-    }
-
-    var people: RoomPeople {
-        NIP29ViewProjection.people(members: members, activities: activities)
-    }
-
-    var composerRecipients: [ComposerRecipient] {
-        RoomComposerProjection.recipients(
-            from: people,
-            recentSpeakers: timelineItems.compactMap { $0.message?.author },
-            profiles: profiles,
-            excluding: recipient
-        )
-    }
-
-    func composerReply(to message: RoomMessage) -> ComposerReply {
-        RoomComposerProjection.reply(to: message, people: people, profiles: profiles)
-    }
-
-    /// The default recipient a new message auto-tags with: the most recent
-    /// speaker other than the signed-in user (#118).
-    var lastOtherSpeaker: ComposerRecipient? {
-        RoomComposerProjection.lastOtherSpeaker(
-            in: timelineItems,
-            excluding: recipient,
-            people: people,
-            profiles: profiles
-        )
-    }
-
-    /// Management backends present in this room, resolved from kind:0 across
-    /// members, admins, and live-session authors.
-    var backends: [RoomBackend] {
-        let candidates = members.map(\.pubkey) + admins + activities.map(\.author)
-        return RoomBackendProjection.backends(candidatePubkeys: candidates, profiles: profiles)
     }
 
     func observe() async {
@@ -158,6 +109,10 @@ final class RoomTimelineModel {
             group.addTask { [weak self] in
                 guard let self else { return }
                 await self.observeRetainedMessageReceipts()
+            }
+            group.addTask { [weak self] in
+                guard let self else { return }
+                await self.observeRetainedReactionReceipts()
             }
         }
     }

@@ -31,8 +31,11 @@ final class AppModel {
     private(set) var engine: NMPEngine?
     private(set) var contentObservationFactory: NMPReferenceObservationFactory?
     private(set) var engineGeneration = 0
+    private(set) var storeGeneration = ""
     private var engineConfig: NMPConfig?
     private var localAccountStore: NMPInsecureFileAccountStore?
+    private var receiptRootDirectory: URL?
+    private let fileManager: FileManager
     var activeRegistration: NMPAccountRegistration?
     let groupRelay: String
 
@@ -45,6 +48,7 @@ final class AppModel {
         operatorConfiguration: OperatorConfiguration? = nil,
         applicationSupportURL: URL? = nil
     ) {
+        self.fileManager = fileManager
         let configuration: OperatorConfiguration
         if let operatorConfiguration {
             configuration = operatorConfiguration
@@ -73,6 +77,8 @@ final class AppModel {
             )
             engineConfig = resources.config
             localAccountStore = resources.accountStore
+            receiptRootDirectory = resources.appDirectory
+            storeGeneration = resources.storeGeneration
             let session = try AppEngineBootstrap.start(resources)
             engine = session.engine
             contentObservationFactory = .live(engine: session.engine)
@@ -90,7 +96,9 @@ final class AppModel {
     /// so a saved account can be restored during reconstruction.
     @discardableResult
     func resetLocalDatabase() -> Bool {
-        guard let engineConfig, let storePath = engineConfig.storePath else {
+        guard let engineConfig,
+              let storePath = engineConfig.storePath,
+              let receiptRootDirectory else {
             state = .failed("NMP has no persistent local database to reset.")
             return false
         }
@@ -103,8 +111,21 @@ final class AppModel {
         oldEngine?.shutdown()
 
         do {
+            let storeIdentity = NMPStoreIdentity(fileManager: fileManager)
+            let nextStoreGeneration = try storeIdentity.beginReset(
+                appDirectory: receiptRootDirectory
+            )
             try NMPEngine.resetPersistentStore(at: storePath)
-            MessageReceiptStore.clearAll()
+            try storeIdentity.completeReset(
+                appDirectory: receiptRootDirectory,
+                generation: nextStoreGeneration
+            )
+            storeGeneration = nextStoreGeneration
+            try DurableReceiptStore.pruneGenerations(
+                rootDirectory: receiptRootDirectory,
+                keeping: nextStoreGeneration,
+                fileManager: fileManager
+            )
             let engine = try NMPEngine(
                 config: engineConfig,
                 localAccountStore: localAccountStore

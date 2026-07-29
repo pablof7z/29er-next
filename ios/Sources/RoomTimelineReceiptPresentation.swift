@@ -11,8 +11,12 @@ extension RoomTimelineModel {
 
     var reactionDeliveryFailureBinding: Binding<String?> {
         Binding(
-            get: { self.reactionDeliveryFailure },
-            set: { self.reactionDeliveryFailure = $0 }
+            get: { self.reactionReceiptPresentation.currentFailureMessage },
+            set: { value in
+                if value == nil {
+                    self.reactionReceiptPresentation.dismissCurrentFailure()
+                }
+            }
         )
     }
 }

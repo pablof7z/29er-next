@@ -19,7 +19,7 @@ struct NMPStoreEpoch {
         read = { try Data(contentsOf: $0) }
         remove = { try fileManager.removeItem(at: $0) }
         writeAtomically = { data, url in
-            try data.write(to: url, options: .atomic)
+            try CrashSafeFile.replace(data, at: url, fileManager: fileManager)
         }
     }
 
@@ -42,7 +42,10 @@ struct NMPStoreEpoch {
     /// retries. Marker read or store deletion failures stop launch without
     /// rewriting the marker or guessing that generic corruption is an epoch
     /// mismatch.
-    func prepare(appDirectory: URL) throws -> String {
+    func prepare(
+        appDirectory: URL,
+        onWillReplaceStore: () throws -> Void = {}
+    ) throws -> String {
         let store = appDirectory.appendingPathComponent("nmp.redb")
         let marker = appDirectory.appendingPathComponent("nmp-store-epoch")
         let expected = Data("\(Self.current)\n".utf8)
@@ -51,6 +54,7 @@ struct NMPStoreEpoch {
             return store.path
         }
 
+        try onWillReplaceStore()
         if fileExists(store) {
             try remove(store)
         }

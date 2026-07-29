@@ -5,6 +5,7 @@ struct RoomView: View {
     let group: GroupSummary
     let allGroups: [GroupSummary]
     let engine: NMPEngine
+    let storeGeneration: String
     let activePubkey: String?
     let reads: MentionReads?
     let focusMessageID: String?
@@ -21,6 +22,7 @@ struct RoomView: View {
         group: GroupSummary,
         allGroups: [GroupSummary],
         engine: NMPEngine,
+        storeGeneration: String,
         activePubkey: String?,
         reads: MentionReads?,
         focusMessageID: String? = nil,
@@ -29,6 +31,7 @@ struct RoomView: View {
         self.group = group
         self.allGroups = allGroups
         self.engine = engine
+        self.storeGeneration = storeGeneration
         self.activePubkey = activePubkey
         self.reads = reads
         self.focusMessageID = focusMessageID
@@ -38,6 +41,7 @@ struct RoomView: View {
                 engine: engine,
                 groupID: group.localID,
                 hostRelay: group.hostRelay,
+                storeGeneration: storeGeneration,
                 recipient: activePubkey
             )
         )
@@ -85,6 +89,9 @@ struct RoomView: View {
             }
             roomOpenProbe.recordFirstFrame(groupID: group.localID)
             onOpen?()
+        }
+        .onDisappear {
+            model.cancelReactionObservations()
         }
         .safeAreaInset(edge: .bottom) {
             if roomOpenProbe.isEnabled {
@@ -194,7 +201,7 @@ struct RoomView: View {
     }
 
     private func reactToMessage(_ message: RoomMessage, emoji: String) {
-        Task { _ = await model.reactToMessage(message, emoji: emoji) }
+        model.startReaction(to: message, emoji: emoji)
     }
 
     /// Open a spoken item's player. Playback starts here (tapping the card),

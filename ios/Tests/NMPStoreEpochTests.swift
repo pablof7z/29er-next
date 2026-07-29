@@ -45,6 +45,48 @@ final class NMPStoreEpochTests: XCTestCase {
         XCTAssertEqual(try markerData(root), Data("6\n".utf8))
     }
 
+    func testReplacementCallbackRunsBeforeStoreRemoval() throws {
+        let markerURL = URL(fileURLWithPath: "/app/nmp-store-epoch")
+        let storeURL = URL(fileURLWithPath: "/app/nmp.redb")
+        var existing = Set([markerURL, storeURL])
+        var callbackSawStore = false
+        let epoch = NMPStoreEpoch(
+            fileExists: { existing.contains($0) },
+            read: { _ in Data("5\n".utf8) },
+            remove: { existing.remove($0) },
+            writeAtomically: { _, _ in }
+        )
+
+        _ = try epoch.prepare(appDirectory: URL(fileURLWithPath: "/app")) {
+            callbackSawStore = existing.contains(storeURL)
+        }
+
+        XCTAssertTrue(callbackSawStore)
+        XCTAssertFalse(existing.contains(storeURL))
+    }
+
+    func testReplacementCallbackFailurePreservesStoreAndMarker() throws {
+        enum Failure: Error { case identity }
+        let markerURL = URL(fileURLWithPath: "/app/nmp-store-epoch")
+        let storeURL = URL(fileURLWithPath: "/app/nmp.redb")
+        var existing = Set([markerURL, storeURL])
+        var wroteMarker = false
+        let epoch = NMPStoreEpoch(
+            fileExists: { existing.contains($0) },
+            read: { _ in Data("5\n".utf8) },
+            remove: { existing.remove($0) },
+            writeAtomically: { _, _ in wroteMarker = true }
+        )
+
+        XCTAssertThrowsError(
+            try epoch.prepare(appDirectory: URL(fileURLWithPath: "/app")) {
+                throw Failure.identity
+            }
+        )
+        XCTAssertTrue(existing.contains(storeURL))
+        XCTAssertFalse(wroteMarker)
+    }
+
     func testDeletionFailureDoesNotPublishCurrentMarker() throws {
         enum Failure: Error { case remove }
         let markerURL = URL(fileURLWithPath: "/app/nmp-store-epoch")

@@ -41,6 +41,7 @@ extension RoomTimelineModel {
             return "Messages cannot be empty."
         }
 
+        messageReceiptPresentation.clearCompletedRetainedState()
         messageDeliveryState = .progressing(receiptID: nil, progress: .enqueueing)
         do {
             let replyParent = reply.map {
@@ -65,8 +66,30 @@ extension RoomTimelineModel {
     }
 
     func observeRetainedMessageReceipts() async {
+        let storedReceiptIDs: [UInt64]
+        do {
+            storedReceiptIDs = try messageReceiptStore.loadReceiptIDs()
+        } catch {
+            messageDeliveryState = .failed(
+                receiptID: nil,
+                failure: .observationFailed(reason: error.localizedDescription)
+            )
+            return
+        }
+        var receiptIDs = storedReceiptIDs.sorted(by: >).makeIterator()
         await withTaskGroup(of: Void.self) { group in
-            for receiptID in messageReceiptStore.load() {
+            for _ in 0..<MessageReceiptPresentation.maximumActiveReceiptCount {
+                guard let receiptID = receiptIDs.next() else { break }
+                group.addTask { [weak self] in
+                    await self?.observeRetainedMessageReceipt(receiptID)
+                }
+            }
+            while await group.next() != nil {
+                guard !Task.isCancelled else {
+                    group.cancelAll()
+                    return
+                }
+                guard let receiptID = receiptIDs.next() else { continue }
                 group.addTask { [weak self] in
                     await self?.observeRetainedMessageReceipt(receiptID)
                 }
@@ -81,34 +104,28 @@ extension RoomTimelineModel {
             case .attached(let receipt):
                 _ = await consumeMessageReceipt(receipt, retained: true)
             case .notFound:
-                messageReceiptStore.remove(receiptID)
-                recordMessageDeliveryState(
+                try messageReceiptStore.removeReceiptID(receiptID)
+                completeRetainedObservation(
                     .failed(
                         receiptID: receiptID,
                         failure: .receiptNotFound(receiptID: receiptID)
-                    ),
-                    receiptID: receiptID,
-                    retained: true
+                    )
                 )
             case .retainedButUnreadable:
-                recordMessageDeliveryState(
+                completeRetainedObservation(
                     .failed(
                         receiptID: receiptID,
                         failure: .retainedButUnreadable(receiptID: receiptID)
-                    ),
-                    receiptID: receiptID,
-                    retained: true
+                    )
                 )
             }
         } catch {
             guard !Task.isCancelled else { return }
-            recordMessageDeliveryState(
+            completeRetainedObservation(
                 .failed(
                     receiptID: receiptID,
                     failure: .observationFailed(reason: error.localizedDescription)
-                ),
-                receiptID: receiptID,
-                retained: true
+                )
             )
         }
     }
@@ -117,126 +134,46 @@ extension RoomTimelineModel {
         _ receipt: Receipt,
         retained: Bool
     ) async -> String? {
-        let receiptID = receipt.id
-        messageReceiptStore.record(receiptID)
-        defer { receipt.status.cancel() }
+        var observedReceiptIDs = Set<UInt64>()
+        let outcome = await observeReceiptThroughClosure(
+            initial: receipt,
+            driver: NMPReceiptObservationDriver(engine: engine),
+            onReceiptID: { receiptID in
+                observedReceiptIDs.insert(receiptID)
+                try messageReceiptStore.recordReceiptID(receiptID)
+            },
+            onState: { state in
+                guard let receiptID = state.receiptID else { return }
+                recordMessageDeliveryState(state, receiptID: receiptID, retained: retained)
+            }
+        )
 
-        do {
-            var convergence = MessageReceiptConvergence()
-            for try await status in receipt.status {
-                guard !Task.isCancelled else { return nil }
-                let state = convergence.apply(status, receiptID: receiptID)
-                recordMessageDeliveryState(state, receiptID: receiptID, retained: retained)
+        if retained {
+            for receiptID in observedReceiptIDs {
+                messageReceiptPresentation.endRetainedObservation(receiptID: receiptID)
             }
-            guard !Task.isCancelled else { return nil }
-            guard let finalState = convergence.stateAfterStreamClosed(receiptID: receiptID) else {
-                let state = MessageDeliveryState.failed(
-                    receiptID: receiptID,
-                    failure: .streamEndedWithoutTerminal
+            if let outcome, let receiptID = outcome.state.receiptID {
+                messageReceiptPresentation.completeRetained(
+                    outcome.state,
+                    receiptID: receiptID
                 )
-                recordMessageDeliveryState(state, receiptID: receiptID, retained: retained)
-                return state.failureMessage
             }
-            recordMessageDeliveryState(
-                finalState,
-                receiptID: receiptID,
-                retained: retained
-            )
-            messageReceiptStore.remove(receiptID)
-            return finalState.failureMessage
-        } catch let error as NMPError {
-            guard !Task.isCancelled else { return nil }
-            switch error {
-            case .factStreamLagged(let replayID):
-                return await resumeMessageReceipt(
-                    id: replayID ?? receiptID,
-                    retained: retained
-                )
-            case .receiptReplayUnavailable(let unavailableID):
-                let state = MessageDeliveryState.failed(
-                    receiptID: unavailableID,
-                    failure: .receiptReplayUnavailable(receiptID: unavailableID)
-                )
-                recordMessageDeliveryState(
-                    state,
-                    receiptID: unavailableID,
-                    retained: retained
-                )
-                return state.failureMessage
-            default:
-                let state = MessageDeliveryState.failed(
-                    receiptID: receiptID,
-                    failure: .observationFailed(reason: error.localizedDescription)
-                )
-                recordMessageDeliveryState(state, receiptID: receiptID, retained: retained)
-                return state.failureMessage
-            }
-        } catch {
-            guard !Task.isCancelled else { return nil }
-            let state = MessageDeliveryState.failed(
-                receiptID: receiptID,
-                failure: .observationFailed(reason: error.localizedDescription)
-            )
-            recordMessageDeliveryState(state, receiptID: receiptID, retained: retained)
-            return state.failureMessage
         }
-    }
-
-    private func resumeMessageReceipt(
-        id receiptID: UInt64,
-        retained: Bool
-    ) async -> String? {
-        do {
-            switch try engine.reattachReceipt(id: receiptID) {
-            case .attached(let receipt):
-                return await consumeMessageReceipt(receipt, retained: retained)
-            case .notFound:
-                messageReceiptStore.remove(receiptID)
-                let state = MessageDeliveryState.failed(
-                    receiptID: receiptID,
-                    failure: .receiptNotFound(receiptID: receiptID)
-                )
-                recordMessageDeliveryState(state, receiptID: receiptID, retained: retained)
-                return state.failureMessage
-            case .retainedButUnreadable:
-                let state = MessageDeliveryState.failed(
-                    receiptID: receiptID,
-                    failure: .retainedButUnreadable(receiptID: receiptID)
-                )
-                recordMessageDeliveryState(state, receiptID: receiptID, retained: retained)
-                return state.failureMessage
+        guard let outcome else { return nil }
+        if outcome.shouldForgetReceipt {
+            for receiptID in observedReceiptIDs {
+                do {
+                    try messageReceiptStore.removeReceiptID(receiptID)
+                } catch {
+                    let state = MessageDeliveryState.failed(
+                        receiptID: receiptID,
+                        failure: .observationFailed(reason: error.localizedDescription)
+                    )
+                    recordMessageDeliveryState(state, receiptID: receiptID, retained: retained)
+                }
             }
-        } catch let error as NMPError {
-            guard !Task.isCancelled else { return nil }
-            switch error {
-            case .receiptReplayUnavailable(let unavailableID):
-                let state = MessageDeliveryState.failed(
-                    receiptID: unavailableID,
-                    failure: .receiptReplayUnavailable(receiptID: unavailableID)
-                )
-                recordMessageDeliveryState(
-                    state,
-                    receiptID: unavailableID,
-                    retained: retained
-                )
-                return state.failureMessage
-            default:
-                let state = MessageDeliveryState.failed(
-                    receiptID: receiptID,
-                    failure: .observationFailed(reason: error.localizedDescription)
-                )
-                recordMessageDeliveryState(state, receiptID: receiptID, retained: retained)
-                return state.failureMessage
-            }
-        } catch {
-            guard !Task.isCancelled else { return nil }
-            let state = MessageDeliveryState.failed(
-                receiptID: receiptID,
-                failure: .observationFailed(reason: error.localizedDescription)
-            )
-            recordMessageDeliveryState(state, receiptID: receiptID, retained: retained)
-            return state.failureMessage
         }
+        return outcome.state.failureMessage
     }
 
     private func recordMessageDeliveryState(
@@ -249,5 +186,11 @@ extension RoomTimelineModel {
         } else {
             messageDeliveryState = state
         }
+    }
+
+    private func completeRetainedObservation(_ state: MessageDeliveryState) {
+        guard let receiptID = state.receiptID else { return }
+        messageReceiptPresentation.recordRetained(state, receiptID: receiptID)
+        messageReceiptPresentation.completeRetained(state, receiptID: receiptID)
     }
 }

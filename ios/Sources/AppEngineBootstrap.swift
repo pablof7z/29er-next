@@ -4,6 +4,8 @@ import NMP
 struct AppEngineResources {
     let config: NMPConfig
     let accountStore: NMPInsecureFileAccountStore
+    let appDirectory: URL
+    let storeGeneration: String
 }
 
 struct AppEngineSession {
@@ -12,6 +14,7 @@ struct AppEngineSession {
 }
 
 enum AppEngineBootstrap {
+    @MainActor
     static func resources(
         fileManager: FileManager,
         operatorConfiguration: OperatorConfiguration,
@@ -27,11 +30,34 @@ enum AppEngineBootstrap {
         let appDirectory = support.appendingPathComponent("29er-next", isDirectory: true)
         try fileManager.createDirectory(at: appDirectory, withIntermediateDirectories: true)
 
-        let storePath = try NMPStoreEpoch(fileManager: fileManager)
-            .prepare(appDirectory: appDirectory)
+        let storePath = appDirectory.appendingPathComponent("nmp.redb").path
+        let storeIdentity = NMPStoreIdentity(fileManager: fileManager)
+        var storeGeneration = try storeIdentity.prepare(
+            appDirectory: appDirectory,
+            storePath: storePath
+        )
+        var replacementGeneration: String?
+        let preparedStorePath = try NMPStoreEpoch(fileManager: fileManager)
+            .prepare(appDirectory: appDirectory) {
+                replacementGeneration = try storeIdentity.beginReset(
+                    appDirectory: appDirectory
+                )
+            }
+        if let replacementGeneration {
+            try storeIdentity.completeReset(
+                appDirectory: appDirectory,
+                generation: replacementGeneration
+            )
+            storeGeneration = replacementGeneration
+        }
+        try DurableReceiptStore.pruneGenerations(
+            rootDirectory: appDirectory,
+            keeping: storeGeneration,
+            fileManager: fileManager
+        )
         let groupRelay = relayOverride ?? operatorConfiguration.groupRelay
         let config = NMPConfig(
-            storePath: storePath,
+            storePath: preparedStorePath,
             indexerRelays: relayOverride == nil ? operatorConfiguration.indexerRelays : [],
             appRelays: [groupRelay]
         )
@@ -40,7 +66,9 @@ enum AppEngineBootstrap {
         )
         return AppEngineResources(
             config: config,
-            accountStore: accountStore
+            accountStore: accountStore,
+            appDirectory: appDirectory,
+            storeGeneration: storeGeneration
         )
     }
 

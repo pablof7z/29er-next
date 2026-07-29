@@ -41,6 +41,7 @@ struct RootView: View {
                         group: group,
                         allGroups: model.groups,
                         engine: engine,
+                        storeGeneration: model.storeGeneration,
                         activePubkey: model.activePubkey,
                         reads: reads,
                         onOpen: { directory?.markRead(group) }
@@ -72,6 +73,7 @@ struct RootView: View {
                         group: route.group,
                         allGroups: model.groups,
                         engine: engine,
+                        storeGeneration: model.storeGeneration,
                         activePubkey: model.activePubkey,
                         reads: reads,
                         focusMessageID: route.messageID,
