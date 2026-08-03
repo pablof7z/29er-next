@@ -1,4 +1,5 @@
 import NMP
+import NMPContent
 import XCTest
 @testable import TwentyNinerNext
 
@@ -32,63 +33,141 @@ private actor QueryOpeningProbe {
 
 @MainActor
 final class ObservationModelTests: XCTestCase {
-    func testRoomChatDemandIsBoundedAndPinnedToSelectedHost() throws {
-        let demand = try roomChatDemand(
-            host: "wss://nip29.f7z.io",
-            groupID: "29er-next"
+    func testRoomChatQueryIsBoundedAndScopedToTheGroupAtTheSelectedHost() throws {
+        let branch = try onlyBranch(
+            of: roomChatQuery(host: "wss://nip29.f7z.io", groupID: "29er-next")
         )
 
-        XCTAssertEqual(demand.selection.kinds, [9, 9_000, 9_001])
-        XCTAssertEqual(demand.selection.limit, 200)
-        XCTAssertEqual(demand.selection.tags["h"], .literal(["29er-next"]))
-        assertPinned(demand, to: "wss://nip29.f7z.io")
+        XCTAssertEqual(branch.selection.kinds, [9, 9_000, 9_001, 9_021, 9_022])
+        XCTAssertEqual(branch.selection.limit, 200)
+        XCTAssertEqual(branch.selection.tags["h"], .literal(["29er-next"]))
+        XCTAssertEqual(branch.cache, .strict)
+        assertPinned(branch, to: "wss://nip29.f7z.io")
     }
 
-    func testActivityDemandIsIndependentBoundedAndPinned() throws {
-        let demand = try roomActivityDemand(
-            host: "wss://nip29.f7z.io",
-            groupID: "29er-next"
+    /// The room timeline reads BOTH moderation (9000/9001) and self-service
+    /// (9021/9022) membership kinds. It used to read only the moderation pair
+    /// and render it as if it were the self-service pair.
+    func testRoomChatQueryReadsBothMembershipVocabularies() throws {
+        let branch = try onlyBranch(
+            of: roomChatQuery(host: "wss://nip29.f7z.io", groupID: "29er-next")
+        )
+        let kinds = Set(try XCTUnwrap(branch.selection.kinds))
+
+        XCTAssertTrue(kinds.isSuperset(of: [9_000, 9_001]), "moderation kinds")
+        XCTAssertTrue(kinds.isSuperset(of: [9_021, 9_022]), "self-service kinds")
+    }
+
+    func testActivityQueryIsIndependentBoundedAndScoped() throws {
+        let branch = try onlyBranch(
+            of: roomActivityQuery(host: "wss://nip29.f7z.io", groupID: "29er-next")
         )
 
-        XCTAssertEqual(demand.selection.kinds, [30_315])
-        XCTAssertEqual(demand.selection.limit, 100)
-        XCTAssertEqual(demand.selection.tags["h"], .literal(["29er-next"]))
-        assertPinned(demand, to: "wss://nip29.f7z.io")
+        XCTAssertEqual(branch.selection.kinds, [30_315])
+        XCTAssertEqual(branch.selection.limit, 100)
+        XCTAssertEqual(branch.selection.tags["h"], .literal(["29er-next"]))
+        assertPinned(branch, to: "wss://nip29.f7z.io")
     }
 
-    func testMembershipDemandIsIndependentBoundedStrictAndPinned() {
-        let demand = roomMembershipDemand(
-            host: "wss://nip29.f7z.io",
-            groupID: "29er-next"
+    func testReactionQueryIsIndependentBoundedAndScoped() throws {
+        let branch = try onlyBranch(
+            of: roomReactionsQuery(host: "wss://nip29.f7z.io", groupID: "29er-next")
         )
 
-        XCTAssertEqual(demand.selection.kinds, [39_002])
-        XCTAssertEqual(demand.selection.limit, 20)
-        XCTAssertEqual(demand.selection.tags["d"], .literal(["29er-next"]))
-        XCTAssertEqual(demand.cache, .strict)
-        assertPinned(demand, to: "wss://nip29.f7z.io")
+        XCTAssertEqual(branch.selection.kinds, [7])
+        XCTAssertEqual(branch.selection.limit, 1_000)
+        XCTAssertEqual(branch.selection.tags["h"], .literal(["29er-next"]))
+        assertPinned(branch, to: "wss://nip29.f7z.io")
     }
 
-    func testDirectoryDemandIsBoundedStrictAndPinned() {
-        let demand = roomDirectoryDemand(host: "wss://nip29.f7z.io")
+    /// A single-host scope yields exactly one branch, and `branches[i]` names
+    /// the branch `evidence[i]` reports on -- so a one-branch declaration is
+    /// what makes this app's single-entry evidence reading correct.
+    func testGroupReadDeclaresOneBranchPerHost() throws {
+        let query = try roomChatQuery(host: "wss://nip29.f7z.io", groupID: "29er-next")
 
-        XCTAssertEqual(demand.selection.kinds, [9])
-        XCTAssertEqual(demand.selection.limit, 500)
-        XCTAssertEqual(demand.cache, .strict)
-        assertPinned(demand, to: "wss://nip29.f7z.io")
+        XCTAssertEqual(query.branches.count, 1)
+        XCTAssertNil(query.aggregateResultLimit)
     }
 
-    func testAdminDemandUsesTheSameSelectedHostBoundary() {
-        let demand = roomAdminDemand(
-            host: "wss://nip29.f7z.io",
-            groupID: "29er-next"
+    /// The group id is the sole semantic source of the `#h` row, so an
+    /// app-supplied one is refused at declaration time rather than silently
+    /// merged. Refusals happen where you declare, not where you watch.
+    func testGroupReadRefusesACallerSuppliedContextConstraint() throws {
+        let group = try roomGroup(host: "wss://nip29.f7z.io", groupID: "29er-next")
+
+        XCTAssertThrowsError(
+            try group.read(NMPFilter(kinds: [9], tags: ["h": .literal(["29er-next"])]))
+        )
+    }
+
+    func testMembershipQueryIsIndependentBoundedStrictAndPinned() throws {
+        let branch = try onlyBranch(
+            of: roomMembershipQuery(host: "wss://nip29.f7z.io", groupID: "29er-next")
         )
 
-        XCTAssertEqual(demand.selection.kinds, [39_001])
-        XCTAssertEqual(demand.selection.limit, 20)
-        XCTAssertEqual(demand.selection.tags["d"], .literal(["29er-next"]))
-        XCTAssertEqual(demand.cache, .strict)
-        assertPinned(demand, to: "wss://nip29.f7z.io")
+        XCTAssertEqual(branch.selection.kinds, [39_002])
+        XCTAssertEqual(branch.selection.limit, 20)
+        XCTAssertEqual(branch.selection.tags["d"], .literal(["29er-next"]))
+        XCTAssertEqual(branch.cache, .strict)
+        assertPinned(branch, to: "wss://nip29.f7z.io")
+    }
+
+    func testDirectoryQueryIsBoundedStrictAndPinned() throws {
+        let branch = try onlyBranch(of: roomDirectoryQuery(host: "wss://nip29.f7z.io"))
+
+        XCTAssertEqual(branch.selection.kinds, [9])
+        XCTAssertEqual(branch.selection.limit, 500)
+        XCTAssertEqual(branch.cache, .strict)
+        assertPinned(branch, to: "wss://nip29.f7z.io")
+    }
+
+    func testAdminQueryUsesTheSameSelectedHostBoundary() throws {
+        let branch = try onlyBranch(
+            of: roomAdminQuery(host: "wss://nip29.f7z.io", groupID: "29er-next")
+        )
+
+        XCTAssertEqual(branch.selection.kinds, [39_001])
+        XCTAssertEqual(branch.selection.limit, 20)
+        XCTAssertEqual(branch.selection.tags["d"], .literal(["29er-next"]))
+        XCTAssertEqual(branch.cache, .strict)
+        assertPinned(branch, to: "wss://nip29.f7z.io")
+    }
+
+    func testChannelPreviewProfileDemandIgnoresAuthoredRelayHints() throws {
+        let demand = try channelPreviewReferenceDemand(
+            for: .profile(
+                pubkey: "profile-author",
+                relayHints: ["ws://127.0.0.1:7777", "wss://untrusted.example"]
+            )
+        )
+
+        XCTAssertEqual(demand.selection.kinds, [0])
+        XCTAssertEqual(demand.selection.authors, .literal(["profile-author"]))
+        XCTAssertEqual(demand.selection.limit, 1)
+        XCTAssertEqual(demand.source, .authorOutboxes)
+    }
+
+    func testChannelPreviewEventDemandUsesOnlyTheAddressedID() throws {
+        let demand = try channelPreviewReferenceDemand(
+            for: .event(
+                id: "event-id",
+                authorHint: "misleading-author",
+                kindHint: 30_023,
+                relayHints: ["wss://untrusted.example"]
+            )
+        )
+
+        XCTAssertEqual(demand.selection.ids, .literal(["event-id"]))
+        XCTAssertNil(demand.selection.kinds)
+        XCTAssertNil(demand.selection.authors)
+        XCTAssertEqual(demand.selection.limit, 1)
+        XCTAssertEqual(demand.source, .public)
+    }
+
+    private func onlyBranch(of query: NMPLiveQuery) throws -> NMPDemand {
+        XCTAssertEqual(query.branches.count, 1, "a single-host scope is one branch")
+        return try XCTUnwrap(query.branches.first)
     }
 
     private func assertPinned(_ demand: NMPDemand, to host: String) {
@@ -154,8 +233,8 @@ final class ObservationModelTests: XCTestCase {
         let probe = QueryOpeningProbe()
         let opening = NMPQueryOpening(
             filter: NMPQueryOpening.live.filter,
-            demand: { engine, demand in
-                let query = try await openNMPQuery(engine: engine, demand: demand)
+            query: { engine, liveQuery in
+                let query = try await openNMPQuery(engine: engine, query: liveQuery)
                 await probe.recordOpening()
                 return query
             }
@@ -185,8 +264,8 @@ final class ObservationModelTests: XCTestCase {
                 await probe.recordOpening()
                 return query
             },
-            demand: { engine, demand in
-                let query = try await openNMPQuery(engine: engine, demand: demand)
+            query: { engine, liveQuery in
+                let query = try await openNMPQuery(engine: engine, query: liveQuery)
                 await probe.recordOpening()
                 return query
             }
@@ -232,6 +311,6 @@ final class ObservationModelTests: XCTestCase {
 private extension NMPQueryOpening {
     static let failing = NMPQueryOpening(
         filter: { _, _ in throw FixtureQueryError.openingFailed },
-        demand: { _, _ in throw FixtureQueryError.openingFailed }
+        query: { _, _ in throw FixtureQueryError.openingFailed }
     )
 }

@@ -62,11 +62,22 @@ extension RoomTimelineModel {
     }
 
     func publishProfileAuthors() {
-        var authors = Set(chatRows.filter { $0.kind == 9 }.map(\.pubkey))
+        // Every person the timeline can name. For chat and for self-service
+        // membership (9021/9022) that is the row's own author; for moderation
+        // (9000/9001) it is additionally the `p` subject, who never authored
+        // anything in the room.
+        var authors = Set(
+            chatRows
+                .filter { $0.kind == RoomKind.chat || $0.kind == RoomKind.joinRequest
+                    || $0.kind == RoomKind.leaveRequest }
+                .map(\.pubkey)
+        )
         authors.formUnion(activityRows.map(\.pubkey))
         authors.formUnion(members.map(\.pubkey))
         authors.formUnion(admins)
-        for row in chatRows where row.kind == 9_000 || row.kind == 9_001 {
+        for row in chatRows
+        where row.kind == RoomKind.putUser || row.kind == RoomKind.removeUser {
+            authors.insert(row.pubkey)
             for tag in row.tags where tag.first == "p" && tag.count > 1 && !tag[1].isEmpty {
                 authors.insert(tag[1])
             }

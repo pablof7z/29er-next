@@ -1,3 +1,4 @@
+import NMP
 import XCTest
 @testable import TwentyNinerNext
 
@@ -90,16 +91,32 @@ final class BackendRosterTests: XCTestCase {
     }
 
     func testAdminsExtractsPTagsFromKind39001Only() {
+        let adminRecord = Row(
+            id: "admins",
+            pubkey: "relay",
+            createdAt: 100,
+            kind: 39_001,
+            tags: [["d", "nip29"], ["p", "admin-a"], ["p", "admin-b"], ["p", ""]],
+            content: "",
+            sig: "",
+            sources: []
+        )
+        let memberRecord = Row(
+            id: "members",
+            pubkey: "relay",
+            createdAt: 100,
+            kind: 39_002,
+            tags: [["d", "nip29"], ["p", "member"]],
+            content: "",
+            sig: "",
+            sources: []
+        )
+
         XCTAssertEqual(
-            NIP29ViewProjection.admins(
-                kind: 39_001,
-                tags: [["d", "nip29"], ["p", "admin-a"], ["p", "admin-b"], ["p", ""]]
-            ),
+            NIP29ViewProjection.admins(from: [adminRecord, memberRecord]),
             ["admin-a", "admin-b"]
         )
-        XCTAssertTrue(
-            NIP29ViewProjection.admins(kind: 39_002, tags: [["d", "nip29"], ["p", "member"]]).isEmpty
-        )
+        XCTAssertTrue(NIP29ViewProjection.admins(from: [memberRecord]).isEmpty)
     }
 
     private func backendProfile(pubkey: String, host: String?, displayName: String?) -> RoomProfile {

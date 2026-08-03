@@ -14,12 +14,14 @@ final class ChannelPreviewTests: XCTestCase {
         XCTAssertEqual(Set(document.references.map(\.target.key)).count, 1)
     }
 
-    func testArticleReferenceUsesAddressTarget() throws {
+    func testArticleReferenceUsesCoordinateTarget() throws {
         let reference = try XCTUnwrap(
             parseNostrContent("nostr:\(article)").references.first
         )
-        guard case .address(let kind, _, let identifier, _) = reference.target else {
-            return XCTFail("expected an address reference")
+        // `NostrReferenceTarget.address` became `.coordinate` in NMP; the
+        // case carries the same four cells.
+        guard case .coordinate(let kind, _, let identifier, _) = reference.target else {
+            return XCTFail("expected a coordinate reference")
         }
         XCTAssertEqual(kind, 30_023)
         XCTAssertEqual(identifier, "nostr-un-app-al-giorno-white-noise")

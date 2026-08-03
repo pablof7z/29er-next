@@ -8,8 +8,14 @@ struct MembershipEventRow: View {
         profiles.displayName(for: event.pubkey, fallback: event.personLabel)
     }
 
+    /// Moderation and self-service read differently on purpose: "was added"
+    /// names an action somebody else took, "joined" names one this person
+    /// took. Rendering a kind:9001 removal as "left the room" told the reader
+    /// the opposite of what happened.
     private var detail: String {
         switch event.change {
+        case .added: "was added to the room"
+        case .removed: "was removed from the room"
         case .joined: "joined the room"
         case .left: "left the room"
         }
@@ -17,8 +23,10 @@ struct MembershipEventRow: View {
 
     private var symbol: String {
         switch event.change {
-        case .joined: "person.badge.plus"
-        case .left: "person.badge.minus"
+        case .added: "person.badge.plus"
+        case .removed: "person.badge.minus"
+        case .joined: "arrow.right.circle"
+        case .left: "arrow.left.circle"
         }
     }
 

@@ -97,12 +97,13 @@ struct IdentitySheet: View {
 
             Label {
                 Text(
-                    "NMP stores this key as plaintext in the app sandbox for automatic sign-in. "
-                        + "It is not protected by Keychain or hardware-backed encryption."
+                    "NMP stores this key in the device Keychain for automatic sign-in. "
+                        + "It is readable only after this device has been unlocked, and is "
+                        + "never synced to another device."
                 )
                 .fixedSize(horizontal: false, vertical: true)
             } icon: {
-                Image(systemName: "lock.open.fill")
+                Image(systemName: "lock.fill")
                     .foregroundStyle(.orange)
             }
             .font(.callout)
@@ -217,8 +218,9 @@ struct IdentitySheet: View {
             Text("Nostr secret key")
         } footer: {
             Text(
-                "NMP saves the key as plaintext in this app's sandbox for automatic login. "
-                    + "It is not protected by Keychain or hardware-backed encryption."
+                "NMP saves the key in the device Keychain for automatic login. It is "
+                    + "readable only after this device has been unlocked, and is never "
+                    + "synced to another device."
             )
         }
 

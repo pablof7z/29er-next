@@ -127,8 +127,8 @@ final class RoomOpenProbe: NSObject {
         let newestID = rows.sorted(by: newestFirst).first?.id ?? "none"
         snapshots[query] = Snapshot(rows: rows.count, newestID: newestID)
         if query == .content {
-            messageSnapshot = snapshot(for: rows.filter { $0.kind == 9 })
-            activitySnapshot = snapshot(for: rows.filter { $0.kind == 30_315 })
+            messageSnapshot = snapshot(for: rows.filter { $0.kind == RoomKind.chat })
+            activitySnapshot = snapshot(for: rows.filter { $0.kind == RoomKind.liveStatus })
             firstSnapshotMilliseconds = elapsedMilliseconds()
         }
         publish()

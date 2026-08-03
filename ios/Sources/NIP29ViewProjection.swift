@@ -81,13 +81,18 @@ enum NIP29ViewProjection {
             }
     }
 
+    /// The room's members, from the authoritative kind:39002 record only.
+    ///
+    /// Reading every delivered 39002 row instead makes a removal invisible:
+    /// the dropped `p` is still on the superseded record. See
+    /// `NIP29GroupRecords.authoritative(kind:in:)`.
     static func members(from rows: [Row]) -> [RoomMember] {
         var membersByPubkey: [String: RoomMember] = [:]
 
-        for row in rows {
-            for member in members(kind: row.kind, tags: row.tags)
-            where membersByPubkey[member.pubkey] == nil {
-                membersByPubkey[member.pubkey] = member
+        for row in NIP29GroupRecords.authoritative(kind: RoomKind.groupMembers, in: rows) {
+            for pubkey in NIP29GroupRecords.subjects(of: row)
+            where membersByPubkey[pubkey] == nil {
+                membersByPubkey[pubkey] = RoomMember(id: pubkey, pubkey: pubkey)
             }
         }
 
@@ -132,27 +137,19 @@ enum NIP29ViewProjection {
     /// Admin pubkeys from the room's kind:39001 admin lists. Mosaico adds
     /// its backend management key as a group admin, so this is how the backend
     /// surfaces even when it is not in the kind:39002 member roster.
+    /// Admin pubkeys from the AUTHORITATIVE kind:39001 record, not from every
+    /// 39001 row ever delivered. Unioning across rows can only ever grow the
+    /// set, so a demoted admin stayed an admin for as long as the superseded
+    /// record remained in the snapshot.
     static func admins(from rows: [Row]) -> [String] {
         var seen = Set<String>()
         var result: [String] = []
-        for row in rows {
-            for pubkey in admins(kind: row.kind, tags: row.tags) where seen.insert(pubkey).inserted {
+        for row in NIP29GroupRecords.authoritative(kind: RoomKind.groupAdmins, in: rows) {
+            for pubkey in NIP29GroupRecords.subjects(of: row) where seen.insert(pubkey).inserted {
                 result.append(pubkey)
             }
         }
         return result
-    }
-
-    static func admins(kind: UInt16, tags: [[String]]) -> [String] {
-        guard kind == 39_001,
-              let groupID = firstTag("d", in: tags),
-              !groupID.isEmpty else {
-            return []
-        }
-        return tags.compactMap { tag in
-            guard tag.first == "p", tag.count > 1, !tag[1].isEmpty else { return nil }
-            return tag[1]
-        }
     }
 
     static func message(
@@ -162,7 +159,7 @@ enum NIP29ViewProjection {
         kind: UInt16,
         content: String
     ) -> RoomMessage? {
-        guard kind == 9 else { return nil }
+        guard kind == RoomKind.chat else { return nil }
         return RoomMessage(id: eventID, author: pubkey, createdAt: createdAt, content: content)
     }
 
@@ -177,7 +174,7 @@ enum NIP29ViewProjection {
         tags: [[String]],
         content: String
     ) -> AgentActivity? {
-        guard kind == 30_315,
+        guard kind == RoomKind.liveStatus,
               let sessionID = firstTag("d", in: tags),
               !sessionID.isEmpty,
               // The live-status heartbeat carries its working/idle/suspended/
@@ -205,25 +202,6 @@ enum NIP29ViewProjection {
         )
     }
 
-    static func members(
-        kind: UInt16,
-        tags: [[String]]
-    ) -> [RoomMember] {
-        guard kind == 39_002,
-              let groupID = firstTag("d", in: tags),
-              !groupID.isEmpty else {
-            return []
-        }
-
-        var seen = Set<String>()
-        return tags.compactMap { tag in
-            guard tag.first == "p", tag.count > 1, !tag[1].isEmpty, seen.insert(tag[1]).inserted else {
-                return nil
-            }
-            return RoomMember(id: tag[1], pubkey: tag[1])
-        }
-    }
-
     private static func message(from row: Row) -> RoomMessage? {
         message(
             eventID: row.id,
@@ -246,11 +224,11 @@ enum NIP29ViewProjection {
     }
 
     private static func firstTag(_ name: String, in tags: [[String]]) -> String? {
-        tags.first { $0.first == name && $0.count > 1 }?[1]
+        NIP29GroupRecords.firstValue(name, in: tags)
     }
 
     private static func nonEmptyTag(_ name: String, in tags: [[String]]) -> String? {
-        firstTag(name, in: tags).flatMap { $0.isEmpty ? nil : $0 }
+        NIP29GroupRecords.nonEmptyValue(name, in: tags)
     }
 
     private static func personNameFirst(_ lhs: RoomPerson, _ rhs: RoomPerson) -> Bool {
