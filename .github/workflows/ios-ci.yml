@@ -48,16 +48,11 @@ jobs:
           xcodebuild -version
           xcodegen --version
 
-      - name: Install NMP Rust targets
-        shell: bash
-        run: |
-          set -euo pipefail
-          rustup +nightly show active-toolchain
-          rustup +nightly target add \
-            aarch64-apple-ios-sim \
-            x86_64-apple-ios \
-            aarch64-apple-ios
-
+      # The iOS Rust targets are installed by scripts/bootstrap-nmp.sh, from
+      # inside the NMP checkout, so NMP's own rust-toolchain.toml selects the
+      # toolchain they land on. Installing them here instead would need this
+      # workflow to name NMP's pinned channel, and a stale copy of that pin is
+      # what silently removed this repo's NMP signal for four days (#135).
       - name: Bootstrap NMP master
         shell: bash
         run: scripts/bootstrap-nmp.sh
