@@ -32,7 +32,7 @@ final class AppModel {
     private(set) var contentObservationFactory: NMPReferenceObservationFactory?
     private(set) var engineGeneration = 0
     private var engineConfig: NMPConfig?
-    private var localAccountStore: NMPInsecureFileAccountStore?
+    private var localAccountStore: NMPKeychainAccountStore?
     var activeRegistration: NMPAccountRegistration?
     let groupRelay: String
 
@@ -75,7 +75,10 @@ final class AppModel {
             localAccountStore = resources.accountStore
             let session = try AppEngineBootstrap.start(resources)
             engine = session.engine
-            contentObservationFactory = .live(engine: session.engine)
+            contentObservationFactory = .live(
+                engine: session.engine,
+                resolve: channelPreviewReferenceDemand
+            )
             activePubkey = session.activePubkey
             selectedHost = session.activePubkey == nil ? groupRelay : nil
         } catch {
@@ -109,7 +112,10 @@ final class AppModel {
                 localAccountStore: localAccountStore
             )
             self.engine = engine
-            contentObservationFactory = .live(engine: engine)
+            contentObservationFactory = .live(
+                engine: engine,
+                resolve: channelPreviewReferenceDemand
+            )
             activePubkey = try engine.activeAccount()
             groups = []
             hasReceivedGroups = false

@@ -1,12 +1,18 @@
 import NMP
 
+/// The seam every model opens its NMP observations through.
+///
+/// `NMPLiveQuery` is NMP's one read noun -- a canonical branch set built only
+/// via `single`/`union`, where `branches[i]` names the branch each delivered
+/// `RowBatch.evidence[i]` reports on. Models declare one and hand it here;
+/// nothing in this app merges per-host results by hand.
 struct NMPQueryOpening: Sendable {
     let filter: @Sendable (NMPEngine, NMPFilter) async throws -> NMPQuery
-    let demand: @Sendable (NMPEngine, NMPDemand) async throws -> NMPQuery
+    let query: @Sendable (NMPEngine, NMPLiveQuery) async throws -> NMPQuery
 
     static let live = NMPQueryOpening(
         filter: openNMPQuery(engine:filter:),
-        demand: openNMPQuery(engine:demand:)
+        query: openNMPQuery(engine:query:)
     )
 }
 
@@ -23,7 +29,14 @@ func openNMPQuery(
 
 func openNMPQuery(
     engine: NMPEngine,
+    query: NMPLiveQuery
+) async throws -> NMPQuery {
+    try engine.observe(query)
+}
+
+func openNMPQuery(
+    engine: NMPEngine,
     demand: NMPDemand
 ) async throws -> NMPQuery {
-    try engine.observe(demand)
+    try engine.observe(.single(demand))
 }

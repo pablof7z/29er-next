@@ -31,9 +31,10 @@ extension AppModel {
         hasReceivedGroups = false
         groupsError = nil
         do {
-            var demand = try groupDiscoveryDemand(host: host)
-            demand.selection.limit = 250
-            let query = try await openNMPQuery(engine: engine, demand: demand)
+            let query = try await openNMPQuery(
+                engine: engine,
+                query: groupDirectoryQuery(host: host)
+            )
             defer { query.cancel() }
 
             for try await batch in query {
@@ -59,10 +60,13 @@ extension AppModel {
 
             for try await batch in query {
                 guard !Task.isCancelled, generation == engineGeneration else { return }
-                let row = batch.rows.first(where: { $0.kind == 10_009 })
-                let snapshot = row.map {
+                // `activeAccountDemand()` selects kind:10009 already, so a
+                // second app-side kind check would only re-decide what NMP
+                // decided. The parser is kind-agnostic and tolerant by
+                // contract.
+                let snapshot = batch.rows.first.map {
                     RememberedGroupSnapshot(
-                        decodeRememberedGroups($0),
+                        parseSimpleGroupsListTolerant($0),
                         sourceEvent: FavoriteRelayListEvent($0)
                     )
                 } ?? .empty

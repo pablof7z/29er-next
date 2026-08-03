@@ -152,10 +152,12 @@ final class RoomTimelineModel {
 
     private func observeChat() async {
         do {
-            let demand = try roomChatDemand(host: hostRelay, groupID: groupID)
             let clock = ContinuousClock()
             let started = clock.now
-            let query = try await queryOpening.demand(engine, demand)
+            let query = try await queryOpening.query(
+                engine,
+                try roomChatQuery(host: hostRelay, groupID: groupID)
+            )
             RoomOpenProbe.shared.recordObserve(
                 .content,
                 duration: started.duration(to: clock.now)
@@ -178,10 +180,12 @@ final class RoomTimelineModel {
 
     private func observeActivities() async {
         do {
-            let demand = try roomActivityDemand(host: hostRelay, groupID: groupID)
             let clock = ContinuousClock()
             let started = clock.now
-            let query = try await queryOpening.demand(engine, demand)
+            let query = try await queryOpening.query(
+                engine,
+                try roomActivityQuery(host: hostRelay, groupID: groupID)
+            )
             RoomOpenProbe.shared.recordObserve(
                 .activity,
                 duration: started.duration(to: clock.now)
@@ -205,8 +209,10 @@ final class RoomTimelineModel {
 
     private func observeReactions() async {
         do {
-            let demand = try roomReactionsDemand(host: hostRelay, groupID: groupID)
-            let query = try await queryOpening.demand(engine, demand)
+            let query = try await queryOpening.query(
+                engine,
+                try roomReactionsQuery(host: hostRelay, groupID: groupID)
+            )
             defer { query.cancel() }
 
             for try await batch in query {
@@ -224,9 +230,9 @@ final class RoomTimelineModel {
         do {
             let clock = ContinuousClock()
             let started = clock.now
-            let query = try await queryOpening.demand(
+            let query = try await queryOpening.query(
                 engine,
-                roomMembershipDemand(host: hostRelay, groupID: groupID)
+                roomMembershipQuery(host: hostRelay, groupID: groupID)
             )
             RoomOpenProbe.shared.recordObserve(
                 .membership,
@@ -241,7 +247,7 @@ final class RoomTimelineModel {
                 RoomOpenProbe.shared.recordSnapshot(.membership, rows: batch.rows)
                 membershipError = nil
                 hasReceivedMembership = true
-                hasMembershipMetadata = batch.rows.contains { $0.kind == 39_002 }
+                hasMembershipMetadata = batch.rows.contains { $0.kind == RoomKind.groupMembers }
                 publishProfileAuthors()
             }
         } catch {
@@ -254,9 +260,9 @@ final class RoomTimelineModel {
         do {
             let clock = ContinuousClock()
             let started = clock.now
-            let query = try await queryOpening.demand(
+            let query = try await queryOpening.query(
                 engine,
-                roomAdminDemand(host: hostRelay, groupID: groupID)
+                roomAdminQuery(host: hostRelay, groupID: groupID)
             )
             RoomOpenProbe.shared.recordObserve(
                 .admins,

@@ -1,7 +1,21 @@
 import NMP
 
+/// What a NIP-29 membership event actually says.
+///
+/// The four kinds are two different sentences with two different subjects.
+/// kind:9000 put-user and kind:9001 remove-user are MODERATION: somebody with
+/// authority acted on the person named in the event's `p` tag. kind:9021
+/// join-request and kind:9022 leave-request are SELF-SERVICE: the event's own
+/// author acted on themselves and there is no `p` tag at all. NMP names all
+/// four in `crates/nmp-nip29/src/operations.rs`.
 enum RoomMembershipChange: Hashable, Sendable {
+    /// kind:9000 -- a moderator added this person to the room.
+    case added
+    /// kind:9001 -- a moderator removed this person from the room.
+    case removed
+    /// kind:9021 -- this person asked to join.
     case joined
+    /// kind:9022 -- this person left.
     case left
 }
 
@@ -54,6 +68,7 @@ extension NIP29ViewProjection {
             }
             return membershipEvent(
                 eventID: row.id,
+                author: row.pubkey,
                 createdAt: row.createdAt,
                 kind: row.kind,
                 tags: row.tags
@@ -65,30 +80,48 @@ extension NIP29ViewProjection {
         }
     }
 
+    /// The subject of a moderation event is its `p` tag; the subject of a
+    /// self-service event is `author`, which is the only person a 9021/9022
+    /// can be about.
     static func membershipEvent(
         eventID: String,
+        author: String,
         createdAt: UInt64,
         kind: UInt16,
         tags: [[String]]
     ) -> RoomMembershipEvent? {
         let change: RoomMembershipChange
-        switch kind {
-        case 9_000: change = .joined
-        case 9_001: change = .left
-        default: return nil
-        }
+        let subject: String?
 
-        guard let pubkey = tags.first(where: {
-            $0.first == "p" && $0.count > 1 && !$0[1].isEmpty
-        })?[1] else {
+        switch kind {
+        case RoomKind.putUser:
+            change = .added
+            subject = moderationSubject(in: tags)
+        case RoomKind.removeUser:
+            change = .removed
+            subject = moderationSubject(in: tags)
+        case RoomKind.joinRequest:
+            change = .joined
+            subject = author.isEmpty ? nil : author
+        case RoomKind.leaveRequest:
+            change = .left
+            subject = author.isEmpty ? nil : author
+        default:
             return nil
         }
 
+        guard let subject else { return nil }
         return RoomMembershipEvent(
             id: eventID,
-            pubkey: pubkey,
+            pubkey: subject,
             createdAt: createdAt,
             change: change
         )
+    }
+
+    private static func moderationSubject(in tags: [[String]]) -> String? {
+        tags.first {
+            $0.first == "p" && $0.count > 1 && !$0[1].isEmpty
+        }?[1]
     }
 }

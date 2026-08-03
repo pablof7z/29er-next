@@ -15,8 +15,8 @@ struct RememberedGroupChoice: Identifiable, Hashable, Sendable {
         self.name = name
     }
 
-    init(_ group: GroupRef) {
-        self.init(host: group.host, groupID: group.groupId, name: group.name)
+    init(_ group: SimpleGroupEntry) {
+        self.init(host: group.hostRelay, groupID: group.groupId, name: group.name)
     }
 }
 
@@ -50,10 +50,10 @@ struct RememberedGroupSnapshot: Equatable, Sendable {
         self.sourceEvent = sourceEvent
     }
 
-    init(_ remembered: RememberedGroups, sourceEvent: FavoriteRelayListEvent) {
+    init(_ remembered: SimpleGroupsList, sourceEvent: FavoriteRelayListEvent) {
         self.init(
-            groups: remembered.groups.map(RememberedGroupChoice.init),
-            hosts: remembered.hostsInUse,
+            groups: remembered.items.map(RememberedGroupChoice.init),
+            hosts: remembered.relaysInUse,
             hasPrivateContent: remembered.hasPrivateContent,
             sourceEvent: sourceEvent
         )

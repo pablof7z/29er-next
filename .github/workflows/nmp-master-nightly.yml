@@ -79,16 +79,30 @@ jobs:
         shell: bash
         run: scripts/generate-project.sh
 
+      # Naming the destination by `name=iPhone 17 Pro,OS=26.5` got "no
+      # available devices matched the request", with xcodebuild listing no
+      # iOS simulator at all -- on a runner that has both. See
+      # scripts/select-ios-simulator.sh for what that script does and why.
+      - name: Select an iOS simulator
+        id: simulator
+        shell: bash
+        run: echo "udid=$(scripts/select-ios-simulator.sh)" >> "$GITHUB_OUTPUT"
+
       - name: Run iOS simulator tests
         shell: bash
         run: |
           set -euo pipefail
+          # No CODE_SIGNING_ALLOWED=NO. An unsigned simulator app has no
+          # application-identifier entitlement, so every Keychain call in it
+          # fails with errSecMissingEntitlement (-34018) -- which is why
+          # VoiceProviderStoreTests could never pass here. Xcode signs a
+          # simulator build ad-hoc with no team and no provisioning profile,
+          # which is enough for the Keychain and costs nothing else.
           xcodebuild \
             -project ios/TwentyNinerNext.xcodeproj \
             -scheme TwentyNinerNext \
-            -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
             -derivedDataPath ios/DerivedData \
-            CODE_SIGNING_ALLOWED=NO \
             test
 
   notify-on-failure:

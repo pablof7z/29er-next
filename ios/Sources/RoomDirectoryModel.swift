@@ -75,9 +75,9 @@ final class RoomDirectoryModel {
 
     private func observeDirectory() async {
         do {
-            let query = try await queryOpening.demand(
+            let query = try await queryOpening.query(
                 engine,
-                roomDirectoryDemand(host: hostRelay)
+                roomDirectoryQuery(host: hostRelay)
             )
             defer { query.cancel() }
 

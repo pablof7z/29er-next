@@ -64,15 +64,18 @@ enum FavoriteRelayListEditor {
 
         let createdAt = try nextTimestamp(now: now, after: sourceEvent?.createdAt)
         return WriteIntent(
-            payload: .unsigned(
-                pubkey: activePubkey,
-                createdAt: createdAt,
+            payload: .event(
                 kind: 10_009,
                 tags: tags,
-                content: sourceEvent?.content ?? ""
+                content: sourceEvent?.content ?? "",
+                createdAt: createdAt
             ),
             durability: .durable,
-            routing: .authorOutbox
+            // `.auto` -- which strategy claims kind:10009 is NMP's business,
+            // decided at send time. There is no `.authorOutbox` any more and
+            // naming a strategy here was always the app guessing.
+            routing: .auto,
+            identity: .explicit(pubkey: activePubkey)
         )
     }
 
@@ -173,34 +176,10 @@ extension AppModel {
     }
 
     static func favoriteRelayFailureMessage(for status: WriteStatus) -> String? {
-        switch status {
-        case .rejected(_, let reason):
-            return "The relay rejected the updated list: \(reason)"
-        case .gaveUp:
-            return "NMP could not deliver the updated relay list."
-        case .outcomeUnknown:
-            return "The relay-list delivery outcome is unknown."
-        case .replaceableConflict:
-            return "Your relay list changed during this update. Review it and try again."
-        case .cancelled:
-            return "The relay-list update was cancelled."
-        case .failed(let reason):
-            return "NMP could not update the relay list: \(reason)"
-        case .accepted, .awaitingCapability, .signed, .routed, .awaitingRelay,
-             .awaitingAuth, .retryEligible, .handoffAmbiguous, .sent, .acked,
-             .persistenceBlocked, .routePersistenceBlocked:
-            return nil
-        }
+        WriteFailureText.message(for: status, subject: "relay list")
     }
 
     private static func favoriteRelayPublishFailureMessage(_ error: Error) -> String {
-        switch error as? NMPError {
-        case .noActiveAccount, .noActiveSigner:
-            return "Sign in to edit your favorite relays."
-        case .engineClosed:
-            return "NMP closed before the relay list could be updated."
-        default:
-            return "NMP could not start the relay-list update."
-        }
+        WriteFailureText.startFailure(error, action: "relay-list update")
     }
 }

@@ -242,16 +242,18 @@ final class TTS29ParsingTests: XCTestCase {
 
     // MARK: - Answer composer
 
-    func testAnswerTagsAreSpecCompliant() {
+    /// No `h` row: `NMPGroup.publish` appends exactly one before signing, and
+    /// an app-supplied duplicate is a typed refusal. This used to assert the
+    /// app-built `h` tag at index 2.
+    func testAnswerTagsAreSpecCompliantAndLeaveGroupContextToNMP() {
         let tags = TTS29AnswerComposer.tags(
             itemID: "item1",
-            groupID: "g",
             answers: [TTS29Answer(questionID: "q1", values: ["opt_a"])]
         )
         XCTAssertEqual(tags[0], ["tts29", "answer", "1"])
         XCTAssertEqual(tags[1], ["e", "item1", "", "root"])
-        XCTAssertEqual(tags[2], ["h", "g"])
-        XCTAssertEqual(tags[3], ["answer", "q1", "opt_a"])
+        XCTAssertEqual(tags[2], ["answer", "q1", "opt_a"])
+        XCTAssertFalse(tags.contains { $0.first == "h" })
     }
 
     // MARK: - Transcript

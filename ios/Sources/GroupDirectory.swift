@@ -30,11 +30,15 @@ struct GroupTreeNode: Identifiable, Hashable, Sendable {
 }
 
 enum GroupDirectoryProjection {
+    /// The host's groups, from the authoritative kind:39000 record per group
+    /// -- see `NIP29GroupRecords.authoritative(kind:in:)` for why a delivered
+    /// snapshot is not simply mapped row by row.
     static func groups(from rows: [Row], hostRelay: String) -> [GroupSummary] {
-        rows.compactMap { row in
-            group(hostRelay: hostRelay, kind: row.kind, tags: row.tags)
-        }
-        .sorted(by: groupNameFirst)
+        NIP29GroupRecords.authoritative(kind: RoomKind.groupMetadata, in: rows)
+            .compactMap { row in
+                group(hostRelay: hostRelay, kind: row.kind, tags: row.tags)
+            }
+            .sorted(by: groupNameFirst)
     }
 
     static func group(
@@ -42,7 +46,7 @@ enum GroupDirectoryProjection {
         kind: UInt16,
         tags: [[String]]
     ) -> GroupSummary? {
-        guard kind == 39_000,
+        guard kind == RoomKind.groupMetadata,
               let localID = firstTag("d", in: tags),
               !localID.isEmpty else {
             return nil
@@ -109,7 +113,7 @@ enum GroupDirectoryProjection {
     }
 
     private static func firstTag(_ name: String, in tags: [[String]]) -> String? {
-        tags.first { $0.first == name && $0.count > 1 }?[1]
+        NIP29GroupRecords.firstValue(name, in: tags)
     }
 
     private static func groupNameFirst(_ lhs: GroupSummary, _ rhs: GroupSummary) -> Bool {

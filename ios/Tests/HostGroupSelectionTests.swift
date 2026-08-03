@@ -159,16 +159,20 @@ final class HostGroupSelectionTests: XCTestCase {
             )
         )
 
-        guard case let .unsigned(pubkey, createdAt, kind, tags, content) = intent.payload else {
-            return XCTFail("Expected an unsigned generic write")
+        // `WritePayload.unsigned(pubkey:...)` is gone: a payload carries no
+        // author at all, and who a write publishes as is `WriteIntent
+        // .identity`. `WriteRouting.authorOutbox` is gone too -- which
+        // strategy claims kind:10009 is NMP's call, not the app's.
+        guard case let .event(kind, tags, content, createdAt) = intent.payload else {
+            return XCTFail("Expected a stamped generic write")
         }
-        XCTAssertEqual(pubkey, "author")
+        XCTAssertEqual(intent.identity, .explicit(pubkey: "author"))
         XCTAssertEqual(createdAt, 101)
         XCTAssertEqual(kind, 10_009)
         XCTAssertEqual(tags, source.tags + [["r", secondHost]])
         XCTAssertEqual(content, source.content)
         XCTAssertEqual(intent.durability, .durable)
-        XCTAssertEqual(intent.routing, .authorOutbox)
+        XCTAssertEqual(intent.routing, .auto)
     }
 
     func testFavoriteRelayEditorRemovesOnlyMatchingRelayTags() throws {
@@ -194,8 +198,8 @@ final class HostGroupSelectionTests: XCTestCase {
             )
         )
 
-        guard case let .unsigned(_, createdAt, kind, tags, content) = intent.payload else {
-            return XCTFail("Expected an unsigned generic write")
+        guard case let .event(kind, tags, content, createdAt) = intent.payload else {
+            return XCTFail("Expected a stamped generic write")
         }
         XCTAssertEqual(createdAt, 200)
         XCTAssertEqual(kind, 10_009)
@@ -272,11 +276,11 @@ final class HostGroupSelectionTests: XCTestCase {
             AppModel.favoriteRelayFailureMessage(
                 for: .replaceableConflict(expected: "old", actual: "new")
             ),
-            "Your relay list changed during this update. Review it and try again."
+            "The relay list changed while this update was in flight. Review it and try again."
         )
         XCTAssertEqual(
             AppModel.favoriteRelayFailureMessage(for: .cancelled),
-            "The relay-list update was cancelled."
+            "The relay list was not sent -- the write was cancelled."
         )
     }
 
