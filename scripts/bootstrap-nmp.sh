@@ -38,7 +38,18 @@ if [[ ! -x "$NMP_DIR/scripts/build-swift-xcframework.sh" ]]; then
   exit 1
 fi
 
+# NMP pins its own Rust toolchain in Dependencies/nmp/rust-toolchain.toml, and
+# its build script cross-compiles the iOS slices of NMP.xcframework. Running
+# rustup from inside the NMP checkout makes rust-toolchain.toml pick the
+# toolchain, so the iOS targets land on the toolchain the build will actually
+# use. Never name NMP's channel here: a second copy of the pin rots silently
+# the next time NMP bumps it, which is precisely the failure this replaces.
 (
   cd "$NMP_DIR"
+  echo "NMP toolchain: $(rustup show active-toolchain)"
+  rustup target add \
+    aarch64-apple-ios-sim \
+    x86_64-apple-ios \
+    aarch64-apple-ios
   scripts/build-swift-xcframework.sh
 )

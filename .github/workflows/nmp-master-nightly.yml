@@ -59,16 +59,11 @@ jobs:
           xcodebuild -version
           xcodegen --version
 
-      - name: Install NMP Rust targets
-        shell: bash
-        run: |
-          set -euo pipefail
-          rustup +nightly show active-toolchain
-          rustup +nightly target add \
-            aarch64-apple-ios-sim \
-            x86_64-apple-ios \
-            aarch64-apple-ios
-
+      # The iOS Rust targets are installed by scripts/bootstrap-nmp.sh, from
+      # inside the NMP checkout, so NMP's own rust-toolchain.toml selects the
+      # toolchain they land on. Installing them here instead would need this
+      # workflow to name NMP's pinned channel, and a stale copy of that pin is
+      # what silently removed this repo's NMP signal for four days (#135).
       - name: Bootstrap NMP master
         shell: bash
         run: scripts/bootstrap-nmp.sh
@@ -97,24 +92,39 @@ jobs:
             test
 
   notify-on-failure:
-    name: Flag NMP master breakage
+    name: Report the nightly failure
     needs: simulator-tests
     if: failure()
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: read
       issues: write
     steps:
-      - name: Open or update the drift issue
+      # This job knows one thing: the nightly went red, and at which step. It
+      # must not name a cause it has not established. Asserting "NMP landed a
+      # breaking API change" cost this repo four days of misdirection while the
+      # actual failure was a local toolchain/target misconfiguration in this
+      # very workflow (#135) -- the report named a culprit in another repo, so
+      # nobody looked here.
+      - name: Report the failure on the tracking issue
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         shell: bash
         run: |
           set -euo pipefail
-          title="Nightly: app build broke against NMP master"
-          body=$(printf 'The nightly build of the app against the latest NMP master failed.\n\nThis usually means NMP master landed a breaking API change, or the xcframework build regressed. Bisect NMP master against the last green nightly and either fix the app or coordinate an NMP revert.\n\nFailed run: %s' "$RUN_URL")
+          failed_steps=$(
+            gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" \
+              --jq '.jobs[] | select(.name | startswith("TwentyNinerNext"))
+                    | .steps[] | select(.conclusion == "failure") | "- " + .name' \
+              || true
+          )
+          [[ -n "$failed_steps" ]] || failed_steps="- (could not read the step list; see the run)"
+          title="Nightly: app build against NMP master is red"
+          body=$(printf 'The nightly run of the app against NMP master failed.\n\nFailing step(s):\n%s\n\nFailed run: %s\n\nThis reports **that** the nightly is red, not **why** — read the log before assigning a cause. The candidates, in the order they are cheapest to rule out:\n\n1. **This workflow.** It shares every build step with `.github/workflows/ios-ci.yml`. If PR CI is red on unrelated branches too, the fault is here or in `scripts/bootstrap-nmp.sh`, not in NMP.\n2. **The xcframework build** (`Dependencies/nmp/scripts/build-swift-xcframework.sh`). Rust compile errors, missing targets, or lipo/xcodebuild packaging failures land here.\n3. **An NMP API change.** Only this one shows up as Swift compile errors in `ios/Sources/`. `git -C Dependencies/nmp log` between the last green nightly and now identifies the change; fix the app or coordinate with NMP.\n4. **A genuine app test failure**, with NMP building fine.\n' "$failed_steps" "$RUN_URL")
           existing=$(gh issue list --repo "$REPO" --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
           if [[ -n "$existing" ]]; then
             gh issue comment "$existing" --repo "$REPO" --body "$body"
