@@ -66,11 +66,11 @@ func roomReactionsQuery(host: String, groupID: String) throws -> NMPLiveQuery {
 
 /// This room's relay-signed records, as one reactive observation.
 ///
-/// Every delivery is a complete `NMPGroupSnapshot`: typed metadata, the
-/// admin list and the member list, each entry already carrying the hosts
-/// that named it. The app never sees a row delta, never walks a `p` row,
-/// and never accumulates -- the value that arrives IS the current value, so
-/// a demotion shrinks the list the same way a promotion grows it.
+/// Every delivery is a complete `NMPGroupSnapshot`, carrying the admin list
+/// and the member list with each entry already naming the hosts that listed
+/// it. The app never sees a row delta, never walks a `p` row, and never
+/// accumulates -- the value that arrives IS the current value, so a
+/// demotion shrinks the list the same way a promotion grows it.
 ///
 /// One observation for both lists, not two: NMP mints one branch per host in
 /// the scope, and this app's scope names exactly one.

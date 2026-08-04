@@ -43,7 +43,8 @@ struct GroupTreeNode: Identifiable, Hashable, Sendable {
 /// sidebar is a BROWSE -- "public rooms from this relay" -- so it asks no
 /// membership question and has no ids until the answer arrives. Closing it
 /// needs either a predicate leaf meaning "every group this host advertises",
-/// or a public projection from a delivered `Row` to `NMPGroupMetadata`.
+/// or a public projection from a delivered `Row` to `NMPGroupMetadata`;
+/// filed as `pablof7z/nmp#1252`. Delete this whole parse when it lands.
 enum GroupDirectoryProjection {
     /// The host's groups, from the authoritative kind:39000 record per group.
     ///
