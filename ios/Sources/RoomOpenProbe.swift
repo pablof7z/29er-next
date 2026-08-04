@@ -14,8 +14,10 @@ final class RoomOpenProbe: NSObject {
     enum Query: String, CaseIterable {
         case content
         case activity
-        case membership
-        case admins
+        /// One observation for kind:39001 and kind:39002 together -- they
+        /// arrive on the same `NMPGroupSnapshot`, so timing them apart would
+        /// report two stages that no longer exist.
+        case groupRecords
         case profiles
 
         var observeField: String {
@@ -131,6 +133,19 @@ final class RoomOpenProbe: NSObject {
             activitySnapshot = snapshot(for: rows.filter { $0.kind == RoomKind.liveStatus })
             firstSnapshotMilliseconds = elapsedMilliseconds()
         }
+        publish()
+    }
+
+    /// The group-records stage has no rows to count -- NMP delivers the
+    /// folded snapshot, not the rows behind it. `rows` is therefore the
+    /// number of listed subjects, and `newest` the member record's own event
+    /// id, which is the identity a relay-signed list is superseded by.
+    func recordSnapshot(_ query: Query, subjects snapshot: NMPGroupSnapshot) {
+        guard isEnabled, started != nil, snapshots[query] == nil else { return }
+        snapshots[query] = Snapshot(
+            rows: snapshot.admins.count + snapshot.members.count,
+            newestID: snapshot.perHost.compactMap { $0.members?.eventID }.sorted().last ?? "none"
+        )
         publish()
     }
 

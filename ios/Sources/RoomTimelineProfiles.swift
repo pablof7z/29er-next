@@ -74,7 +74,7 @@ extension RoomTimelineModel {
         )
         authors.formUnion(activityRows.map(\.pubkey))
         authors.formUnion(members.map(\.pubkey))
-        authors.formUnion(admins)
+        authors.formUnion(admins.map(\.pubkey))
         for row in chatRows
         where row.kind == RoomKind.putUser || row.kind == RoomKind.removeUser {
             authors.insert(row.pubkey)

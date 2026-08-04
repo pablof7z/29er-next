@@ -98,7 +98,7 @@ final class ObservationPresentationTests: XCTestCase {
 
     func testRoomPeopleMembershipPresentationOrder() {
         var input = RoomPeoplePresentation.Input()
-        input.membershipError = "members stale"
+        input.recordsError = "members stale"
         XCTAssertEqual(
             RoomPeoplePresentation.make(input).membership,
             .unavailable(
@@ -110,22 +110,21 @@ final class ObservationPresentationTests: XCTestCase {
             )
         )
 
-        input.membershipError = nil
+        input.recordsError = nil
         XCTAssertEqual(RoomPeoplePresentation.make(input).membership, .loading)
 
-        input.hasReceivedMembership = true
+        input.isAcquiringRecords = false
         guard case .metadataMissing(let notice) = RoomPeoplePresentation.make(input).membership else {
             return XCTFail("Expected missing metadata presentation")
         }
         XCTAssertEqual(notice.title, "Member list unavailable")
 
-        input.hasMembershipMetadata = true
+        input.hasMemberList = true
         XCTAssertEqual(RoomPeoplePresentation.make(input).membership, .ready)
     }
 
     func testRoomPeopleShowsEveryIndependentFailureInStableOrder() {
         var input = RoomPeoplePresentation.Input()
-        input.adminError = "admins stale"
         input.profileError = "profiles stale"
         input.activityError = "activity stale"
 
@@ -133,31 +132,53 @@ final class ObservationPresentationTests: XCTestCase {
 
         XCTAssertEqual(
             notices.map(\.title),
-            ["Backend admins unavailable", "Profiles unavailable", "Live status unavailable"]
+            ["Profiles unavailable", "Live status unavailable"]
         )
         XCTAssertEqual(
             notices.map(\.message),
-            ["admins stale", "profiles stale", "activity stale"]
+            ["profiles stale", "activity stale"]
         )
         XCTAssertEqual(
             notices.map(\.symbol),
             [
-                "person.badge.key",
                 "person.crop.circle.badge.exclamationmark",
                 "bolt.slash"
             ]
         )
     }
 
+    /// Members and admins arrive on one snapshot from one observation, so
+    /// there is no longer an admin failure that can happen on its own. A
+    /// records failure is reported once, as the member-list failure it is --
+    /// never twice under two headings.
+    func testRecordsFailureIsReportedOnceNotAsASeparateAdminNotice() {
+        var input = RoomPeoplePresentation.Input()
+        input.recordsError = "records stale"
+
+        let presentation = RoomPeoplePresentation.make(input)
+
+        XCTAssertEqual(
+            presentation.membership,
+            .unavailable(
+                NoticeContent(
+                    symbol: "person.crop.circle.badge.exclamationmark",
+                    title: "Member list unavailable",
+                    message: "records stale"
+                )
+            )
+        )
+        XCTAssertTrue(presentation.notices.isEmpty)
+    }
+
     func testRoomPeopleEmptyStateRequiresBothSnapshotsAndNoMetadata() {
         var input = RoomPeoplePresentation.Input()
-        input.hasReceivedMembership = true
+        input.isAcquiringRecords = false
         input.hasReceivedActivities = true
         XCTAssertTrue(RoomPeoplePresentation.make(input).showEmptyState)
 
-        input.hasMembershipMetadata = true
+        input.hasMemberList = true
         XCTAssertFalse(RoomPeoplePresentation.make(input).showEmptyState)
-        input.hasMembershipMetadata = false
+        input.hasMemberList = false
         input.activeCount = 1
         XCTAssertFalse(RoomPeoplePresentation.make(input).showEmptyState)
     }

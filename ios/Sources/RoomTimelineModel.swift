@@ -12,24 +12,40 @@ final class RoomTimelineModel {
 
     private(set) var state: State = .loading
     private(set) var chatRows: [Row] = []
-    private(set) var membershipRows: [Row] = []
     private(set) var activityRows: [Row] = []
     private(set) var reactionRows: [Row] = []
-    private(set) var members: [RoomMember] = []
-    private(set) var admins: [String] = []
+
+    /// The room's relay-signed lists, exactly as NMP delivered them. These
+    /// are complete values, never accumulations: each delivery replaces the
+    /// last, so a removed member or a demoted admin disappears here the same
+    /// update the relay's new record arrives.
+    private(set) var members: [NMPListedSubject] = []
+    private(set) var admins: [NMPListedSubject] = []
+    /// `nil` until the first delivery. NMP's rollup over the scope's hosts,
+    /// carried on the snapshot itself so a loading state never has to reach
+    /// into per-host records to find one.
+    private(set) var recordsAvailability: NMPGroupAvailability?
+
+    /// The room's records are still being established. `nil` availability is
+    /// "no delivery yet"; `.acquiring` is NMP's own word for the same thing
+    /// once the observation is open.
+    var isAcquiringRecords: Bool {
+        recordsAvailability == nil || recordsAvailability == .acquiring
+    }
+    /// Whether the host has published a kind:39002 at all. Distinct from an
+    /// empty `members`: NMP returns what the relay published, and an empty
+    /// member list is an empty member list.
+    private(set) var hasMemberList = false
     var profiles = ProfileBook()
 
     private(set) var chatError: String?
-    private(set) var membershipError: String?
     private(set) var activityError: String?
-    private(set) var adminError: String?
+    private(set) var recordsError: String?
     private(set) var reactionError: String?
     var profileError: String?
 
     private(set) var hasReceivedChat = false
-    private(set) var hasReceivedMembership = false
     private(set) var hasReceivedActivities = false
-    private(set) var hasMembershipMetadata = false
 
     let engine: NMPEngine
     let groupID: String
@@ -83,7 +99,7 @@ final class RoomTimelineModel {
     }
 
     var people: RoomPeople {
-        NIP29ViewProjection.people(members: members, activities: activities)
+        NIP29ViewProjection.people(memberPubkeys: members.map(\.pubkey), activities: activities)
     }
 
     var composerRecipients: [ComposerRecipient] {
@@ -113,7 +129,7 @@ final class RoomTimelineModel {
     /// Management backends present in this room, resolved from kind:0 across
     /// members, admins, and live-session authors.
     var backends: [RoomBackend] {
-        let candidates = members.map(\.pubkey) + admins + activities.map(\.author)
+        let candidates = members.map(\.pubkey) + admins.map(\.pubkey) + activities.map(\.author)
         return RoomBackendProjection.backends(candidatePubkeys: candidates, profiles: profiles)
     }
 
@@ -137,11 +153,7 @@ final class RoomTimelineModel {
             }
             group.addTask { [weak self] in
                 guard let self else { return }
-                await self.observeMembership()
-            }
-            group.addTask { [weak self] in
-                guard let self else { return }
-                await self.observeAdmins()
+                await self.observeGroupRecords()
             }
             group.addTask { [weak self] in
                 guard let self else { return }
@@ -226,60 +238,42 @@ final class RoomTimelineModel {
         }
     }
 
-    private func observeMembership() async {
+    /// The room's kind:39001 and kind:39002 records, through NMP's one
+    /// reactive door.
+    ///
+    /// There is no accumulator here and no removal handling, because there is
+    /// no delta to accumulate: `snapshot.members` and `snapshot.admins` are
+    /// each the complete current list, so assigning them is the whole update.
+    /// The previous shape -- two subscriptions folding raw `p` rows -- could
+    /// only ever grow.
+    private func observeGroupRecords() async {
         do {
             let clock = ContinuousClock()
             let started = clock.now
-            let query = try await queryOpening.query(
-                engine,
-                roomMembershipQuery(host: hostRelay, groupID: groupID)
-            )
+            let observation = try await queryOpening.records(engine, hostRelay, groupID)
             RoomOpenProbe.shared.recordObserve(
-                .membership,
+                .groupRecords,
                 duration: started.duration(to: clock.now)
             )
-            defer { query.cancel() }
+            defer { observation.cancel() }
 
-            for try await batch in query {
+            for try await snapshot in observation {
                 guard !Task.isCancelled else { return }
-                membershipRows = batch.rows
-                members = NIP29ViewProjection.members(from: membershipRows)
-                RoomOpenProbe.shared.recordSnapshot(.membership, rows: batch.rows)
-                membershipError = nil
-                hasReceivedMembership = true
-                hasMembershipMetadata = batch.rows.contains { $0.kind == RoomKind.groupMembers }
+                members = snapshot.members
+                admins = snapshot.admins
+                recordsAvailability = snapshot.availability
+                // The scope names exactly one host, so its own records are
+                // the whole answer. `at(_:)` distinguishes "the relay
+                // published no member list" from "the relay published an
+                // empty one"; `members.isEmpty` cannot.
+                hasMemberList = snapshot.at(hostRelay)?.members != nil
+                RoomOpenProbe.shared.recordSnapshot(.groupRecords, subjects: snapshot)
+                recordsError = nil
                 publishProfileAuthors()
             }
         } catch {
             guard !Task.isCancelled else { return }
-            membershipError = error.localizedDescription
-        }
-    }
-
-    private func observeAdmins() async {
-        do {
-            let clock = ContinuousClock()
-            let started = clock.now
-            let query = try await queryOpening.query(
-                engine,
-                roomAdminQuery(host: hostRelay, groupID: groupID)
-            )
-            RoomOpenProbe.shared.recordObserve(
-                .admins,
-                duration: started.duration(to: clock.now)
-            )
-            defer { query.cancel() }
-
-            for try await batch in query {
-                guard !Task.isCancelled else { return }
-                RoomOpenProbe.shared.recordSnapshot(.admins, rows: batch.rows)
-                admins = NIP29ViewProjection.admins(from: batch.rows)
-                adminError = nil
-                publishProfileAuthors()
-            }
-        } catch {
-            guard !Task.isCancelled else { return }
-            adminError = error.localizedDescription
+            recordsError = error.localizedDescription
         }
     }
 
