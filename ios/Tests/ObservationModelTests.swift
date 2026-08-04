@@ -101,16 +101,32 @@ final class ObservationModelTests: XCTestCase {
         )
     }
 
-    func testMembershipQueryIsIndependentBoundedStrictAndPinned() throws {
-        let branch = try onlyBranch(
-            of: roomMembershipQuery(host: "wss://nip29.f7z.io", groupID: "29er-next")
-        )
+    /// The room's relay-signed records are no longer an app-built
+    /// `NMPDemand`. `NMPGroup.observeRecords` mints the whole declaration --
+    /// kinds, the `#d` join key, host pinning and cache mode -- so there is
+    /// no app-side filter shape left to assert. What is worth asserting is
+    /// that declaring one contacts nothing and refuses nothing.
+    func testGroupRecordsObservationIsMintedFromTheGroupItself() throws {
+        let engine = try NMPEngine(config: .init())
+        defer { engine.shutdown() }
 
-        XCTAssertEqual(branch.selection.kinds, [39_002])
-        XCTAssertEqual(branch.selection.limit, 20)
-        XCTAssertEqual(branch.selection.tags["d"], .literal(["29er-next"]))
-        XCTAssertEqual(branch.cache, .strict)
-        assertPinned(branch, to: "wss://nip29.f7z.io")
+        let observation = try roomRecordsObservation(
+            engine: engine,
+            host: "wss://nip29.f7z.io",
+            groupID: "29er-next"
+        )
+        observation.cancel()
+    }
+
+    /// kind:39000/39001/39002 key on `d`, not on the `h` row `NMPGroup.read`
+    /// stamps. A roster read through the CONTENT door used to build a filter
+    /// no such event could match and returned silently empty; NMP #1245 makes
+    /// it a refusal. Asserted here so this app cannot reintroduce the call
+    /// site the door was built to replace.
+    func testRosterKindsAreRefusedByTheGroupContentDoor() throws {
+        let group = try roomGroup(host: "wss://nip29.f7z.io", groupID: "29er-next")
+
+        XCTAssertThrowsError(try group.read(NMPFilter(kinds: [39_001, 39_002])))
     }
 
     func testDirectoryQueryIsBoundedStrictAndPinned() throws {
@@ -118,18 +134,6 @@ final class ObservationModelTests: XCTestCase {
 
         XCTAssertEqual(branch.selection.kinds, [9])
         XCTAssertEqual(branch.selection.limit, 500)
-        XCTAssertEqual(branch.cache, .strict)
-        assertPinned(branch, to: "wss://nip29.f7z.io")
-    }
-
-    func testAdminQueryUsesTheSameSelectedHostBoundary() throws {
-        let branch = try onlyBranch(
-            of: roomAdminQuery(host: "wss://nip29.f7z.io", groupID: "29er-next")
-        )
-
-        XCTAssertEqual(branch.selection.kinds, [39_001])
-        XCTAssertEqual(branch.selection.limit, 20)
-        XCTAssertEqual(branch.selection.tags["d"], .literal(["29er-next"]))
         XCTAssertEqual(branch.cache, .strict)
         assertPinned(branch, to: "wss://nip29.f7z.io")
     }
@@ -221,9 +225,8 @@ final class ObservationModelTests: XCTestCase {
 
         XCTAssertEqual(model.state, .observing)
         XCTAssertEqual(model.chatError, "Fixture query opening failed.")
-        XCTAssertEqual(model.membershipError, "Fixture query opening failed.")
         XCTAssertEqual(model.activityError, "Fixture query opening failed.")
-        XCTAssertEqual(model.adminError, "Fixture query opening failed.")
+        XCTAssertEqual(model.recordsError, "Fixture query opening failed.")
         XCTAssertEqual(model.profileError, "Fixture query opening failed.")
         engine.shutdown()
     }
@@ -237,7 +240,8 @@ final class ObservationModelTests: XCTestCase {
                 let query = try await openNMPQuery(engine: engine, query: liveQuery)
                 await probe.recordOpening()
                 return query
-            }
+            },
+            records: NMPQueryOpening.live.records
         )
         let model = RoomDirectoryModel(
             engine: engine,
@@ -268,6 +272,13 @@ final class ObservationModelTests: XCTestCase {
                 let query = try await openNMPQuery(engine: engine, query: liveQuery)
                 await probe.recordOpening()
                 return query
+            },
+            records: { engine, host, groupID in
+                let observation = try await openNMPGroupRecords(
+                    engine: engine, host: host, groupID: groupID
+                )
+                await probe.recordOpening()
+                return observation
             }
         )
         let model = RoomTimelineModel(
@@ -283,9 +294,8 @@ final class ObservationModelTests: XCTestCase {
         await observation.value
 
         XCTAssertNil(model.chatError)
-        XCTAssertNil(model.membershipError)
         XCTAssertNil(model.activityError)
-        XCTAssertNil(model.adminError)
+        XCTAssertNil(model.recordsError)
         XCTAssertNil(model.profileError)
         engine.shutdown()
     }
@@ -311,6 +321,7 @@ final class ObservationModelTests: XCTestCase {
 private extension NMPQueryOpening {
     static let failing = NMPQueryOpening(
         filter: { _, _ in throw FixtureQueryError.openingFailed },
-        query: { _, _ in throw FixtureQueryError.openingFailed }
+        query: { _, _ in throw FixtureQueryError.openingFailed },
+        records: { _, _, _ in throw FixtureQueryError.openingFailed }
     )
 }

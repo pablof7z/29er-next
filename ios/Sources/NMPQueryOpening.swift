@@ -9,10 +9,15 @@ import NMP
 struct NMPQueryOpening: Sendable {
     let filter: @Sendable (NMPEngine, NMPFilter) async throws -> NMPQuery
     let query: @Sendable (NMPEngine, NMPLiveQuery) async throws -> NMPQuery
+    /// NIP-29's relay-signed group records do not come through `NMPLiveQuery`
+    /// at all -- they key on `d`, not the `h` row `NMPGroup.read` stamps, so
+    /// they have their own reactive door and their own opening seam.
+    let records: @Sendable (NMPEngine, String, String) async throws -> NMPGroupObservation
 
     static let live = NMPQueryOpening(
         filter: openNMPQuery(engine:filter:),
-        query: openNMPQuery(engine:query:)
+        query: openNMPQuery(engine:query:),
+        records: openNMPGroupRecords(engine:host:groupID:)
     )
 }
 
@@ -39,4 +44,15 @@ func openNMPQuery(
     demand: NMPDemand
 ) async throws -> NMPQuery {
     try engine.observe(.single(demand))
+}
+
+/// Opens the group-records observation off the UI actor, for the same reason
+/// `openNMPQuery` exists: `observeRecords` is synchronous and does its first
+/// decode before returning.
+func openNMPGroupRecords(
+    engine: NMPEngine,
+    host: String,
+    groupID: String
+) async throws -> NMPGroupObservation {
+    try roomRecordsObservation(engine: engine, host: host, groupID: groupID)
 }

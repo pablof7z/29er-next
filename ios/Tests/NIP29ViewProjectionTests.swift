@@ -148,122 +148,13 @@ final class NIP29ViewProjectionTests: XCTestCase {
         )
     }
 
-    func testKind39002BecomesDeduplicatedRoomMembers() {
-        let members = NIP29ViewProjection.members(from: [
-            groupRecord(
-                id: "members-1",
-                kind: 39_002,
-                createdAt: 100,
-                tags: [
-                    ["d", "nip29"],
-                    ["p", "member-b"],
-                    ["p", "member-a"],
-                    ["p", "member-a"],
-                    ["p", ""]
-                ]
-            )
-        ])
-
-        XCTAssertEqual(Set(members.map(\.pubkey)), ["member-a", "member-b"])
-    }
-
-    /// The bug this replaces: folding every delivered 39001 row together can
-    /// only ever grow the admin set, so a demoted admin stayed an admin for
-    /// as long as the superseded record was still in the snapshot.
-    func testDemotedAdminDisappearsWhenTheRecordIsSuperseded() {
-        let superseded = groupRecord(
-            id: "admins-old",
-            kind: 39_001,
-            createdAt: 100,
-            tags: [["d", "nip29"], ["p", "keeper"], ["p", "demoted"]]
-        )
-        let current = groupRecord(
-            id: "admins-new",
-            kind: 39_001,
-            createdAt: 200,
-            tags: [["d", "nip29"], ["p", "keeper"]]
-        )
-
-        XCTAssertEqual(NIP29ViewProjection.admins(from: [superseded, current]), ["keeper"])
-        XCTAssertEqual(
-            NIP29ViewProjection.admins(from: [current, superseded]),
-            ["keeper"],
-            "delivery order must not decide who is an admin"
-        )
-    }
-
-    func testRemovedMemberDisappearsWhenTheRosterIsSuperseded() {
-        let superseded = groupRecord(
-            id: "members-old",
-            kind: 39_002,
-            createdAt: 100,
-            tags: [["d", "nip29"], ["p", "stayer"], ["p", "removed"]]
-        )
-        let current = groupRecord(
-            id: "members-new",
-            kind: 39_002,
-            createdAt: 200,
-            tags: [["d", "nip29"], ["p", "stayer"]]
-        )
-
-        XCTAssertEqual(
-            NIP29ViewProjection.members(from: [superseded, current]).map(\.pubkey),
-            ["stayer"]
-        )
-    }
-
-    /// Two hosts' records for one group id are two independent groups; this
-    /// app is single-host, but the coordinate must still include the record's
-    /// author so a same-timestamp collision cannot silently drop one.
-    func testRecordsFromDifferentAuthorsAreDistinctCoordinates() {
-        let first = groupRecord(
-            id: "admins-a",
-            pubkey: "relay-a",
-            kind: 39_001,
-            createdAt: 100,
-            tags: [["d", "nip29"], ["p", "admin-a"]]
-        )
-        let second = groupRecord(
-            id: "admins-b",
-            pubkey: "relay-b",
-            kind: 39_001,
-            createdAt: 100,
-            tags: [["d", "nip29"], ["p", "admin-b"]]
-        )
-
-        XCTAssertEqual(
-            Set(NIP29ViewProjection.admins(from: [first, second])),
-            ["admin-a", "admin-b"]
-        )
-    }
-
-    private func groupRecord(
-        id: String,
-        pubkey: String = "relay",
-        kind: UInt16,
-        createdAt: UInt64,
-        tags: [[String]]
-    ) -> Row {
-        Row(
-            id: id,
-            pubkey: pubkey,
-            createdAt: createdAt,
-            kind: kind,
-            tags: tags,
-            content: "",
-            sig: "",
-            sources: []
-        )
-    }
-
     func testPeopleJoinMembershipAndActivityByPubkey() throws {
-        let member = RoomMember(
-            id: "member-a",
-            pubkey: "member-a"
-        )
         let activity = try XCTUnwrap(makeActivity(pubkey: "member-a", createdAt: 200))
 
-        let people = NIP29ViewProjection.people(members: [member], activities: [activity])
+        let people = NIP29ViewProjection.people(
+            memberPubkeys: ["member-a"],
+            activities: [activity]
+        )
 
         XCTAssertEqual(people.members.count, 1)
         XCTAssertEqual(people.members.first?.pubkey, "member-a")
@@ -275,7 +166,7 @@ final class NIP29ViewProjectionTests: XCTestCase {
     func testStatusOnlyPubkeyIsActiveHereNotMember() throws {
         let activity = try XCTUnwrap(makeActivity(pubkey: "session-pubkey", createdAt: 200))
 
-        let people = NIP29ViewProjection.people(members: [], activities: [activity])
+        let people = NIP29ViewProjection.people(memberPubkeys: [], activities: [activity])
 
         XCTAssertTrue(people.members.isEmpty)
         XCTAssertEqual(people.activeHere.map(\.pubkey), ["session-pubkey"])
@@ -285,7 +176,7 @@ final class NIP29ViewProjectionTests: XCTestCase {
         let older = try XCTUnwrap(makeActivity(pubkey: "session-pubkey", createdAt: 100))
         let newer = try XCTUnwrap(makeActivity(pubkey: "session-pubkey", createdAt: 200))
 
-        let people = NIP29ViewProjection.people(members: [], activities: [older, newer])
+        let people = NIP29ViewProjection.people(memberPubkeys: [], activities: [older, newer])
 
         XCTAssertEqual(people.activeHere.count, 1)
         XCTAssertEqual(people.activeHere.first?.activity?.eventID, "status-200")

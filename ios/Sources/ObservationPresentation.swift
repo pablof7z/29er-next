@@ -99,12 +99,14 @@ enum MembershipPresentation: Equatable {
 
 struct RoomPeoplePresentation: Equatable {
     struct Input {
-        var hasReceivedMembership = false
-        var hasMembershipMetadata = false
-        var membershipError: String?
+        /// The room's members and admins arrive on one snapshot from one
+        /// observation, so they succeed and fail together. There is no
+        /// separate admin failure to report any more.
+        var isAcquiringRecords = true
+        var hasMemberList = false
+        var recordsError: String?
         var hasReceivedActivities = false
         var activityError: String?
-        var adminError: String?
         var profileError: String?
         var memberCount = 0
         var activeCount = 0
@@ -116,17 +118,17 @@ struct RoomPeoplePresentation: Equatable {
 
     static func make(_ input: Input) -> RoomPeoplePresentation {
         let membership: MembershipPresentation
-        if let membershipError = input.membershipError {
+        if let recordsError = input.recordsError {
             membership = .unavailable(
                 NoticeContent(
                     symbol: "person.crop.circle.badge.exclamationmark",
                     title: "Member list unavailable",
-                    message: membershipError
+                    message: recordsError
                 )
             )
-        } else if !input.hasReceivedMembership {
+        } else if input.isAcquiringRecords {
             membership = .loading
-        } else if !input.hasMembershipMetadata {
+        } else if !input.hasMemberList {
             membership = .metadataMissing(
                 NoticeContent(
                     symbol: "person.crop.circle.badge.questionmark",
@@ -139,9 +141,6 @@ struct RoomPeoplePresentation: Equatable {
         }
 
         let notices = [
-            input.adminError.map {
-                NoticeContent(symbol: "person.badge.key", title: "Backend admins unavailable", message: $0)
-            },
             input.profileError.map {
                 NoticeContent.profilesUnavailable(
                     $0,
@@ -156,11 +155,11 @@ struct RoomPeoplePresentation: Equatable {
         return RoomPeoplePresentation(
             membership: membership,
             notices: notices,
-            showEmptyState: input.hasReceivedMembership &&
+            showEmptyState: !input.isAcquiringRecords &&
                 input.hasReceivedActivities &&
                 input.memberCount == 0 &&
                 input.activeCount == 0 &&
-                !input.hasMembershipMetadata
+                !input.hasMemberList
         )
     }
 }

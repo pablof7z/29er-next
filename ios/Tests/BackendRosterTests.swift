@@ -90,35 +90,6 @@ final class BackendRosterTests: XCTestCase {
         XCTAssertEqual(labels["0123456789abcdef0123456789abcdef"], "01234567…89abcdef")
     }
 
-    func testAdminsExtractsPTagsFromKind39001Only() {
-        let adminRecord = Row(
-            id: "admins",
-            pubkey: "relay",
-            createdAt: 100,
-            kind: 39_001,
-            tags: [["d", "nip29"], ["p", "admin-a"], ["p", "admin-b"], ["p", ""]],
-            content: "",
-            sig: "",
-            sources: []
-        )
-        let memberRecord = Row(
-            id: "members",
-            pubkey: "relay",
-            createdAt: 100,
-            kind: 39_002,
-            tags: [["d", "nip29"], ["p", "member"]],
-            content: "",
-            sig: "",
-            sources: []
-        )
-
-        XCTAssertEqual(
-            NIP29ViewProjection.admins(from: [adminRecord, memberRecord]),
-            ["admin-a", "admin-b"]
-        )
-        XCTAssertTrue(NIP29ViewProjection.admins(from: [memberRecord]).isEmpty)
-    }
-
     private func backendProfile(pubkey: String, host: String?, displayName: String?) -> RoomProfile {
         RoomProfile(
             pubkey: pubkey,

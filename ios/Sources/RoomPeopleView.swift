@@ -3,12 +3,11 @@ import SwiftUI
 struct RoomPeopleView: View {
     let people: RoomPeople
     let profiles: ProfileBook
-    let hasReceivedMembership: Bool
-    let hasMembershipMetadata: Bool
-    let membershipError: String?
+    let isAcquiringRecords: Bool
+    let hasMemberList: Bool
+    let recordsError: String?
     let hasReceivedActivities: Bool
     let activityError: String?
-    let adminError: String?
     let profileError: String?
     let backends: [RoomBackend]
     let canSendCommands: Bool
@@ -42,7 +41,7 @@ struct RoomPeopleView: View {
                         profiles: profiles,
                         isActivityLoading: !hasReceivedActivities
                     )
-                } else if hasMembershipMetadata {
+                } else if hasMemberList {
                     ObservationNotice(
                         symbol: "person.2.slash",
                         title: "No listed members",
@@ -98,12 +97,11 @@ struct RoomPeopleView: View {
     private func makePresentation() -> RoomPeoplePresentation {
         RoomPeoplePresentation.make(
             RoomPeoplePresentation.Input(
-                hasReceivedMembership: hasReceivedMembership,
-                hasMembershipMetadata: hasMembershipMetadata,
-                membershipError: membershipError,
+                isAcquiringRecords: isAcquiringRecords,
+                hasMemberList: hasMemberList,
+                recordsError: recordsError,
                 hasReceivedActivities: hasReceivedActivities,
                 activityError: activityError,
-                adminError: adminError,
                 profileError: profileError,
                 memberCount: people.members.count,
                 activeCount: people.activeHere.count

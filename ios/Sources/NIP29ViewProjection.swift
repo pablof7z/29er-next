@@ -33,21 +33,12 @@ struct AgentActivity: Identifiable, Hashable, Sendable {
     }
 }
 
-struct RoomMember: Identifiable, Hashable, Sendable {
-    let id: String
-    let pubkey: String
-    var authorLabel: String {
-        PubkeyDisplay.shortHex(pubkey)
-    }
-}
-
 struct RoomPerson: Identifiable, Hashable, Sendable {
-    let member: RoomMember?
     let activity: AgentActivity?
     let pubkey: String
     var id: String { pubkey }
     var authorLabel: String {
-        activity?.authorLabel ?? member?.authorLabel ?? pubkey
+        activity?.authorLabel ?? PubkeyDisplay.shortHex(pubkey)
     }
 }
 
@@ -81,27 +72,12 @@ enum NIP29ViewProjection {
             }
     }
 
-    /// The room's members, from the authoritative kind:39002 record only.
+    /// Joins the room's listed members to their live sessions.
     ///
-    /// Reading every delivered 39002 row instead makes a removal invisible:
-    /// the dropped `p` is still on the superseded record. See
-    /// `NIP29GroupRecords.authoritative(kind:in:)`.
-    static func members(from rows: [Row]) -> [RoomMember] {
-        var membersByPubkey: [String: RoomMember] = [:]
-
-        for row in NIP29GroupRecords.authoritative(kind: RoomKind.groupMembers, in: rows) {
-            for pubkey in NIP29GroupRecords.subjects(of: row)
-            where membersByPubkey[pubkey] == nil {
-                membersByPubkey[pubkey] = RoomMember(id: pubkey, pubkey: pubkey)
-            }
-        }
-
-        return membersByPubkey.values.sorted {
-            $0.authorLabel.localizedCaseInsensitiveCompare($1.authorLabel) == .orderedAscending
-        }
-    }
-
-    static func people(members: [RoomMember], activities: [AgentActivity]) -> RoomPeople {
+    /// Takes pubkeys, not NMP's `NMPListedSubject`, because that is all the
+    /// join needs -- the subjects themselves stay on the model in the shape
+    /// NMP delivered them, unwrapped into no app-owned roster type.
+    static func people(memberPubkeys: [String], activities: [AgentActivity]) -> RoomPeople {
         var latestActivityByPubkey: [String: AgentActivity] = [:]
         for activity in activities {
             guard let current = latestActivityByPubkey[activity.author] else {
@@ -114,42 +90,20 @@ enum NIP29ViewProjection {
             }
         }
 
-        let memberPubkeys = Set(members.map(\.pubkey))
-        let listed = members.map { member in
-            RoomPerson(
-                member: member,
-                activity: latestActivityByPubkey[member.pubkey],
-                pubkey: member.pubkey
-            )
+        let listedPubkeys = Set(memberPubkeys)
+        let listed = listedPubkeys.map { pubkey in
+            RoomPerson(activity: latestActivityByPubkey[pubkey], pubkey: pubkey)
         }
         .sorted(by: personNameFirst)
 
         let activeHere = latestActivityByPubkey.values
-            .filter { !memberPubkeys.contains($0.author) }
+            .filter { !listedPubkeys.contains($0.author) }
             .map { activity in
-                RoomPerson(member: nil, activity: activity, pubkey: activity.author)
+                RoomPerson(activity: activity, pubkey: activity.author)
             }
             .sorted(by: activePersonFirst)
 
         return RoomPeople(members: listed, activeHere: activeHere)
-    }
-
-    /// Admin pubkeys from the room's kind:39001 admin lists. Mosaico adds
-    /// its backend management key as a group admin, so this is how the backend
-    /// surfaces even when it is not in the kind:39002 member roster.
-    /// Admin pubkeys from the AUTHORITATIVE kind:39001 record, not from every
-    /// 39001 row ever delivered. Unioning across rows can only ever grow the
-    /// set, so a demoted admin stayed an admin for as long as the superseded
-    /// record remained in the snapshot.
-    static func admins(from rows: [Row]) -> [String] {
-        var seen = Set<String>()
-        var result: [String] = []
-        for row in NIP29GroupRecords.authoritative(kind: RoomKind.groupAdmins, in: rows) {
-            for pubkey in NIP29GroupRecords.subjects(of: row) where seen.insert(pubkey).inserted {
-                result.append(pubkey)
-            }
-        }
-        return result
     }
 
     static func message(
@@ -223,12 +177,16 @@ enum NIP29ViewProjection {
         )
     }
 
+    // kind:30315 is NIP-38 live status, not a NIP-29 group record. These two
+    // rows are read here because NMP owns no live-status door (NMP #45); they
+    // deliberately do not share a helper with the group-records path, which
+    // no longer parses anything.
     private static func firstTag(_ name: String, in tags: [[String]]) -> String? {
-        NIP29GroupRecords.firstValue(name, in: tags)
+        tags.first { $0.first == name && $0.count > 1 }?[1]
     }
 
     private static func nonEmptyTag(_ name: String, in tags: [[String]]) -> String? {
-        NIP29GroupRecords.nonEmptyValue(name, in: tags)
+        firstTag(name, in: tags).flatMap { $0.isEmpty ? nil : $0 }
     }
 
     private static func personNameFirst(_ lhs: RoomPerson, _ rhs: RoomPerson) -> Bool {

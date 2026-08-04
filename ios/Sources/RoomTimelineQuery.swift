@@ -17,9 +17,11 @@ enum RoomKind {
     static let joinRequest: UInt16 = 9_021
     static let leaveRequest: UInt16 = 9_022
     static let liveStatus: UInt16 = 30_315
+    /// The one relay-signed record this app still reads as raw rows -- see
+    /// `groupDirectoryQuery(host:)`. 39001 and 39002 are gone from here
+    /// because nothing selects them any more: they arrive typed, through
+    /// `roomRecordsObservation(engine:host:groupID:)`.
     static let groupMetadata: UInt16 = 39_000
-    static let groupAdmins: UInt16 = 39_001
-    static let groupMembers: UInt16 = 39_002
 
     /// Everything the room timeline renders, read through one subscription.
     static let timeline: [UInt16] = [chat, putUser, removeUser, joinRequest, leaveRequest]
@@ -56,34 +58,46 @@ func roomReactionsQuery(host: String, groupID: String) throws -> NMPLiveQuery {
 
 // MARK: - Relay-signed group records
 //
-// PLACEHOLDER, awaiting NMP's roster reader (that design is in flight).
-//
-// kind:39000/39001/39002 key themselves on `d`, not on the `h` tag
-// `NMPGroup.read` stamps, and `NMPRelayScope.groupsWhere` accepts only
-// membership/admin *predicates* -- neither door can express "the group
-// records for THIS group id at THIS host", so these three demands stay
-// hand-built. They are deliberately NOT wrapped in an app-side roster
-// abstraction: a second app-owned roster model is exactly what would make
-// the upstream adoption harder.
-//
-// They mirror what NMP's own NIP-29 demands carry (`crates/nmp-nip29/src/
-// discovery.rs`): pinned to exactly one host AND `CacheMode.strict`, both
-// axes. Pinning alone scopes only which relay is asked on the wire; the
-// cache would still answer from any provenance under the `.agnostic`
-// default, which is a real cross-host leak.
+// kind:39000 metadata, kind:39001 admins and kind:39002 members key
+// themselves on `d`, not on the `h` row `NMPGroup.read` stamps. They are
+// therefore NOT group content and `NMPGroup.read` refuses them outright
+// (NMP #1245) rather than building a filter no such event can match. They
+// read through their own door instead.
 
-func roomMembershipQuery(host: String, groupID: String) -> NMPLiveQuery {
-    .single(groupRecordDemand(host: host, groupID: groupID, kind: RoomKind.groupMembers))
+/// This room's relay-signed records, as one reactive observation.
+///
+/// Every delivery is a complete `NMPGroupSnapshot`: typed metadata, the
+/// admin list and the member list, each entry already carrying the hosts
+/// that named it. The app never sees a row delta, never walks a `p` row,
+/// and never accumulates -- the value that arrives IS the current value, so
+/// a demotion shrinks the list the same way a promotion grows it.
+///
+/// One observation for both lists, not two: NMP mints one branch per host in
+/// the scope, and this app's scope names exactly one.
+///
+/// kind:39000 is deliberately NOT selected. The record selector exists so a
+/// screen pays only for what it renders, and the room renders neither the
+/// group's name nor its `about` -- both come from the sidebar's directory
+/// listing, which cannot use this door at all (`groupDirectoryQuery(host:)`).
+func roomRecordsObservation(
+    engine: NMPEngine,
+    host: String,
+    groupID: String
+) throws -> NMPGroupObservation {
+    try roomGroup(host: host, groupID: groupID)
+        .observeRecords(engine: engine, records: [.admins, .members])
 }
 
-func roomAdminQuery(host: String, groupID: String) -> NMPLiveQuery {
-    .single(groupRecordDemand(host: host, groupID: groupID, kind: RoomKind.groupAdmins))
-}
-
-/// Every group the host advertises. Not expressible through
-/// `NMPRelayScope.groupsWhere` either -- that door needs a membership or
-/// admin predicate, and "everything this relay hosts" is not one. Same
-/// placeholder as the two above.
+/// Every group the host advertises, for the channel sidebar.
+///
+/// NOT expressible through `NMPRelayScope.observeRecords(engine:matching:records:)`.
+/// `NMPGroupPredicate` has exactly three leaves -- `memberListIncludes`,
+/// `adminListIncludes` and `anyOf(ids)` -- and "every group this relay
+/// hosts" is none of them: the first two are membership questions this
+/// browse list deliberately does not ask, and the third needs the very ids
+/// the browse is for. So this one 39000 read stays hand-built, and
+/// `GroupDirectoryProjection` stays the single place that parses it.
+/// Tracked as an upstream gap; see that type's doc comment.
 func groupDirectoryQuery(host: String) -> NMPLiveQuery {
     .single(
         NMPDemand(
@@ -102,17 +116,5 @@ func roomDirectoryQuery(host: String) -> NMPLiveQuery {
             source: .pinned([host]),
             cache: .strict
         )
-    )
-}
-
-private func groupRecordDemand(host: String, groupID: String, kind: UInt16) -> NMPDemand {
-    NMPDemand(
-        selection: NMPFilter(
-            kinds: [kind],
-            tags: ["d": .literal([groupID])],
-            limit: 20
-        ),
-        source: .pinned([host]),
-        cache: .strict
     )
 }

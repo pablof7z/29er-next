@@ -9,8 +9,7 @@ final class RoomOpenProbeTests: XCTestCase {
             [
                 "contentObserveMs",
                 "activityObserveMs",
-                "membershipObserveMs",
-                "adminsObserveMs",
+                "groupRecordsObserveMs",
                 "profilesObserveMs"
             ]
         )

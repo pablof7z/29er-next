@@ -23,22 +23,18 @@ final class RoomComposerProjectionTests: XCTestCase {
 
     func testPickerIncludesCompleteRosterAndLiveStatusOnlyPeople() {
         let current = RoomPerson(
-            member: nil,
             activity: activity(pubkey: "current", slug: "me"),
             pubkey: "current"
         )
         let zeta = RoomPerson(
-            member: nil,
             activity: activity(pubkey: "zeta", slug: "zeta"),
             pubkey: "zeta"
         )
         let alpha = RoomPerson(
-            member: nil,
             activity: activity(pubkey: "alpha", slug: "alpha", title: "Ship profile sheets"),
             pubkey: "alpha"
         )
         let inactive = RoomPerson(
-            member: RoomMember(id: "human", pubkey: "human"),
             activity: nil,
             pubkey: "human"
         )
@@ -57,12 +53,10 @@ final class RoomComposerProjectionTests: XCTestCase {
 
     func testPickerExcludesBackendIdentities() {
         let backend = RoomPerson(
-            member: nil,
             activity: activity(pubkey: "backend", slug: "backend"),
             pubkey: "backend"
         )
         let agent = RoomPerson(
-            member: nil,
             activity: activity(pubkey: "agent", slug: "agent1"),
             pubkey: "agent"
         )
@@ -87,7 +81,6 @@ final class RoomComposerProjectionTests: XCTestCase {
 
     func testReplyTargetsTheTappedAuthorAndKeepsLocalPreview() {
         let author = RoomPerson(
-            member: nil,
             activity: activity(pubkey: "agent", slug: "agent1"),
             pubkey: "agent"
         )
