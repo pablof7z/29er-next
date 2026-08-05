@@ -43,6 +43,13 @@ public struct BoundaryPolicy: Codable, Sendable {
         "NMP Blossom authorization input",
         "Blossom error presentation",
         "Legacy secret cleanup",
+        // `NMPGroupMetadata` types the three rows NIP-29 defines and carries
+        // the record's complete row list verbatim, in its own words, "so that
+        // reading a row NIP-29 core does not define (a `parent`, say) needs no
+        // hand-parser here". Reading one is therefore the supported contract,
+        // not a gap: there is no upstream issue to name because NMP is not
+        // going to define somebody else's convention.
+        "NMP group-metadata verbatim rows",
     ]
     public let schemaVersion: Int
     public let rules: [BoundaryRule]
