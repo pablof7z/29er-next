@@ -56,3 +56,12 @@ func openNMPGroupRecords(
 ) async throws -> NMPGroupObservation {
     try roomRecordsObservation(engine: engine, host: host, groupID: groupID)
 }
+
+/// The same door widened to a whole host: every group it advertises, rather
+/// than one this app has already named.
+func openNMPGroupDirectory(
+    engine: NMPEngine,
+    host: String
+) async throws -> NMPGroupRecordsObservation {
+    try groupDirectoryObservation(engine: engine, host: host)
+}

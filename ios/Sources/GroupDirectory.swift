@@ -31,55 +31,45 @@ struct GroupTreeNode: Identifiable, Hashable, Sendable {
 
 /// The channel sidebar's view of a relay's public rooms.
 ///
-/// This is the app's LAST hand-rolled reader of a relay-signed NIP-29 record,
-/// and the only remaining place kind:39000 is parsed out of `tags: [[String]]`.
-/// The room screen no longer parses anything -- it reads typed
-/// `NMPListedSubject`s off `NMPGroupSnapshot` (`roomRecordsObservation`).
+/// The app no longer reads a relay-signed NIP-29 record at all. This used to
+/// be the last place kind:39000 was parsed out of `tags: [[String]]`, because
+/// every `NMPGroupPredicate` leaf named a group by a membership fact or by id
+/// and a BROWSE asks neither -- it has no ids until the answer arrives. NMP
+/// #1252 added `NMPGroupPredicate.all`, so the browse is now a predicate like
+/// any other and the parse is deleted with it: which record wins its
+/// addressable coordinate, and what its NIP-29 fields say, are both NMP's
+/// answers now.
 ///
-/// Why this one could not follow: NMP's records door is
-/// `NMPRelayScope.observeRecords(engine:matching:records:)`, and every
-/// `NMPGroupPredicate` leaf names a group by a membership fact
-/// (`memberListIncludes`, `adminListIncludes`) or by id (`anyOf`). This
-/// sidebar is a BROWSE -- "public rooms from this relay" -- so it asks no
-/// membership question and has no ids until the answer arrives. Closing it
-/// needs either a predicate leaf meaning "every group this host advertises",
-/// or a public projection from a delivered `Row` to `NMPGroupMetadata`;
-/// filed as `pablof7z/nmp#1252`. Delete this whole parse when it lands.
+/// What is left here is the hierarchy, which is NOT NIP-29: the `parent` row is
+/// a Mosaico convention carried on the metadata record, so it is read off
+/// `NMPGroupMetadata.tags` -- the rows NMP decoded and did not claim.
 enum GroupDirectoryProjection {
-    /// The host's groups, from the authoritative kind:39000 record per group.
+    /// The host's groups, one per relay-signed record NMP resolved.
     ///
-    /// 39000 is ADDRESSABLE: `(kind, pubkey, d)` names one record and a newer
-    /// publication replaces the older one. Mapping every delivered row
-    /// instead would let a superseded record's fields survive its
-    /// replacement.
-    static func groups(from rows: [Row], hostRelay: String) -> [GroupSummary] {
-        authoritative(kind: RoomKind.groupMetadata, in: rows)
-            .compactMap { row in
-                group(hostRelay: hostRelay, kind: row.kind, tags: row.tags)
-            }
+    /// 39000 is ADDRESSABLE, and picking the winner per `(kind, pubkey, d)` is
+    /// what this used to do by hand. `NMPGroupSnapshot.metadata` is already
+    /// that winner -- "latest `created_at` wins, never a field-wise merge" --
+    /// so there is nothing left to decide.
+    static func groups(from snapshots: [NMPGroupSnapshot], hostRelay: String) -> [GroupSummary] {
+        snapshots
+            .compactMap { summary(for: $0, hostRelay: hostRelay) }
             .sorted(by: groupNameFirst)
     }
 
-    static func group(
-        hostRelay: String,
-        kind: UInt16,
-        tags: [[String]]
+    static func summary(
+        for snapshot: NMPGroupSnapshot,
+        hostRelay: String
     ) -> GroupSummary? {
-        guard kind == RoomKind.groupMetadata,
-              let localID = firstTag("d", in: tags),
-              !localID.isEmpty else {
-            return nil
-        }
-
-        let name = firstTag("name", in: tags).flatMap { $0.isEmpty ? nil : $0 } ?? localID
-        let about = firstTag("about", in: tags).flatMap { $0.isEmpty ? nil : $0 }
-        let parentLocalID = authoritativeParent(in: tags, childLocalID: localID)
+        guard !snapshot.id.isEmpty else { return nil }
+        let metadata = snapshot.metadata
 
         return GroupSummary(
-            id: GroupCoordinate(hostRelay: hostRelay, localID: localID),
-            name: name,
-            about: about,
-            parentLocalID: parentLocalID
+            id: GroupCoordinate(hostRelay: hostRelay, localID: snapshot.id),
+            name: metadata?.name.flatMap { $0.isEmpty ? nil : $0 } ?? snapshot.id,
+            about: metadata?.about.flatMap { $0.isEmpty ? nil : $0 },
+            parentLocalID: metadata.flatMap {
+                parentLocalID(in: $0.tags, childLocalID: snapshot.id)
+            }
         )
     }
 
@@ -119,7 +109,12 @@ enum GroupDirectoryProjection {
         )
     }
 
-    private static func authoritativeParent(
+    /// The hierarchy edge, which NIP-29 does not define. Mosaico carries it on
+    /// the metadata record as a `parent` row, so it is read off the rows NMP
+    /// decoded and did not claim -- never off a raw event. Ambiguity is
+    /// resolved by refusing the edge: more than one `parent` row, or a group
+    /// naming itself, is not a tree.
+    static func parentLocalID(
         in tags: [[String]],
         childLocalID: String
     ) -> String? {
@@ -129,36 +124,6 @@ enum GroupDirectoryProjection {
         }
         guard parents.count == 1, parents[0] != childLocalID else { return nil }
         return parents[0]
-    }
-
-    /// The single authoritative record per addressable coordinate.
-    private static func authoritative(kind: UInt16, in rows: [Row]) -> [Row] {
-        var latest: [Coordinate: Row] = [:]
-        for row in rows where row.kind == kind {
-            guard let groupID = firstTag("d", in: row.tags), !groupID.isEmpty else { continue }
-            let coordinate = Coordinate(kind: row.kind, pubkey: row.pubkey, groupID: groupID)
-            guard let held = latest[coordinate] else {
-                latest[coordinate] = row
-                continue
-            }
-            if supersedes(row, held) { latest[coordinate] = row }
-        }
-        return latest.values.sorted { $0.id < $1.id }
-    }
-
-    private struct Coordinate: Hashable {
-        let kind: UInt16
-        let pubkey: String
-        let groupID: String
-    }
-
-    private static func supersedes(_ candidate: Row, _ held: Row) -> Bool {
-        if candidate.createdAt != held.createdAt { return candidate.createdAt > held.createdAt }
-        return candidate.id > held.id
-    }
-
-    private static func firstTag(_ name: String, in tags: [[String]]) -> String? {
-        tags.first { $0.first == name && $0.count > 1 }?[1]
     }
 
     private static func groupNameFirst(_ lhs: GroupSummary, _ rhs: GroupSummary) -> Bool {

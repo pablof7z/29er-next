@@ -17,11 +17,11 @@ enum RoomKind {
     static let joinRequest: UInt16 = 9_021
     static let leaveRequest: UInt16 = 9_022
     static let liveStatus: UInt16 = 30_315
-    /// The one relay-signed record this app still reads as raw rows -- see
-    /// `groupDirectoryQuery(host:)`. 39001 and 39002 are gone from here
-    /// because nothing selects them any more: they arrive typed, through
-    /// `roomRecordsObservation(engine:host:groupID:)`.
-    static let groupMetadata: UInt16 = 39_000
+    // NIP-29's own relay-signed records -- 39000, 39001, 39002 -- are named
+    // nowhere in this app. Every one of them arrives typed, through
+    // `roomRecordsObservation` for a room and `groupDirectoryObservation` for
+    // the sidebar. A kind constant here would only be a way to ask for one
+    // raw again.
 
     /// Everything the room timeline renders, read through one subscription.
     static let timeline: [UInt16] = [chat, putUser, removeUser, joinRequest, leaveRequest]
@@ -90,22 +90,20 @@ func roomRecordsObservation(
 
 /// Every group the host advertises, for the channel sidebar.
 ///
-/// NOT expressible through `NMPRelayScope.observeRecords(engine:matching:records:)`.
-/// `NMPGroupPredicate` has exactly three leaves -- `memberListIncludes`,
-/// `adminListIncludes` and `anyOf(ids)` -- and "every group this relay
-/// hosts" is none of them: the first two are membership questions this
-/// browse list deliberately does not ask, and the third needs the very ids
-/// the browse is for. So this one 39000 read stays hand-built, and
-/// `GroupDirectoryProjection` stays the single place that parses it.
-/// Tracked as an upstream gap; see that type's doc comment.
-func groupDirectoryQuery(host: String) -> NMPLiveQuery {
-    .single(
-        NMPDemand(
-            selection: NMPFilter(kinds: [RoomKind.groupMetadata], limit: 250),
-            source: .pinned([host]),
-            cache: .strict
-        )
-    )
+/// A browse asks no membership question and has no ids until the answer
+/// arrives, which is what `NMPGroupPredicate.all` means (NMP #1252). The 250
+/// bound is this host's own branch, and the app declares it because how much
+/// of a directory to show is product policy.
+///
+/// Each delivery is the complete snapshot set, latest-wins. The app never
+/// accumulates, never picks a winner per addressable coordinate, and never
+/// sees a row.
+func groupDirectoryObservation(
+    engine: NMPEngine,
+    host: String
+) throws -> NMPGroupRecordsObservation {
+    try NMPRelayScope.on([host])
+        .observeRecords(engine: engine, matching: .all, records: [.metadata], limit: 250)
 }
 
 /// Recent chat across every group at the host, for the channel-list preview.

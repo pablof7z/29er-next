@@ -62,6 +62,13 @@ deleted, and `ChatDraft.mentionRows`/`ChatDraft.namedPubkeys` replace it,
 covering strictly less schema and naming NMP issue 964 rather than the closed
 1243.
 
+The same audit reached back to `NMPGroupPredicate.all` (NMP #1252), landed
+before that range and not adopted at the time. It is what the channel sidebar
+needed: a browse asks no membership question and has no ids until the answer
+arrives, which was the whole reason the app kept a hand-rolled kind:39000
+reader. Nine `GroupDirectory.swift` exceptions are deleted with the parser.
+One remains and it is permanent, not deferred -- see below.
+
 ## Ownership
 
 Swift owns presentation, navigation, product state, operator configuration,
@@ -131,8 +138,13 @@ identifier. CI rejects wildcard paths, duplicate exceptions, changed occurrence
 counts, and unknown permanent owners; inline suppressions are not supported.
 The exception is deleted when that surface lands.
 Permanent exceptions are limited to supported facade contracts, such as
-NIP-07 consent signing, NMP's documented Blossom draft-sign-validate flow, and
-deletion-only cleanup of the former plaintext account file.
+NIP-07 consent signing, NMP's documented Blossom draft-sign-validate flow,
+deletion-only cleanup of the former plaintext account file, and reading a row
+off `NMPGroupMetadata.tags` that NIP-29 does not define -- which that type
+carries verbatim, in its own words, "so reading a row NIP-29 core does not
+define (a `parent`, say) needs no hand-parser here". A permanent owner is not
+a softer temporary one: it says there is no upstream issue to name, because
+NMP is not going to define somebody else's convention.
 
 Run the same gate locally:
 

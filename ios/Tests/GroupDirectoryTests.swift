@@ -1,87 +1,72 @@
+import NMP
 import XCTest
 @testable import TwentyNinerNext
 
+/// The hierarchy, which is all that is left here.
+///
+/// The tests that used to live here drove `GroupDirectoryProjection.group`,
+/// an app-side kind:39000 parser: which record wins its addressable
+/// coordinate, what `d`/`name`/`about` say, and that a kind:9 is not a group.
+/// All of that is NMP's answer now (`NMPGroupSnapshot`), so testing it here
+/// would only re-assert the library's contract against a fixture this app
+/// invented.
+///
+/// The `parent` row is different. NIP-29 does not define it -- it is a
+/// Mosaico convention riding on the metadata record -- so NMP decodes it and
+/// declines to interpret it, and deciding what an ambiguous one means stays
+/// this app's job.
 final class GroupDirectoryTests: XCTestCase {
-    func testProjectionUsesRelayMetadataAndCompositeIdentity() throws {
-        let group = try XCTUnwrap(
-            GroupDirectoryProjection.group(
-                hostRelay: "wss://groups.example.com",
-                kind: 39_000,
-                tags: [
-                    ["d", "general"],
-                    ["name", "General"],
-                    ["about", "The main room"],
-                    ["parent", "workspace"]
-                ]
-            )
-        )
-
+    func testParentRowNamesTheHierarchyEdge() {
         XCTAssertEqual(
-            group.id,
-            GroupCoordinate(hostRelay: "wss://groups.example.com", localID: "general")
+            GroupDirectoryProjection.parentLocalID(
+                in: [["d", "general"], ["name", "General"], ["parent", "workspace"]],
+                childLocalID: "general"
+            ),
+            "workspace"
         )
-        XCTAssertEqual(group.name, "General")
-        XCTAssertEqual(group.about, "The main room")
-        XCTAssertEqual(group.parentLocalID, "workspace")
     }
 
-    func testProjectionFallsBackToLocalIdentifier() throws {
-        let group = try XCTUnwrap(
-            GroupDirectoryProjection.group(
-                hostRelay: "wss://groups.example.com",
-                kind: 39_000,
-                tags: [["d", "ops"]]
-            )
-        )
-
-        XCTAssertEqual(group.name, "ops")
-        XCTAssertEqual(group.initials, "O")
-    }
-
-    func testNonMetadataEventIsNotAGroup() {
+    /// Ambiguity refuses the edge rather than guessing one. A group naming
+    /// itself would be a cycle; two rows naming different parents is not a
+    /// tree; and two rows naming the same parent is still a record that says
+    /// its hierarchy twice, which this app declines to read as agreement.
+    func testAmbiguousOrSelfParentOmitsTheEdge() {
         XCTAssertNil(
-            GroupDirectoryProjection.group(
-                hostRelay: "wss://groups.example.com",
-                kind: 9,
-                tags: [["d", "general"]]
+            GroupDirectoryProjection.parentLocalID(
+                in: [["parent", "root-a"], ["parent", "root-b"]],
+                childLocalID: "child"
+            )
+        )
+        XCTAssertNil(
+            GroupDirectoryProjection.parentLocalID(
+                in: [["parent", "child"]],
+                childLocalID: "child"
+            )
+        )
+        XCTAssertNil(
+            GroupDirectoryProjection.parentLocalID(
+                in: [["parent", "root"], ["parent", "root"]],
+                childLocalID: "child"
+            )
+        )
+        XCTAssertNil(
+            GroupDirectoryProjection.parentLocalID(
+                in: [["parent", ""]],
+                childLocalID: "child"
             )
         )
     }
 
-    func testConflictingOrSelfParentTagsOmitHierarchyEdge() throws {
-        let conflicting = try XCTUnwrap(
-            GroupDirectoryProjection.group(
-                hostRelay: "wss://groups.example.com",
-                kind: 39_000,
-                tags: [
-                    ["d", "child"],
-                    ["parent", "root-a"],
-                    ["parent", "root-b"]
-                ]
+    /// A `child` row is not the inverse of a `parent` row. Only the child's
+    /// own record may state the edge, so a parent claiming a child creates
+    /// nothing.
+    func testChildRowIsNotAnEdge() {
+        XCTAssertNil(
+            GroupDirectoryProjection.parentLocalID(
+                in: [["d", "root"], ["child", "child"]],
+                childLocalID: "root"
             )
         )
-        let selfLinked = try XCTUnwrap(
-            GroupDirectoryProjection.group(
-                hostRelay: "wss://groups.example.com",
-                kind: 39_000,
-                tags: [["d", "child"], ["parent", "child"]]
-            )
-        )
-        let duplicated = try XCTUnwrap(
-            GroupDirectoryProjection.group(
-                hostRelay: "wss://groups.example.com",
-                kind: 39_000,
-                tags: [
-                    ["d", "child"],
-                    ["parent", "root"],
-                    ["parent", "root"]
-                ]
-            )
-        )
-
-        XCTAssertNil(conflicting.parentLocalID)
-        XCTAssertNil(selfLinked.parentLocalID)
-        XCTAssertNil(duplicated.parentLocalID)
     }
 
     func testHierarchyLinksKnownParentWithinSameHost() {
@@ -98,21 +83,6 @@ final class GroupDirectoryTests: XCTestCase {
         )
         XCTAssertEqual(GroupDirectoryProjection.directChildren(of: rootA, in: groups), [childA])
         XCTAssertEqual(GroupDirectoryProjection.directChildren(of: rootB, in: groups), [childB])
-    }
-
-    func testParentChildHintDoesNotCreateIndependentEdge() throws {
-        let parent = try XCTUnwrap(
-            GroupDirectoryProjection.group(
-                hostRelay: "wss://groups.example.com",
-                kind: 39_000,
-                tags: [["d", "root"], ["child", "child"]]
-            )
-        )
-        let child = group(host: "wss://groups.example.com", localID: "child")
-        let groups = [parent, child]
-
-        XCTAssertEqual(Set(GroupDirectoryProjection.roots(in: groups).map(\.id)), Set([parent.id, child.id]))
-        XCTAssertTrue(GroupDirectoryProjection.directChildren(of: parent, in: groups).isEmpty)
     }
 
     func testTreePreservesNestedHierarchy() {

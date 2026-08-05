@@ -31,17 +31,16 @@ extension AppModel {
         hasReceivedGroups = false
         groupsError = nil
         do {
-            let query = try await openNMPQuery(
-                engine: engine,
-                query: groupDirectoryQuery(host: host)
-            )
-            defer { query.cancel() }
+            let observation = try await openNMPGroupDirectory(engine: engine, host: host)
+            defer { observation.cancel() }
 
-            for try await batch in query {
+            // Each delivery is the complete snapshot set for the host, not a
+            // patch on the last, so this assigns rather than accumulates.
+            for try await snapshots in observation {
                 guard !Task.isCancelled,
                       generation == engineGeneration,
                       selectedHost == host else { return }
-                groups = GroupDirectoryProjection.groups(from: batch.rows, hostRelay: host)
+                groups = GroupDirectoryProjection.groups(from: snapshots, hostRelay: host)
                 groupsError = nil
                 hasReceivedGroups = true
             }
