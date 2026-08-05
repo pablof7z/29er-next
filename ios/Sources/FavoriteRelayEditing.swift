@@ -151,6 +151,8 @@ extension AppModel {
             return
         }
 
+        // Clears whatever the last edit ended in. There is nothing to enter
+        // instead: this write is about to be accepted or refused outright.
         favoriteRelayEditState = .idle
         let generation = engineGeneration
         Task { [weak self] in

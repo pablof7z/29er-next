@@ -90,6 +90,35 @@ extension RoomTimelineModel {
         writeWatchers.values.forEach { $0.cancel() }
         writeWatchers.removeAll()
     }
+
+    /// Report a write that was already over before this room was opened.
+    ///
+    /// A watch dies with the process; NMP's custody does not, so after a
+    /// relaunch the publish queue is the only place the verdict still exists.
+    /// A group write returns no receipt id and hardcodes `correlation: None`
+    /// (nmp#1244), so the frozen event id is the one thing an app can match
+    /// on -- and it can only match it against events already in its own
+    /// query, which is exactly what an accepted write is.
+    ///
+    /// One inspection, when the room's first rows land. The door never blocks
+    /// and never streams, so there is nothing here to poll.
+    func reportStrandedWrites() {
+        guard writeFailure == nil, let entries = try? engine.publishQueue() else { return }
+        let mine = Set(chatRows.map(\.id))
+        for entry in entries where mine.contains(entry.eventID) {
+            guard let outcome = entry.outcome else { continue }
+            var report = WriteReport(subject: "message")
+            report.record(.signing(entry.signing))
+            for (relay, state) in entry.relayStates {
+                report.record(.relay(relay: relay, state: state))
+            }
+            report.record(.outcome(outcome))
+            if let failure = report.failure {
+                writeFailure = failure
+                return
+            }
+        }
+    }
 }
 
 /// The tag rows a group chat message carries beyond the `h` row NMP itself

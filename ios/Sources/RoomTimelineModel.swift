@@ -188,6 +188,7 @@ final class RoomTimelineModel {
                 guard !Task.isCancelled else { return }
                 chatRows = batch.rows
                 chatError = nil
+                if !hasReceivedChat { reportStrandedWrites() }
                 hasReceivedChat = true
                 publishProfileAuthors()
                 recordContentProofSnapshotIfReady()
