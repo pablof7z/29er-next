@@ -54,13 +54,13 @@ The iOS preview bundle identifier is `io.f7z.app29er.next`, so it installs besid
 - Explicit local key import through NMP's `addAccount` and `setActiveAccount` surface. The app retains only the returned public key.
 - NMP's opt-in plaintext file provider restores the active signer at launch; the nsec never enters the app's own product state or event database.
 - Signing out clears NMP's checkpoint, shuts down the credential-owning engine, and creates a fresh read-only engine over the same event store.
-- Signed-in accounts can publish durable kind:9 management commands to room backends and follow NMP's canonical write receipts.
+- Signed-in accounts can publish kind:9 management commands to room backends. Publishing takes custody, so nothing waits for delivery: the app hands the event over and reports a settled failure afterwards, out of NMP's publish queue.
 - The @ picker includes every durable kind 39002 member, including inactive members, plus status-only pubkeys active in the room. Swift chooses recipients; NMP owns NIP-27 encoding, matching tags, signing, host context, routing, and receipts.
 - Live per-relay NMP diagnostics.
 
 Automatic login deliberately favors convenience over credential protection: the NMP SDK stores one plaintext nsec file inside the app sandbox with owner-only permissions. It does not use Keychain, Secure Enclave, hardware-backed encryption, or the canonical event/outbox database. Standard protected vault providers and credential recovery remain separate upstream NMP work.
 
-Signed-in accounts can add or remove public favorite-relay `r` tags. Swift edits the complete kind 10009 event delivered by NMP, preserving its content, unrelated tags, and ordering, then publishes a durable generic `WriteIntent` through author-outbox routing. The UI follows NMP's receipt and canonical store path and keeps no optimistic mirror. [NMP #597](https://github.com/pablof7z/nmp/issues/597) tracks exposing the existing Rust exact-base replaceable guard to Swift and Kotlin as concurrency hardening; generic native event creation and publication already work.
+Signed-in accounts can add or remove public favorite-relay `r` tags. Swift edits the complete kind 10009 event delivered by NMP, preserving its content, unrelated tags, and ordering, then publishes a generic `WriteIntent` with `.auto` routing — which strategy claims a kind is NMP's call, decided at send time. The UI follows NMP's canonical store path and keeps no optimistic mirror. The exact-base replaceable guard now reaches Swift ([NMP #597](https://github.com/pablof7z/nmp/issues/597), closed): a stale edit is accepted, taken into custody, and refused in the publish queue as `WriteOutcome.refused(.replaceableBaseChanged(expected:actual:))`, keeping both event ids.
 
 The current typed kind 9 composer is NMP-owned end to end. Broader immutable draft/context composition for other protocol-owned event types remains tracked by [NMP #45](https://github.com/pablof7z/nmp/issues/45); Swift does not add protocol validation, raw tags, relay routing, signing, retries, or compatibility shims while that contract remains open.
 

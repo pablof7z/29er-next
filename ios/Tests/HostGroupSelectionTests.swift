@@ -171,7 +171,6 @@ final class HostGroupSelectionTests: XCTestCase {
         XCTAssertEqual(kind, 10_009)
         XCTAssertEqual(tags, source.tags + [["r", secondHost]])
         XCTAssertEqual(content, source.content)
-        XCTAssertEqual(intent.durability, .durable)
         XCTAssertEqual(intent.routing, .auto)
     }
 
@@ -270,18 +269,39 @@ final class HostGroupSelectionTests: XCTestCase {
         }
     }
 
+    /// The app's only tested write-handling path. A stale compare-and-swap is
+    /// no longer a throw from `publish`: the write is ACCEPTED, taken into
+    /// custody, and refused in the queue -- keeping both event ids, which is
+    /// what makes it recoverable without asking the person anything.
     @MainActor
-    func testFavoriteRelayEditorExplainsReceiptFailure() {
+    func testFavoriteRelayEditorExplainsRefusedAndCancelledWrites() async {
+        let conflict = await AppModel.favoriteRelayFailure(
+            draining: WriteFactSequence([
+                .signing(.signed(eventId: "new")),
+                .outcome(.refused(.replaceableBaseChanged(expected: "old", actual: "new")))
+            ])
+        )
         XCTAssertEqual(
-            AppModel.favoriteRelayFailureMessage(
-                for: .replaceableConflict(expected: "old", actual: "new")
-            ),
+            conflict,
             "The relay list changed while this update was in flight. Review it and try again."
         )
-        XCTAssertEqual(
-            AppModel.favoriteRelayFailureMessage(for: .cancelled),
-            "The relay list was not sent -- the write was cancelled."
+
+        let cancelled = await AppModel.favoriteRelayFailure(
+            draining: WriteFactSequence([.outcome(.notSent(.cancelled))])
         )
+        XCTAssertEqual(cancelled, "The relay list was not sent -- the write was cancelled.")
+    }
+
+    /// `expected`/`actual` survive the boundary intact, which is the whole
+    /// reason the refusal is worth more than a string.
+    func testStaleReplaceableBaseKeepsBothEventIds() {
+        guard case let .outcome(.refused(.replaceableBaseChanged(expected, actual))) =
+            WriteFact.outcome(.refused(.replaceableBaseChanged(expected: "old", actual: "new")))
+        else {
+            return XCTFail("Expected a refused stale-base outcome")
+        }
+        XCTAssertEqual(expected, "old")
+        XCTAssertEqual(actual, "new")
     }
 
     private func rememberedSnapshot() -> RememberedGroupSnapshot {

@@ -41,20 +41,14 @@ struct FavoriteRelayBrowser: View {
             .toolbar {
                 if activePubkey != nil {
                     ToolbarItemGroup(placement: .primaryAction) {
-                        if editState.isWorking {
-                            ProgressView()
-                                .accessibilityLabel("Updating favorite relays")
-                        } else {
 #if os(iOS)
-                            EditButton()
+                        EditButton()
 #endif
-                        }
                         Button {
                             showingAddRelay = true
                         } label: {
                             Label("Add Relay", systemImage: "plus")
                         }
-                        .disabled(editState.isWorking)
                         .accessibilityIdentifier("add-favorite-relay")
                     }
                 }
@@ -115,14 +109,13 @@ struct FavoriteRelayBrowser: View {
                     .accessibilityIdentifier("favorite-relay-\(relay.accessibilityKey)")
                 }
                 .onDelete { offsets in
-                    guard !editState.isWorking, let index = offsets.first else { return }
+                    guard let index = offsets.first else { return }
                     removeRelay(relays[index].url)
                 }
             } footer: {
                 footer
             }
         }
-        .disabled(editState.isWorking)
     }
 
     private var emptyFavorites: some View {
@@ -132,17 +125,13 @@ struct FavoriteRelayBrowser: View {
                 symbol: "antenna.radiowaves.left.and.right",
                 description: "Add a relay to your NIP-51 chat relay list."
             )
-            if editState.isWorking {
-                ProgressView("Updating favorite relays…")
-            } else {
-                Button {
-                    showingAddRelay = true
-                } label: {
-                    Label("Add Relay", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("add-first-favorite-relay")
+            Button {
+                showingAddRelay = true
+            } label: {
+                Label("Add Relay", systemImage: "plus")
             }
+            .buttonStyle(.borderedProminent)
+            .accessibilityIdentifier("add-first-favorite-relay")
         }
         .padding()
     }

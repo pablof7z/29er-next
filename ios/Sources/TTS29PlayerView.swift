@@ -175,7 +175,7 @@ private struct TTS29ItemPlayer: View {
     }
 
     private func submitAnswer(_ answers: [TTS29Answer]) {
-        Task { await playback.submitAnswer(for: item, answers: answers) }
+        playback.submitAnswer(for: item, answers: answers)
     }
 
     private func resumeIfReturning() {

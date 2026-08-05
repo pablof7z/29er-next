@@ -3,11 +3,9 @@ import NMP
 
 enum TTS29AnswerState: Equatable {
     case idle
-    case submitting
     case submitted
     case failed(String)
 
-    var isSubmitting: Bool { if case .submitting = self { true } else { false } }
     var failureMessage: String? { if case .failed(let message) = self { message } else { nil } }
 }
 
@@ -19,7 +17,13 @@ extension TTS29PlaybackController {
     /// through NMP's NIP-29 publication gate. NMP owns the `h` row, the
     /// routing to the group's host, signing, and the receipt; this method
     /// only reports the outcome.
-    func submitAnswer(for item: TTS29Item, answers: [TTS29Answer]) async {
+    ///
+    /// The answer is submitted the moment NMP takes it -- `publish` returning
+    /// IS acceptance -- so there is no submitting state to sit in and no
+    /// stream to drain before the sheet can move on. A write that later
+    /// settles badly flips the state to `.failed` where the reader can see
+    /// it.
+    func submitAnswer(for item: TTS29Item, answers: [TTS29Answer]) {
         guard let activePubkey = context.activePubkey else {
             answerState = .failed("Sign in to answer.")
             return
@@ -38,22 +42,20 @@ extension TTS29PlaybackController {
             return
         }
 
-        answerState = .submitting
         do {
-            let status = try roomGroup(host: context.host, groupID: groupID).publish(
+            let facts = try roomGroup(host: context.host, groupID: groupID).publish(
                 engine: engine,
                 authorPubkeyHex: activePubkey,
                 kind: RoomKind.chat,
                 tags: TTS29AnswerComposer.tags(itemID: item.id, answers: answers),
                 content: ""
             )
-            var failure: String?
-            for try await frame in status {
-                if let message = WriteFailureText.message(for: frame, subject: "answer") {
-                    failure = message
-                }
+            answerState = .submitted
+            Task { [weak self] in
+                guard let failure = await WriteReport.failure(draining: facts, subject: "answer"),
+                      let self, !Task.isCancelled else { return }
+                self.answerState = .failed(failure)
             }
-            answerState = failure.map(TTS29AnswerState.failed) ?? .submitted
         } catch {
             answerState = .failed(WriteFailureText.startFailure(error, action: "answer"))
         }

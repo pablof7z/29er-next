@@ -21,63 +21,121 @@ extension RoomTimelineModel {
         ) else {
             return "Messages cannot be empty."
         }
-        return await sendGroupMessage(
+        return sendGroupMessage(
             content,
             recipientPubkeys: request.recipients.map(\.pubkey),
             reply: request.reply
         )
     }
 
-    func sendManagementCommand(_ command: String, backendPubkey: String) async -> String? {
-        await sendGroupMessage(command, recipientPubkeys: [backendPubkey], reply: nil)
+    func sendManagementCommand(_ command: String, backendPubkey: String) -> String? {
+        sendGroupMessage(command, recipientPubkeys: [backendPubkey], reply: nil)
     }
 
+    /// Hand the message to NMP and stop.
+    ///
+    /// `publish` returning IS acceptance -- there is no `.accepted` frame to
+    /// wait for any more, because there is nothing left to ask. The event is
+    /// in NMP's canonical store and therefore already in this room's live
+    /// query, whose provenance reports it as in cache with `relays: []` until
+    /// a relay carries it. That is a real state, not a loading placeholder.
+    ///
+    /// The only failures left here are the two `publish` itself refuses on:
+    /// NMP could not write anything down, or the instruction could not
+    /// resolve. Everything else is in NMP's custody and settles on the facts
+    /// stream, which `watchWrite` reads without anybody waiting.
     private func sendGroupMessage(
         _ content: String,
         recipientPubkeys: [String],
         reply: ComposerReply?
-    ) async -> String? {
+    ) -> String? {
         guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return "Messages cannot be empty."
         }
         guard let author = recipient else { return "Sign in to send a message." }
 
         do {
-            let status = try roomGroup(host: hostRelay, groupID: groupID).publish(
+            let facts = try roomGroup(host: hostRelay, groupID: groupID).publish(
                 engine: engine,
                 authorPubkeyHex: author,
                 kind: RoomKind.chat,
                 tags: ChatMessageTags.rows(recipients: recipientPubkeys, reply: reply, relay: hostRelay),
                 content: content
             )
-            return await firstFailure(in: status)
+            watchWrite(facts, subject: "message")
+            return nil
         } catch {
-            return error.localizedDescription
+            return WriteFailureText.startFailure(error, action: "message")
         }
     }
 
-    /// Drain a group write's receipt stream until NMP accepts it or something
-    /// terminal goes wrong.
+    /// Report a write that settled badly, long after the composer let go.
     ///
-    /// `.accepted` is the point at which NMP has committed the write into its
-    /// canonical store -- and therefore into this room's live query, whose
-    /// provenance reports it as in cache with `relays: []` until a relay
-    /// carries it. That is a real state, not a loading placeholder, so the
-    /// composer hands control back here instead of blocking on `.acked`.
-    func firstFailure(in status: NMPGroupWriteStatus) async -> String? {
-        do {
-            for try await frame in status {
-                if let failure = deliveryFailure(for: frame) { return failure }
-                if case .accepted = frame { return nil }
-            }
-            return "Message delivery ended before NMP accepted it."
-        } catch {
-            return error.localizedDescription
+    /// This is INSPECTION, not waiting: nothing a person can see is blocked
+    /// on it, and a write that parks on an absent signer or an unresolved
+    /// route simply never reports, which is correct -- no clock ends either.
+    /// The room owns the watch, so leaving the room drops it; NMP's custody
+    /// of the write is untouched.
+    func watchWrite(_ facts: NMPGroupWriteFacts, subject: String) {
+        let id = UUID()
+        writeWatchers[id] = Task { [weak self] in
+            let failure = await WriteReport.failure(draining: facts, subject: subject)
+            guard let self, !Task.isCancelled else { return }
+            self.writeWatchers[id] = nil
+            if let failure { self.writeFailure = failure }
         }
     }
 
-    func deliveryFailure(for status: WriteStatus) -> String? {
-        WriteFailureText.message(for: status, subject: "message")
+    func stopWatchingWrites() {
+        writeWatchers.values.forEach { $0.cancel() }
+        writeWatchers.removeAll()
+    }
+
+    /// Report a write that was already over before this room was opened.
+    ///
+    /// A watch dies with the process; NMP's custody does not, so after a
+    /// relaunch the publish queue is the only place the verdict still exists.
+    /// A group write returns no receipt id and hardcodes `correlation: None`
+    /// (nmp#1244), so the frozen event id is the one thing an app can match
+    /// on -- and it can only match it against events already in its own
+    /// query, which is exactly what an accepted write is.
+    ///
+    /// One inspection, when the room's first rows land. The door never streams
+    /// and never waits for settlement, so there is nothing here to poll.
+    func reportStrandedWrites() {
+        guard writeFailure == nil else { return }
+        let mine = Set(chatRows.map(\.id))
+        guard !mine.isEmpty else { return }
+
+        let engine = engine
+        let id = UUID()
+        writeWatchers[id] = Task { [weak self] in
+            let failure = await Self.strandedFailure(engine: engine, eventIDs: mine)
+            guard let self, !Task.isCancelled else { return }
+            self.writeWatchers[id] = nil
+            if let failure, self.writeFailure == nil { self.writeFailure = failure }
+        }
+    }
+
+    /// `nonisolated` so the engine round-trip happens off the main actor. It
+    /// answers immediately, but opening a room is the worst moment to find
+    /// out otherwise.
+    nonisolated private static func strandedFailure(
+        engine: NMPEngine,
+        eventIDs: Set<String>
+    ) async -> String? {
+        guard let entries = try? engine.publishQueue() else { return nil }
+        for entry in entries where eventIDs.contains(entry.eventID) {
+            guard let outcome = entry.outcome else { continue }
+            var report = WriteReport(subject: "message")
+            report.record(.signing(entry.signing))
+            for (relay, state) in entry.relayStates {
+                report.record(.relay(relay: relay, state: state))
+            }
+            report.record(.outcome(outcome))
+            if let failure = report.failure { return failure }
+        }
+        return nil
     }
 }
 
@@ -87,8 +145,9 @@ extension RoomTimelineModel {
 /// NOT NMP-owned yet, and it should be: NMP already owns this schema in Rust
 /// (`crates/nmp-nipc7`, `compose_chat`/`compose_chat_reply` with NIP-C7's
 /// NIP-18 `q` reply row) but that crate is not in `nmp-ffi`'s dependency set
-/// and no `composeChat` reaches Swift, so a native consumer cannot use it.
-/// Delete this in favour of NMP's composer the moment it crosses the FFI.
+/// and no `composeChat` reaches Swift, so a native consumer cannot use it
+/// (nmp#1243). Delete this in favour of NMP's composer the moment it crosses
+/// the FFI.
 enum ChatMessageTags {
     static func rows(
         recipients: [String],
