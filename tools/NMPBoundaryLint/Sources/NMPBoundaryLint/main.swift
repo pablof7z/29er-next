@@ -73,7 +73,8 @@ do {
         scanRoot: arguments.root,
         repositoryRoot: arguments.repositoryRoot
     )
-    let violations = try BoundaryLinter(policy: policy).lint(
+    let scanned = arguments.format == .exceptions ? policy.withoutExceptions : policy
+    let violations = try BoundaryLinter(policy: scanned).lint(
         root: arguments.root,
         repositoryRoot: arguments.repositoryRoot
     )

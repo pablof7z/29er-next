@@ -58,6 +58,14 @@ public struct BoundaryPolicy: Codable, Sendable {
         self.exceptions = exceptions
     }
 
+    /// The same rules with nothing excused, for regeneration. A drifted
+    /// exception list makes the normal scan throw on occurrence counts before
+    /// it can report anything, so rebuilding the list from a drifted state is
+    /// impossible unless the rules can be run on their own.
+    public var withoutExceptions: BoundaryPolicy {
+        BoundaryPolicy(schemaVersion: schemaVersion, rules: rules, exceptions: [])
+    }
+
     public static func load(from url: URL) throws -> BoundaryPolicy {
         let policy = try JSONDecoder().decode(
             BoundaryPolicy.self,

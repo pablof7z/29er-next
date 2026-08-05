@@ -186,9 +186,9 @@ enum AttachmentUploadError: LocalizedError, Equatable {
         case .authorizationFailed:
             "The attachment upload could not be authorized."
         case .authorizationRejected(let status, let reason):
-            Self.statusMessage("The attachment server rejected authorization", status, reason)
+            Self.statusMessage("The attachment server rejected authorization", Int(status), reason)
         case .serverRejected(let status, let reason):
-            Self.statusMessage("The attachment server rejected the upload", status, reason)
+            Self.statusMessage("The attachment server rejected the upload", Int(status), reason)
         case .integrityCheckFailed:
             "The attachment server returned data that did not match the uploaded file."
         case .invalidResponse:
@@ -200,7 +200,11 @@ enum AttachmentUploadError: LocalizedError, Equatable {
         }
     }
 
-    private static func statusMessage(_ prefix: String, _ status: UInt16, _ reason: String?) -> String {
+    /// `Int`, not `UInt16`: this is an HTTP status being formatted for a
+    /// person, and Swift already spells that `Int` (`HTTPURLResponse
+    /// .statusCode`). NMP hands it over as `UInt16` because that is the wire
+    /// width, not because it is a protocol kind.
+    private static func statusMessage(_ prefix: String, _ status: Int, _ reason: String?) -> String {
         let detail = reason?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return detail.isEmpty ? "\(prefix) (HTTP \(status))." : "\(prefix) (HTTP \(status)): \(detail)"
     }
