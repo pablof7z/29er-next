@@ -100,12 +100,32 @@ extension RoomTimelineModel {
     /// on -- and it can only match it against events already in its own
     /// query, which is exactly what an accepted write is.
     ///
-    /// One inspection, when the room's first rows land. The door never blocks
-    /// and never streams, so there is nothing here to poll.
+    /// One inspection, when the room's first rows land. The door never streams
+    /// and never waits for settlement, so there is nothing here to poll.
     func reportStrandedWrites() {
-        guard writeFailure == nil, let entries = try? engine.publishQueue() else { return }
+        guard writeFailure == nil else { return }
         let mine = Set(chatRows.map(\.id))
-        for entry in entries where mine.contains(entry.eventID) {
+        guard !mine.isEmpty else { return }
+
+        let engine = engine
+        let id = UUID()
+        writeWatchers[id] = Task { [weak self] in
+            let failure = await Self.strandedFailure(engine: engine, eventIDs: mine)
+            guard let self, !Task.isCancelled else { return }
+            self.writeWatchers[id] = nil
+            if let failure, self.writeFailure == nil { self.writeFailure = failure }
+        }
+    }
+
+    /// `nonisolated` so the engine round-trip happens off the main actor. It
+    /// answers immediately, but opening a room is the worst moment to find
+    /// out otherwise.
+    nonisolated private static func strandedFailure(
+        engine: NMPEngine,
+        eventIDs: Set<String>
+    ) async -> String? {
+        guard let entries = try? engine.publishQueue() else { return nil }
+        for entry in entries where eventIDs.contains(entry.eventID) {
             guard let outcome = entry.outcome else { continue }
             var report = WriteReport(subject: "message")
             report.record(.signing(entry.signing))
@@ -113,11 +133,9 @@ extension RoomTimelineModel {
                 report.record(.relay(relay: relay, state: state))
             }
             report.record(.outcome(outcome))
-            if let failure = report.failure {
-                writeFailure = failure
-                return
-            }
+            if let failure = report.failure { return failure }
         }
+        return nil
     }
 }
 
