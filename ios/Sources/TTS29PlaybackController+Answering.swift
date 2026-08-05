@@ -43,7 +43,7 @@ extension TTS29PlaybackController {
         }
 
         do {
-            let facts = try roomGroup(host: context.host, groupID: groupID).publish(
+            let receipt = try roomGroup(host: context.host, groupID: groupID).publish(
                 engine: engine,
                 authorPubkeyHex: activePubkey,
                 kind: RoomKind.chat,
@@ -52,7 +52,7 @@ extension TTS29PlaybackController {
             )
             answerState = .submitted
             Task { [weak self] in
-                guard let failure = await WriteReport.failure(draining: facts, subject: "answer"),
+                guard let failure = await WriteReport.failure(draining: receipt.status, subject: "answer"),
                       let self, !Task.isCancelled else { return }
                 self.answerState = .failed(failure)
             }

@@ -9,6 +9,11 @@ extension RoomTimelineModel {
     /// supplies the reaction's own NIP-25 tags and nothing else. It used to
     /// hand-build both, and route a group-scoped event to the author's outbox.
     ///
+    /// NIP-25's own rows are the last thing here that is not NMP's. There is
+    /// no reaction door on the facade at all -- no composer and no typed
+    /// decode -- so the `e`/`p` pair is stated here (nmp#155). Delete it the
+    /// moment one lands.
+    ///
     /// Returns the moment NMP takes the reaction, because that is the moment
     /// it is in the store and in this room's live query. A reaction that
     /// later settles badly reports through `writeFailure`, not through a
@@ -17,14 +22,14 @@ extension RoomTimelineModel {
         guard let viewer = recipient else { return "Sign in to react." }
 
         do {
-            let facts = try roomGroup(host: hostRelay, groupID: groupID).publish(
+            let receipt = try roomGroup(host: hostRelay, groupID: groupID).publish(
                 engine: engine,
                 authorPubkeyHex: viewer,
                 kind: RoomKind.reaction,
                 tags: [["e", message.id], ["p", message.author]],
                 content: emoji
             )
-            watchWrite(facts, subject: "reaction")
+            watchWrite(receipt, subject: "reaction")
             return nil
         } catch {
             return WriteFailureText.startFailure(error, action: "reaction")

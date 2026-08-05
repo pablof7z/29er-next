@@ -32,7 +32,35 @@ consumer capability:
   `NMPFollowActionFailure` lost `baseHasWrongAuthor`/`timestampExhausted`.
   The app calls neither.
 
-No exception was added, removed, or widened by this re-audit.
+A later audit covered `cb93c367d..043191354`, the range in which NMP removed
+the doors that existed only to let apps do NMP's job. It **narrows** what this
+app is allowed to state:
+
+- `chatReply(to:)`, `replyTo(_:)` and `repost(_:)` are new (NMP #1243/#1262):
+  a composer that takes the row you are pointing at and returns a
+  `WritePayload`, taking no relationship, marker, relay hint or author. The
+  reply rows this app used to write itself are now NMP's, and its two
+  `NMP004` exceptions shrink to the mention `p` rows alone.
+- `NMPGroup.publish` and every named 9000-9022 operation return the ordinary
+  `Receipt` instead of `NMPGroupWriteFacts`, which is deleted (NMP #1274).
+  A group write now has a store-issued receipt id.
+- `NMPGroup.publishSigned` is deleted with the rest of the
+  mint-without-publish doors (NMP #1292), and `NMPGroups.publish` is new for
+  the one write that legitimately belongs to several groups (NMP #1281).
+  Neither is a new app capability: the app never signed its own group events
+  and does not publish into several groups.
+- `SigningState.inFlight(pubkey:)` is new (NMP #1270) and
+  `WriteFact.destinations` gained `awaitingAuthorRoutes` (NMP #1236). Both
+  are facts for presentation, which is app-owned, so no rule changes -- but
+  see `WriteReport`: neither is a verdict, and reporting on either would
+  invent a failure.
+- `editMetadata` takes `NMPGroupMetadataEdit` (NMP #1282) and `nip29::Listing`
+  is deleted (NMP #1289). The app calls neither.
+
+Two exceptions were rewritten and none widened: `ChatMessageTags.rows` is
+deleted, and `ChatDraft.mentionRows`/`ChatDraft.namedPubkeys` replace it,
+covering strictly less schema and naming NMP issue 964 rather than the closed
+1243.
 
 ## Ownership
 

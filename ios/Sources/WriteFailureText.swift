@@ -30,13 +30,20 @@ struct WriteReport {
         case .signing(.refused(let reason)):
             signerRefusal = reason
         // A write parked on an absent signer is not a failed write, and no
-        // clock ever makes it one.
-        case .signing(.awaitingSigner), .signing(.signed):
+        // clock ever makes it one. `inFlight` is the state it must never be
+        // confused with: a signer that HAS the request and has not answered
+        // yet is the ordinary state of every healthy write, so it is silent
+        // for a different reason -- nothing has gone wrong at all.
+        case .signing(.awaitingSigner), .signing(.inFlight), .signing(.signed):
             break
         case .relay(let relay, let state):
             relays[relay] = state
         // The intended relay set is the settlement denominator, not a
         // verdict: `complete` flips on resolution, never on delivery.
+        // `awaitingAuthorRoutes` names whose routes an open resolution is
+        // still waiting on, and it is deliberately not read here: it is a
+        // repair list for a write that is still going, never a reason to tell
+        // somebody their message failed.
         case .destinations:
             break
         case .outcome(let outcome):
