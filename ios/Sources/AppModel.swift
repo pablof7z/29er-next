@@ -32,7 +32,7 @@ final class AppModel {
     private(set) var contentObservationFactory: NMPReferenceObservationFactory?
     private(set) var engineGeneration = 0
     private var engineConfig: NMPConfig?
-    private var localAccountStore: NMPKeychainAccountStore?
+    private var localAccountStore: (any NMPLocalAccountCheckpoint)?
     var activeRegistration: NMPAccountRegistration?
     let groupRelay: String
 
@@ -43,7 +43,8 @@ final class AppModel {
     init(
         fileManager: FileManager = .default,
         operatorConfiguration: OperatorConfiguration? = nil,
-        applicationSupportURL: URL? = nil
+        applicationSupportURL: URL? = nil,
+        accountStore: (any NMPLocalAccountCheckpoint)? = nil
     ) {
         let configuration: OperatorConfiguration
         if let operatorConfiguration {
@@ -69,7 +70,8 @@ final class AppModel {
                 fileManager: fileManager,
                 operatorConfiguration: configuration,
                 applicationSupportURL: applicationSupportURL,
-                relayOverride: proofOfflineRelay
+                relayOverride: proofOfflineRelay,
+                accountStore: accountStore
             )
             engineConfig = resources.config
             localAccountStore = resources.accountStore

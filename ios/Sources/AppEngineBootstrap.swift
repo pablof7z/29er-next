@@ -3,7 +3,7 @@ import NMP
 
 struct AppEngineResources {
     let config: NMPConfig
-    let accountStore: NMPKeychainAccountStore
+    let accountStore: any NMPLocalAccountCheckpoint
 }
 
 struct AppEngineSession {
@@ -22,7 +22,8 @@ enum AppEngineBootstrap {
         fileManager: FileManager,
         operatorConfiguration: OperatorConfiguration,
         applicationSupportURL: URL?,
-        relayOverride: String? = nil
+        relayOverride: String? = nil,
+        accountStore: (any NMPLocalAccountCheckpoint)? = nil
     ) throws -> AppEngineResources {
         let support = try applicationSupportURL ?? fileManager.url(
             for: .applicationSupportDirectory,
@@ -33,8 +34,13 @@ enum AppEngineBootstrap {
         let appDirectory = support.appendingPathComponent("29er-next", isDirectory: true)
         try fileManager.createDirectory(at: appDirectory, withIntermediateDirectories: true)
 
-        let storePath = try NMPStoreEpoch(fileManager: fileManager)
-            .prepare(appDirectory: appDirectory)
+        // NMP owns store compatibility and explicit reset. The app names the
+        // one file it keeps and nothing else: it does not read a schema
+        // marker, does not decide that a store is stale, and does not delete
+        // it behind the person using it. When NMP cannot open the store,
+        // `DatabaseRecoveryView` asks, and `NMPEngine.resetPersistentStore`
+        // does it.
+        let storePath = appDirectory.appendingPathComponent("nmp.redb").path
         let groupRelay = relayOverride ?? operatorConfiguration.groupRelay
         let config = NMPConfig(
             storePath: storePath,
@@ -52,7 +58,7 @@ enum AppEngineBootstrap {
         // changes here.
         return AppEngineResources(
             config: config,
-            accountStore: NMPKeychainAccountStore()
+            accountStore: accountStore ?? NMPKeychainAccountStore()
         )
     }
 

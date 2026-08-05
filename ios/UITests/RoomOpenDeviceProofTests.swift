@@ -9,8 +9,6 @@ final class RoomOpenDeviceProofTests: XCTestCase {
     private let expectedContentNewestID = "4718e3ccdff3511ade3b5b96b3a2f8561afc888f7b78ed2ff2c698e910743cc8"
     private let expectedStoreSize = "2155876352"
     private let expectedStoreSHA256 = "81361224ae95eefed42ab4fe9b437742c1a91012e12ab8905994039f05d24ff5"
-    private let expectedEpochHex = "360a"
-    private let expectedEpoch = "6"
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -91,8 +89,6 @@ final class RoomOpenDeviceProofTests: XCTestCase {
         let fields = proofFields(from: report)
         XCTAssertEqual(fields["size"], expectedStoreSize, "corpus preflight size")
         XCTAssertEqual(fields["sha256"], expectedStoreSHA256, "corpus preflight SHA-256")
-        XCTAssertEqual(fields["epochHex"], expectedEpochHex, "corpus preflight epoch bytes")
-        XCTAssertEqual(fields["epoch"], expectedEpoch, "corpus preflight epoch value")
         XCTAssertFalse(
             app.buttons["room-open-proof-shortcut"].exists,
             "corpus preflight constructed the room UI"
