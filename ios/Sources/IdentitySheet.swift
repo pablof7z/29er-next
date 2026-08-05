@@ -193,6 +193,7 @@ struct IdentitySheet: View {
                     .platformSecretEntry()
                     .privacySensitive()
                     .disabled(model.isSigningIn)
+                    .accessibilityIdentifier("identity-secret-field")
                 Button {
                     Task { await submit() }
                 } label: {
@@ -214,6 +215,7 @@ struct IdentitySheet: View {
                 .platformSecretEntry()
                 .privacySensitive()
                 .disabled(model.isSigningIn)
+                .accessibilityIdentifier("identity-secret-field")
         } header: {
             Text("Nostr secret key")
         } footer: {

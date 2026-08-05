@@ -32,18 +32,12 @@ enum CorpusPreflightReport {
                 )
                 let directory = support.appendingPathComponent("29er-next", isDirectory: true)
                 let store = directory.appendingPathComponent("nmp.redb")
-                let marker = directory.appendingPathComponent("nmp-store-epoch")
                 let size = try fileSize(store)
                 let hash = try sha256(store)
-                let epoch = try Data(contentsOf: marker)
-                let epochValue = String(bytes: epoch, encoding: .utf8)?
-                    .trimmingCharacters(in: .newlines) ?? "invalid-utf8"
                 return [
                     "complete",
                     "size=\(size)",
-                    "sha256=\(hash)",
-                    "epochHex=\(epoch.hexString)",
-                    "epoch=\(epochValue)"
+                    "sha256=\(hash)"
                 ].joined(separator: " ")
             } catch {
                 return "failed error=\(sanitize(error.localizedDescription))"
@@ -76,12 +70,6 @@ enum CorpusPreflightReport {
         value
             .replacingOccurrences(of: " ", with: "_")
             .replacingOccurrences(of: "\n", with: "_")
-    }
-}
-
-private extension Data {
-    var hexString: String {
-        map { String(format: "%02x", $0) }.joined()
     }
 }
 #endif
