@@ -1,15 +1,12 @@
 import Foundation
 import NMP
 
+/// There is no working state: `publish` returning is acceptance, so the
+/// edited list is already in NMP's store and already in the query this sheet
+/// renders. What is left is whether the write later settled badly.
 enum FavoriteRelayEditState: Equatable {
     case idle
-    case working
     case failed(String)
-
-    var isWorking: Bool {
-        if case .working = self { return true }
-        return false
-    }
 
     var failureMessage: String? {
         if case .failed(let message) = self { return message }
@@ -70,7 +67,6 @@ enum FavoriteRelayListEditor {
                 content: sourceEvent?.content ?? "",
                 createdAt: createdAt
             ),
-            durability: .durable,
             // `.auto` -- which strategy claims kind:10009 is NMP's business,
             // decided at send time. There is no `.authorOutbox` any more and
             // naming a strategy here was always the app guessing.
@@ -130,7 +126,6 @@ extension AppModel {
     }
 
     private func startFavoriteRelayEdit(_ operation: FavoriteRelayListOperation) {
-        guard !favoriteRelayEditState.isWorking else { return }
         guard let activePubkey, let engine else {
             favoriteRelayEditState = .failed("Sign in to edit your favorite relays.")
             return
@@ -156,30 +151,32 @@ extension AppModel {
             return
         }
 
-        favoriteRelayEditState = .working
+        favoriteRelayEditState = .idle
         let generation = engineGeneration
         Task { [weak self] in
-            var failure: String?
+            let receipt: Receipt
             do {
-                let receipt = try await engine.publish(intent)
-                for try await status in receipt.status {
-                    if let message = Self.favoriteRelayFailureMessage(for: status) {
-                        failure = message
-                    }
-                }
+                receipt = try await engine.publish(intent)
             } catch {
-                failure = Self.favoriteRelayPublishFailureMessage(error)
+                guard let self, self.engineGeneration == generation else { return }
+                self.favoriteRelayEditState = .failed(
+                    WriteFailureText.startFailure(error, action: "relay-list update")
+                )
+                return
             }
-            guard let self, self.engineGeneration == generation else { return }
-            self.favoriteRelayEditState = failure.map(FavoriteRelayEditState.failed) ?? .idle
+            // Accepted. The new list is in the store and this sheet's query
+            // will carry it; nothing is waiting on what follows. A stale
+            // compare-and-swap now arrives HERE -- `WriteOutcome.refused` --
+            // rather than as a throw from `publish`.
+            guard let failure = await Self.favoriteRelayFailure(draining: receipt.status),
+                  let self, self.engineGeneration == generation else { return }
+            self.favoriteRelayEditState = .failed(failure)
         }
     }
 
-    static func favoriteRelayFailureMessage(for status: WriteStatus) -> String? {
-        WriteFailureText.message(for: status, subject: "relay list")
-    }
-
-    private static func favoriteRelayPublishFailureMessage(_ error: Error) -> String {
-        WriteFailureText.startFailure(error, action: "relay-list update")
+    static func favoriteRelayFailure<Facts: AsyncSequence & Sendable>(
+        draining facts: Facts
+    ) async -> String? where Facts.Element == WriteFact {
+        await WriteReport.failure(draining: facts, subject: "relay list")
     }
 }

@@ -137,14 +137,23 @@ struct RoomView: View {
             onReact: reactHandler
         )
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            ChatComposer(
-                canSend: activePubkey != nil,
-                recipients: model.composerRecipients,
-                defaultRecipient: model.lastOtherSpeaker,
-                reply: $replyTarget,
-                voiceDraftScope: "\(activePubkey ?? "signed-out")|\(group.hostRelay)|\(group.localID)",
-                send: sendMessage
-            )
+            VStack(spacing: 0) {
+                // A write that settled badly after the composer let go --
+                // most usefully a fresh install with no relay to publish to,
+                // which now ends in `WriteOutcome.noDestination` instead of a
+                // message that sits in "sending" forever.
+                if let failure = model.writeFailure {
+                    WriteFailureBanner(message: failure) { model.writeFailure = nil }
+                }
+                ChatComposer(
+                    canSend: activePubkey != nil,
+                    recipients: model.composerRecipients,
+                    defaultRecipient: model.lastOtherSpeaker,
+                    reply: $replyTarget,
+                    voiceDraftScope: "\(activePubkey ?? "signed-out")|\(group.hostRelay)|\(group.localID)",
+                    send: sendMessage
+                )
+            }
         }
     }
 
@@ -174,10 +183,7 @@ struct RoomView: View {
 
     private func sendCommand(_ command: String, to backendPubkey: String) async -> String? {
         guard activePubkey != nil else { return "Sign in to send commands." }
-        return await model.sendManagementCommand(
-            command,
-            backendPubkey: backendPubkey
-        )
+        return model.sendManagementCommand(command, backendPubkey: backendPubkey)
     }
 
     private func sendMessage(_ request: ComposerRequest) async -> String? {
@@ -190,7 +196,9 @@ struct RoomView: View {
     }
 
     private func reactToMessage(_ message: RoomMessage, emoji: String) {
-        Task { _ = await model.reactToMessage(message, emoji: emoji) }
+        if let failure = model.reactToMessage(message, emoji: emoji) {
+            model.writeFailure = failure
+        }
     }
 
     /// Open a spoken item's player. Playback starts here (tapping the card),

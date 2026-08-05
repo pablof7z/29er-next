@@ -26,7 +26,7 @@ struct TTS29QuestionsSection: View {
                 TTS29QuestionView(
                     question: question,
                     values: draft[question.id] ?? [],
-                    isEditable: canAnswer && !answerState.isSubmitting,
+                    isEditable: canAnswer,
                     onChange: { draft[question.id] = $0 }
                 )
             }
@@ -54,9 +54,6 @@ struct TTS29QuestionsSection: View {
     @ViewBuilder
     private var footer: some View {
         switch answerState {
-        case .submitting:
-            HStack(spacing: 8) { ProgressView(); Text("Sending answer…").foregroundStyle(.secondary) }
-                .font(.footnote)
         case .submitted:
             Label("Answer published", systemImage: "checkmark.circle.fill")
                 .font(.footnote)

@@ -44,6 +44,13 @@ final class RoomTimelineModel {
     private(set) var reactionError: String?
     var profileError: String?
 
+    /// A write this room started that later settled badly. Never a state the
+    /// composer waits in: it appears after the fact, on a message already
+    /// visible in the timeline, and the reader dismisses it. See
+    /// `RoomTimelineSending.watchWrite`.
+    var writeFailure: String?
+    var writeWatchers: [UUID: Task<Void, Never>] = [:]
+
     private(set) var hasReceivedChat = false
     private(set) var hasReceivedActivities = false
 
@@ -137,6 +144,7 @@ final class RoomTimelineModel {
         state = .observing
         lastProfileAuthors = nil
         publishProfileAuthors()
+        defer { stopWatchingWrites() }
 
         await withTaskGroup(of: Void.self) { group in
             group.addTask { [weak self] in
