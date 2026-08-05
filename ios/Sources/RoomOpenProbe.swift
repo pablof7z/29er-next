@@ -128,11 +128,23 @@ final class RoomOpenProbe: NSObject {
         guard isEnabled, started != nil, snapshots[query] == nil else { return }
         let newestID = rows.sorted(by: newestFirst).first?.id ?? "none"
         snapshots[query] = Snapshot(rows: rows.count, newestID: newestID)
-        if query == .content {
-            messageSnapshot = snapshot(for: rows.filter { $0.kind == RoomKind.chat })
-            activitySnapshot = snapshot(for: rows.filter { $0.kind == RoomKind.liveStatus })
-            firstSnapshotMilliseconds = elapsedMilliseconds()
-        }
+        publish()
+    }
+
+    /// The content stage, reported by the model that already holds the two
+    /// row sets apart.
+    ///
+    /// The probe used to re-derive them by reading `Row.kind` back off the
+    /// rows it was handed, which is protocol inspection in a diagnostics
+    /// type: the room's own queries already select kind:9 and kind:30315
+    /// separately, so the split was known before these rows ever arrived and
+    /// re-deciding it here could only ever disagree.
+    func recordContentSnapshot(messageRows: [Row], activityRows: [Row]) {
+        guard isEnabled, started != nil, snapshots[.content] == nil else { return }
+        snapshots[.content] = snapshot(for: messageRows + activityRows)
+        messageSnapshot = snapshot(for: messageRows)
+        activitySnapshot = snapshot(for: activityRows)
+        firstSnapshotMilliseconds = elapsedMilliseconds()
         publish()
     }
 
