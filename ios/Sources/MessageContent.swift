@@ -1,13 +1,11 @@
 import Foundation
-import NMP
+import NMPContent
 import SwiftUI
 
 /// Renders raw kind:9 message text as Markdown with tappable web links and
-/// styled `nostr:` entity tokens. Pure presentation: no network, no signing.
-/// A `nostr:npub…`/`nprofile…` mention is decoded (NMP's stateless bech32
-/// codec, #116) to its hex pubkey and shown as `@<kind:0 display name>` when
-/// the caller's `resolveMention` resolver knows that pubkey; otherwise, and
-/// for every other entity kind, it falls back to the shortened bech32 label.
+/// styled NIP-27 references. NMPContent owns reference recognition,
+/// validation, normalization, and UTF-8 source ranges; this type owns only
+/// display segmentation and media presentation.
 enum MessageContent {
     /// A contiguous run of the source text classified for display.
     enum Segment: Equatable {
@@ -15,9 +13,8 @@ enum MessageContent {
         case link(display: String, url: URL)
         case audio(display: String, url: URL)
         case image(display: String, url: URL)
-        /// A `nostr:` entity. `token` is the full `nostr:npub1…` source;
-        /// `label` is the shortened form shown inline.
-        case entity(token: String, label: String)
+        /// A validated NMPContent reference occurrence formatted for display.
+        case entity(token: String, label: String, target: NostrReferenceTarget)
     }
 
     enum Block: Equatable {
@@ -134,11 +131,42 @@ enum MessageContent {
     }
 
     private static func entitySpans(in raw: String) -> [Span] {
-        entityRegex.matches(in: raw, range: NSRange(raw.startIndex..., in: raw)).compactMap { match in
-            guard let range = Range(match.range, in: raw) else { return nil }
-            let token = String(raw[range])
-            return Span(range: range, segment: .entity(token: token, label: entityLabel(for: token)))
+        parseNostrContent(raw, syntax: .markdown).references.compactMap { occurrence in
+            guard let range = stringRange(occurrence.source, in: raw) else { return nil }
+            return Span(
+                range: range,
+                segment: .entity(
+                    token: occurrence.original,
+                    label: entityLabel(for: occurrence.original),
+                    target: occurrence.target
+                )
+            )
         }
+    }
+
+    static func stringRange(
+        _ source: NostrContentSourceRange,
+        in raw: String
+    ) -> Range<String.Index>? {
+        guard source.start <= source.end else { return nil }
+        let utf8 = raw.utf8
+        guard
+            let lowerUTF8 = utf8.index(
+                utf8.startIndex,
+                offsetBy: Int(source.start),
+                limitedBy: utf8.endIndex
+            ),
+            let upperUTF8 = utf8.index(
+                utf8.startIndex,
+                offsetBy: Int(source.end),
+                limitedBy: utf8.endIndex
+            ),
+            let lower = lowerUTF8.samePosition(in: raw),
+            let upper = upperUTF8.samePosition(in: raw)
+        else {
+            return nil
+        }
+        return lower..<upper
     }
 
     private static func markdownImageSpans(in raw: String) -> [Span] {
@@ -168,16 +196,6 @@ enum MessageContent {
             range: NSRange(raw.startIndex..., in: raw)
         ).compactMap { Range($0.range(at: 1), in: raw) }
     }
-
-    /// `nostr:` followed by a TLV/bech32 entity prefix and its bech32 body
-    /// (charset excludes `1`, `b`, `i`, `o` after the separator).
-    static let entityRegex: NSRegularExpression = {
-        // swiftlint:disable:next force_try
-        try! NSRegularExpression(
-            pattern: "nostr:(?:npub|nprofile|note|nevent|naddr)1[023456789acdefghjklmnpqrstuvwxyz]+",
-            options: [.caseInsensitive]
-        )
-    }()
 
     private static let linkDetector: NSDataDetector = {
         // swiftlint:disable:next force_try
@@ -229,26 +247,24 @@ enum MessageContent {
     /// resolver knows; the shortened bech32 `label` otherwise (unresolved
     /// pubkey, or an entity kind that isn't a profile mention at all).
     static func mentionLabel(
-        for token: String,
+        for target: NostrReferenceTarget,
         fallback label: String,
         resolveMention: (String) -> String?
     ) -> String {
-        guard let pubkey = mentionPubkey(in: token), let name = resolveMention(pubkey) else {
+        // Both spellings name a person: NIP-19's `npub` carries the key
+        // alone, `nprofile` carries the same key plus authored relay hints.
+        // NMPContent keeps them apart because they decode differently, not
+        // because one of them is less of a mention -- so a bare `npub`
+        // resolves to a display name exactly like an `nprofile` does.
+        let pubkey: String
+        switch target {
+        case .pubkey(let value), .profile(let value, _):
+            pubkey = value
+        case .eventID, .event, .coordinate:
             return label
         }
+        guard let name = resolveMention(pubkey) else { return label }
         return "@\(name)"
-    }
-
-    private static func mentionPubkey(in token: String) -> String? {
-        guard let entity = try? decodeNostrEntity(token) else { return nil }
-        switch entity {
-        case .pubkey(let pubkey):
-            return pubkey
-        case .profile(let pubkey, _):
-            return pubkey
-        case .eventId, .event, .coordinate:
-            return nil
-        }
     }
 
     private static func normalizedInline(_ segments: [Segment]) -> [Segment] {

@@ -1,4 +1,5 @@
 import Foundation
+import NMPContent
 import SwiftUI
 
 extension MessageContent {
@@ -6,15 +7,8 @@ extension MessageContent {
         _ raw: String,
         resolveMention: (String) -> String? = { _ in nil }
     ) -> AttributedString {
-        let options = AttributedString.MarkdownParsingOptions(
-            interpretedSyntax: .inlineOnlyPreservingWhitespace,
-            failurePolicy: .returnPartiallyParsedIfPossible
-        )
-        var attributed = (try? AttributedString(markdown: raw, options: options))
-            ?? AttributedString(raw)
-        removeUnsupportedLinks(from: &attributed)
-        replaceEntities(in: &attributed, resolveMention: resolveMention)
-        return attributed
+        let document = parseNostrContent(raw, syntax: .markdown)
+        return attributed(document, resolveMention: resolveMention)
     }
 
     static func attributed(
@@ -31,7 +25,7 @@ extension MessageContent {
                 value
             case .link(let display, _), .audio(let display, _), .image(let display, _):
                 display
-            case .entity(let token, _):
+            case .entity(let token, _, _):
                 token
             }
         }.joined()
@@ -42,51 +36,78 @@ extension MessageContent {
         return ["http", "https"].contains(scheme)
     }
 
-    private static func removeUnsupportedLinks(from attributed: inout AttributedString) {
-        let unsupported = attributed.runs.reduce(
-            into: [Range<AttributedString.Index>]()
-        ) { ranges, run in
-            guard let link = run.link, !isSupportedWebURL(link) else { return }
-            ranges.append(run.range)
+    private static func attributed(
+        _ document: NostrContentDocument,
+        resolveMention: (String) -> String?
+    ) -> AttributedString {
+        var result = AttributedString()
+        for (index, block) in document.blocks.enumerated() {
+            if index > 0 {
+                result.append(AttributedString("\n\n"))
+            }
+            for inline in block.inlines {
+                result.append(attributed(inline, resolveMention: resolveMention))
+            }
         }
-        for range in unsupported {
-            attributed[range].link = nil
+        return result
+    }
+
+    private static func attributed(
+        _ inline: NostrContentInline,
+        resolveMention: (String) -> String?
+    ) -> AttributedString {
+        switch inline {
+        case .text(let text, _, let styles):
+            return styled(text, styles: styles)
+        case .reference(let occurrence, let styles):
+            let fallback = entityLabel(for: occurrence.original)
+            var value = styled(
+                mentionLabel(
+                    for: occurrence.target,
+                    fallback: fallback,
+                    resolveMention: resolveMention
+                ),
+                styles: styles
+            )
+            value.foregroundColor = .accentColor
+            value.font = .body.weight(.medium)
+            return value
+        case .hashtag(_, let original, _, let styles):
+            return styled(original, styles: styles)
+        case .link(let destination, let label, _, let styles):
+            var value = styled(label, styles: styles)
+            if let url = URL(string: destination), isSupportedWebURL(url) {
+                value.link = url
+            }
+            return value
+        case .softBreak:
+            return AttributedString(" ")
+        case .hardBreak:
+            return AttributedString("\n")
         }
     }
 
-    private static func replaceEntities(
-        in attributed: inout AttributedString,
-        resolveMention: (String) -> String?
-    ) {
-        let visible = String(attributed.characters)
-        let matches = entityRegex.matches(
-            in: visible,
-            range: NSRange(visible.startIndex..., in: visible)
-        )
-        for match in matches.reversed() {
-            guard let stringRange = Range(match.range, in: visible) else { continue }
-            let lowerOffset = visible.distance(from: visible.startIndex, to: stringRange.lowerBound)
-            let upperOffset = visible.distance(from: visible.startIndex, to: stringRange.upperBound)
-            let lower = attributed.characters.index(
-                attributed.characters.startIndex,
-                offsetBy: lowerOffset
-            )
-            let upper = attributed.characters.index(
-                attributed.characters.startIndex,
-                offsetBy: upperOffset
-            )
-            let range = lower..<upper
-            let token = String(visible[stringRange])
-            let label = entityLabel(for: token)
-            var replacement = AttributedString(
-                mentionLabel(for: token, fallback: label, resolveMention: resolveMention)
-            )
-            if let attributes = attributed[range].runs.first?.attributes {
-                replacement.mergeAttributes(attributes)
-            }
-            replacement.foregroundColor = .accentColor
-            replacement.font = .body.weight(.medium)
-            attributed.replaceSubrange(range, with: replacement)
+    private static func styled(
+        _ text: String,
+        styles: [NostrContentInlineStyle]
+    ) -> AttributedString {
+        var value = AttributedString(text)
+        var intent: InlinePresentationIntent = []
+        if styles.contains(.strong) {
+            intent.insert(.stronglyEmphasized)
         }
+        if styles.contains(.emphasis) {
+            intent.insert(.emphasized)
+        }
+        if styles.contains(.code) {
+            intent.insert(.code)
+        }
+        if styles.contains(.strikethrough) {
+            intent.insert(.strikethrough)
+        }
+        if !intent.isEmpty {
+            value.inlinePresentationIntent = intent
+        }
+        return value
     }
 }
