@@ -3,7 +3,7 @@ import XCTest
 @testable import TwentyNinerNext
 
 /// A finite `WriteFact` stream. The app never constructs one in production --
-/// NMP hands it a `ReceiptStatus` or an `NMPGroupWriteFacts` -- so this exists
+/// NMP hands it a `Receipt`'s own `status` -- so this exists
 /// only to feed `WriteReport` the fact orders NMP is contracted to produce.
 struct WriteFactSequence: AsyncSequence, Sendable {
     typealias Element = WriteFact
@@ -40,7 +40,7 @@ final class WriteReportTests: XCTestCase {
     /// switch could not avoid because it never saw the other lanes.
     func testOneRelayPublishedIsDeliveredEvenWhenAnotherGaveUp() async {
         let result = await failure([
-            .destinations(relays: ["wss://a.example", "wss://b.example"], complete: true),
+            .destinations(relays: ["wss://a.example", "wss://b.example"], complete: true, awaitingAuthorRoutes: []),
             .signing(.signed(eventId: "abc")),
             .relay(relay: "wss://a.example", state: .published),
             .relay(relay: "wss://b.example", state: .gaveUp),
@@ -51,7 +51,7 @@ final class WriteReportTests: XCTestCase {
 
     func testSettledWithNothingPublishedNamesTheRejection() async {
         let result = await failure([
-            .destinations(relays: ["wss://a.example", "wss://b.example"], complete: true),
+            .destinations(relays: ["wss://a.example", "wss://b.example"], complete: true, awaitingAuthorRoutes: []),
             .relay(relay: "wss://b.example", state: .rejected(reason: "blocked: not a member")),
             .relay(relay: "wss://a.example", state: .gaveUp),
             .outcome(.settled)
@@ -67,7 +67,7 @@ final class WriteReportTests: XCTestCase {
     /// "sending" for ever.
     func testNoDestinationSaysThereIsNowhereToSend() async {
         let result = await failure([
-            .destinations(relays: [], complete: true),
+            .destinations(relays: [], complete: true, awaitingAuthorRoutes: []),
             .outcome(.noDestination)
         ])
         XCTAssertEqual(
@@ -81,12 +81,38 @@ final class WriteReportTests: XCTestCase {
 
     /// A route that has not resolved yet parks, and no clock ends it. An
     /// unsettled write reports nothing at all -- the app has nothing to say.
+    ///
+    /// `awaitingAuthorRoutes` names whose routes the resolution is still
+    /// waiting on. It is a repair list for a write that is still going, so
+    /// naming somebody there must not become a verdict either.
     func testUnresolvedRouteAndAbsentSignerReportNothing() async {
+        let author = String(repeating: "a", count: 64)
         let result = await failure([
-            .signing(.awaitingSigner(pubkey: String(repeating: "a", count: 64))),
-            .destinations(relays: [], complete: false)
+            .signing(.awaitingSigner(pubkey: author)),
+            .destinations(relays: [], complete: false, awaitingAuthorRoutes: [author])
         ])
         XCTAssertNil(result)
+    }
+
+    /// The state `awaitingSigner` must never be confused with: a signer that
+    /// HAS the request and has not answered yet is every healthy write between
+    /// acceptance and signature. Reporting on it would put a verdict on a
+    /// signature that is simply still being produced.
+    func testSignatureInFlightIsNotAFailure() async {
+        let author = String(repeating: "b", count: 64)
+        let stillSigning = await failure([.signing(.inFlight(pubkey: author))])
+        XCTAssertNil(stillSigning)
+
+        let delivered = await failure([
+            .signing(.inFlight(pubkey: author)),
+            .signing(.signed(eventId: "abc")),
+            .destinations(
+                relays: ["wss://a.example"], complete: true, awaitingAuthorRoutes: []
+            ),
+            .relay(relay: "wss://a.example", state: .published),
+            .outcome(.settled)
+        ])
+        XCTAssertNil(delivered)
     }
 
     /// A later write for the same replaceable coordinate winning is the
