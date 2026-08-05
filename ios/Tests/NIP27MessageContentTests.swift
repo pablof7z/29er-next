@@ -35,11 +35,14 @@ final class NIP27MessageContentTests: XCTestCase {
 
     func testEverySupportedReferenceUsesNMPContentTypedTargetsInOrder() {
         let fixtures: [(String, (NostrReferenceTarget) -> Bool)] = [
-            (npub, { if case .profile = $0 { return true }; return false }),
+            // NMPContent decodes each NIP-19 spelling to the target it
+            // actually carries: `npub` and `note` name a bare key/id, while
+            // `nprofile`, `nevent` and `naddr` also carry authored hints.
+            (npub, { if case .pubkey = $0 { return true }; return false }),
             (nprofile, { if case .profile = $0 { return true }; return false }),
-            (note, { if case .event = $0 { return true }; return false }),
+            (note, { if case .eventID = $0 { return true }; return false }),
             (nevent, { if case .event = $0 { return true }; return false }),
-            (naddr, { if case .address = $0 { return true }; return false }),
+            (naddr, { if case .coordinate = $0 { return true }; return false }),
         ]
         let tokens = fixtures.map { "nostr:\($0.0)" }
         let entities: [(String, NostrReferenceTarget)] = MessageContent
@@ -86,7 +89,7 @@ final class NIP27MessageContentTests: XCTestCase {
                 .entity(
                     token: token,
                     label: "npub14f8us…h9nsy",
-                    target: .profile(
+                    target: .pubkey(
                         pubkey:
                             "aa4fc8665f5696e33db7e1a572e3b0f5b3d615837b0f362dcb1c8068b098c7b4"
                     )

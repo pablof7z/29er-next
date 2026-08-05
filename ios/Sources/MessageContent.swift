@@ -251,12 +251,19 @@ enum MessageContent {
         fallback label: String,
         resolveMention: (String) -> String?
     ) -> String {
-        guard
-            case .profile(let pubkey, _) = target,
-            let name = resolveMention(pubkey)
-        else {
+        // Both spellings name a person: NIP-19's `npub` carries the key
+        // alone, `nprofile` carries the same key plus authored relay hints.
+        // NMPContent keeps them apart because they decode differently, not
+        // because one of them is less of a mention -- so a bare `npub`
+        // resolves to a display name exactly like an `nprofile` does.
+        let pubkey: String
+        switch target {
+        case .pubkey(let value), .profile(let value, _):
+            pubkey = value
+        case .eventID, .event, .coordinate:
             return label
         }
+        guard let name = resolveMention(pubkey) else { return label }
         return "@\(name)"
     }
 
