@@ -288,7 +288,10 @@ final class RoomTimelineModel {
 
     private func recordContentProofSnapshotIfReady() {
         guard hasReceivedChat, hasReceivedActivities else { return }
-        RoomOpenProbe.shared.recordSnapshot(.content, rows: chatRows + activityRows)
+        RoomOpenProbe.shared.recordContentSnapshot(
+            messageRows: chatRows,
+            activityRows: activityRows
+        )
     }
 
 }

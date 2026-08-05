@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "rules": [
+    {"id":"NMP001","message":"raw write","kind":"identifier","names":["WriteIntent","NMPUnsignedEvent"]},
+    {"id":"NMP001","message":"inline raw payload","kind":"unsignedPayload","names":["payload.unsigned"]},
+    {"id":"NMP002","message":"direct sign","kind":"memberAccess","names":["signEvent"]},
+    {"id":"NMP003","message":"local Blossom","kind":"identifier","names":["URLSession","URLRequest","HTTPURLResponse","SHA256"],"fileContains":["Blossom"]},
+    {"id":"NMP003","message":"local Blossom endpoint","kind":"stringContains","names":["/upload"]},
+    {"id":"NMP004","message":"protocol parser","kind":"memberAccess","names":["kind","tags"],"rowContext":true},
+    {"id":"NMP004","message":"local entity grammar","kind":"stringContains","names":["(?:npub|nprofile|note|nevent|naddr)"]},
+    {"id":"NMP004","message":"raw tags","kind":"rawTagArray","names":["[[String]]"]},
+    {"id":"NMP004","message":"raw kind","kind":"rawKindParameter","names":["kind:UInt16"]},
+    {"id":"NMP005","message":"semantic edit","kind":"integerArgument","names":["7","9","10009","24242"],"argumentLabels":["kind"]},
+    {"id":"NMP006","message":"store ownership","kind":"identifier","names":["NMPStoreEpoch"]},
+    {"id":"NMP006","message":"store ownership","kind":"memberAccess","names":["removeItem"],"fileContains":["nmp.redb"]},
+    {"id":"NMP006","message":"store epoch","kind":"stringContains","names":["nmp-store-epoch"]},
+    {"id":"NMP007","message":"secret persistence","kind":"identifier","names":["NMPInsecureFileAccountStore"]},
+    {"id":"NMP007","message":"nsec persistence","kind":"stringContains","names":[".nsec"]},
+    {"id":"NMP007","message":"secret sink","kind":"secretSink","names":["set","write","SecItemAdd","SecItemUpdate"]},
+    {"id":"NMP007","message":"custom checkpoint","kind":"customCheckpoint","names":["NMPLocalAccountCheckpoint"]},
+    {"id":"NMP008","message":"facade bypass","kind":"importName","names":["NMPFFI","NostrMultiPlatform","NostrSDK"]}
+  ],
+  "exceptions": [
+    {
+      "rule":"NMP002",
+      "path":"ios/Sources/ConsentBridge.swift",
+      "symbol":"ConsentBridge.handle",
+      "matcher":"memberAccess:signEvent",
+      "owner":"NMP issue 1",
+      "rationale":"exact fixture scope"
+    },
+    {
+      "rule":"NMP007",
+      "path":"ios/Sources/LegacyCleanup.swift",
+      "symbol":"LegacyCleanup.remove",
+      "matcher":"stringContains:.nsec",
+      "owner":"NMP issue 1",
+      "rationale":"exact contains matcher fixture"
+    }
+  ]
+}

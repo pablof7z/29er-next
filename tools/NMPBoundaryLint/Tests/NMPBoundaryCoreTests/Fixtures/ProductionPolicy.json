@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "rules": [
+    {"id":"NMP001","message":"x","kind":"identifier","names":["WriteIntent","NMPUnsignedEvent"]},
+    {"id":"NMP001","message":"x","kind":"unsignedPayload","names":["payload.unsigned"]},
+    {"id":"NMP002","message":"x","kind":"memberAccess","names":["signEvent"]},
+    {"id":"NMP003","message":"x","kind":"identifier","names":["URLSession","URLRequest","HTTPURLResponse","SHA256"],"fileContains":["Blossom"]},
+    {"id":"NMP003","message":"x","kind":"stringContains","names":["/upload"]},
+    {"id":"NMP004","message":"x","kind":"memberAccess","names":["kind","tags"],"rowContext":true},
+    {"id":"NMP004","message":"x","kind":"stringContains","names":["(?:npub|nprofile|note|nevent|naddr)"]},
+    {"id":"NMP004","message":"x","kind":"rawTagArray","names":["[[String]]"]},
+    {"id":"NMP004","message":"x","kind":"rawKindParameter","names":["kind:UInt16"]},
+    {"id":"NMP005","message":"x","kind":"integerArgument","names":["7","9","10009","24242"],"argumentLabels":["kind"]},
+    {"id":"NMP006","message":"x","kind":"identifier","names":["NMPStoreEpoch"]},
+    {"id":"NMP006","message":"x","kind":"memberAccess","names":["removeItem"],"fileContains":["nmp.redb"]},
+    {"id":"NMP006","message":"x","kind":"stringContains","names":["nmp-store-epoch"]},
+    {"id":"NMP007","message":"x","kind":"identifier","names":["NMPInsecureFileAccountStore"]},
+    {"id":"NMP007","message":"x","kind":"stringContains","names":[".nsec"]},
+    {"id":"NMP007","message":"x","kind":"secretSink","names":["set","write","SecItemAdd","SecItemUpdate"]},
+    {"id":"NMP007","message":"x","kind":"customCheckpoint","names":["NMPLocalAccountCheckpoint"]},
+    {"id":"NMP008","message":"x","kind":"importName","names":["NMPFFI","NostrMultiPlatform","NostrSDK"]}
+  ],
+  "exceptions": []
+}

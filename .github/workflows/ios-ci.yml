@@ -28,6 +28,21 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Test NMP consumer-boundary diagnostics
+        shell: bash
+        run: swift test --package-path tools/NMPBoundaryLint
+
+      - name: Enforce NMP consumer boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift run --package-path tools/NMPBoundaryLint nmp-boundary-lint \
+            --root ios/Sources \
+            --project ios/project.yml \
+            --policy tools/NMPBoundaryLint/Policy/nmp-boundary.json \
+            --repository-root . \
+            --format github-actions
+
       - name: Install pinned XcodeGen
         shell: bash
         run: |

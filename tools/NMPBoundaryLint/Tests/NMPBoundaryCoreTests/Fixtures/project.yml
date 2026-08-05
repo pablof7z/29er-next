@@ -1,0 +1,9 @@
+targets:
+  App:
+    type: application
+    sources:
+      - path: Sources
+  Tests:
+    type: bundle.unit-test
+    sources:
+      - path: Tests
