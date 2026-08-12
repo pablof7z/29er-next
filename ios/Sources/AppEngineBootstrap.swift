@@ -23,6 +23,7 @@ enum AppEngineBootstrap {
         operatorConfiguration: OperatorConfiguration,
         applicationSupportURL: URL?,
         relayOverride: String? = nil,
+        savedRelays: [String] = [],
         accountStore: (any NMPLocalAccountCheckpoint)? = nil
     ) throws -> AppEngineResources {
         let support = try applicationSupportURL ?? fileManager.url(
@@ -44,7 +45,9 @@ enum AppEngineBootstrap {
         let groupRelay = relayOverride ?? operatorConfiguration.groupRelay
         let config = NMPConfig(
             storePath: storePath,
-            appRelays: [groupRelay],
+            appRelays: relayOverride == nil
+                ? configuredRelays(defaultRelay: groupRelay, savedRelays: savedRelays)
+                : [groupRelay],
             fallbackRelays: relayOverride == nil ? operatorConfiguration.indexerRelays : []
         )
 
@@ -89,4 +92,10 @@ enum AppEngineBootstrap {
         )
     }
 
+    static func configuredRelays(defaultRelay: String, savedRelays: [String]) -> [String] {
+        var seen = Set<String>()
+        return ([defaultRelay] + savedRelays).filter {
+            !$0.isEmpty && seen.insert($0).inserted
+        }
+    }
 }

@@ -118,8 +118,17 @@ final class WriteReportTests: XCTestCase {
     /// A later write for the same replaceable coordinate winning is the
     /// intended outcome of editing twice quickly, not a failure.
     func testSupersededIsNotAFailure() async {
-        let result = await failure([.outcome(.notSent(.superseded))])
-        XCTAssertNil(result)
+        let neverHandedOff = await failure([.outcome(.notSent(.superseded))])
+        let maybeHandedOff = await failure([.outcome(.superseded)])
+
+        XCTAssertNil(neverHandedOff)
+        XCTAssertNil(maybeHandedOff)
+    }
+
+    func testTerminalSignerRefusalIsAttributedToTheSigner() async {
+        let result = await failure([.outcome(.notSent(.signerRefused))])
+
+        XCTAssertEqual(result, "Your signer refused the message.")
     }
 
     func testCancelledSaysTheWriteWasCancelled() async {

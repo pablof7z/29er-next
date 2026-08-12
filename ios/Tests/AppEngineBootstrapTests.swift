@@ -38,6 +38,26 @@ final class AppEngineBootstrapTests: XCTestCase {
         XCTAssertTrue(resources.accountStore is NMPKeychainAccountStore)
     }
 
+    func testResourcesIncludeSavedRelaysInNMPOperatorConfiguration() throws {
+        let support = try makeSupportDirectory()
+        defer { try? FileManager.default.removeItem(at: support) }
+
+        let resources = try AppEngineBootstrap.resources(
+            fileManager: .default,
+            operatorConfiguration: OperatorConfiguration(
+                indexerRelays: [],
+                groupRelay: "wss://nip29.f7z.io"
+            ),
+            applicationSupportURL: support,
+            savedRelays: ["wss://relay.example", "wss://nip29.f7z.io"]
+        )
+
+        XCTAssertEqual(
+            resources.config.appRelays,
+            ["wss://nip29.f7z.io", "wss://relay.example"]
+        )
+    }
+
     func testBootstrapDeletesLegacyPlaintextWithoutImportingIt() throws {
         let support = try makeSupportDirectory()
         defer { try? FileManager.default.removeItem(at: support) }

@@ -64,8 +64,15 @@ struct WriteReport {
         // is what editing twice quickly is supposed to do.
         case .notSent(.superseded):
             return nil
+        case .notSent(.signerRefused):
+            return "Your signer refused the \(subject)."
         case .notSent(.cancelled):
             return "The \(subject) was not sent -- the write was cancelled."
+        // This newer terminal outcome does not prove that no bytes crossed a
+        // local transport handoff, so it cannot be presented as a failed
+        // write. NMP has retired it in favor of a newer replacement.
+        case .superseded:
+            return nil
         case .refused(let reason):
             return message(for: reason)
         }
