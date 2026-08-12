@@ -20,6 +20,7 @@ final class AppModel {
     var hasReceivedRememberedGroups = false
     var rememberedGroupsError: String?
     var favoriteRelayEditState = FavoriteRelayEditState.idle
+    var savedRelays: [String]
     var selectedHost: String?
     var selectedGroup: GroupCoordinate?
     var diagnostics = DiagnosticsSnapshot()
@@ -33,8 +34,19 @@ final class AppModel {
     private(set) var engineGeneration = 0
     private var engineConfig: NMPConfig?
     private var localAccountStore: (any NMPLocalAccountCheckpoint)?
+    let favoriteRelayStore: FavoriteRelayStore
     var activeRegistration: NMPAccountRegistration?
     let groupRelay: String
+
+    var favoriteRelays: [FavoriteRelayChoice] {
+        FavoriteRelayChoice.favorites(
+            defaultRelay: groupRelay,
+            savedRelays: savedRelays,
+            remembered: remembered
+        )
+    }
+
+    var relayHosts: [String] { favoriteRelays.map(\.url) }
 
     var canResetLocalDatabase: Bool {
         engineConfig?.storePath != nil
@@ -44,8 +56,18 @@ final class AppModel {
         fileManager: FileManager = .default,
         operatorConfiguration: OperatorConfiguration? = nil,
         applicationSupportURL: URL? = nil,
-        accountStore: (any NMPLocalAccountCheckpoint)? = nil
+        accountStore: (any NMPLocalAccountCheckpoint)? = nil,
+        favoriteRelayStore: FavoriteRelayStore = FavoriteRelayStore()
     ) {
+        let storedRelays = favoriteRelayStore.load()
+        let validatedRelays = storedRelays.compactMap {
+            try? FavoriteRelayConfiguration.validatedRelay($0)
+        }
+        self.favoriteRelayStore = favoriteRelayStore
+        savedRelays = validatedRelays
+        if validatedRelays != storedRelays {
+            favoriteRelayStore.save(validatedRelays)
+        }
         let configuration: OperatorConfiguration
         if let operatorConfiguration {
             configuration = operatorConfiguration
@@ -71,6 +93,7 @@ final class AppModel {
                 operatorConfiguration: configuration,
                 applicationSupportURL: applicationSupportURL,
                 relayOverride: proofOfflineRelay,
+                savedRelays: savedRelays,
                 accountStore: accountStore
             )
             engineConfig = resources.config
@@ -82,7 +105,7 @@ final class AppModel {
                 resolve: channelPreviewReferenceDemand
             )
             activePubkey = session.activePubkey
-            selectedHost = session.activePubkey == nil ? groupRelay : nil
+            selectedHost = relayHosts.first
         } catch {
             engine = nil
             contentObservationFactory = nil
@@ -126,7 +149,7 @@ final class AppModel {
             hasReceivedRememberedGroups = false
             rememberedGroupsError = nil
             favoriteRelayEditState = .idle
-            selectedHost = activePubkey == nil ? groupRelay : nil
+            selectedHost = relayHosts.first
             selectedGroup = nil
             diagnostics = DiagnosticsSnapshot()
             diagnosticsError = nil
@@ -159,5 +182,52 @@ final class AppModel {
 
     func clearIdentityError() {
         identityError = nil
+    }
+
+    func rebuildEngine(selecting host: String?) {
+        guard var configuration = engineConfig else {
+            favoriteRelayEditState = .failed("NMP is not available.")
+            return
+        }
+        configuration.appRelays = AppEngineBootstrap.configuredRelays(
+            defaultRelay: groupRelay,
+            savedRelays: savedRelays
+        )
+        engineConfig = configuration
+
+        let oldEngine = engine
+        activeRegistration = nil
+        engine = nil
+        contentObservationFactory = nil
+        activePubkey = nil
+        oldEngine?.shutdown()
+
+        do {
+            let engine = try NMPEngine(
+                config: configuration,
+                localAccountStore: localAccountStore
+            )
+            self.engine = engine
+            contentObservationFactory = .live(engine: engine, resolve: channelPreviewReferenceDemand)
+            activePubkey = try engine.activeAccount()
+            groups = []
+            hasReceivedGroups = false
+            groupsError = nil
+            remembered = .empty
+            hasReceivedRememberedGroups = false
+            rememberedGroupsError = nil
+            selectedGroup = nil
+            diagnostics = DiagnosticsSnapshot()
+            diagnosticsError = nil
+            selectedHost = HostGroupSelectionPolicy.reconciledHost(
+                availableHosts: relayHosts,
+                selectedHost: host
+            )
+            state = .starting
+            engineGeneration &+= 1
+        } catch {
+            state = .failed(error.localizedDescription)
+            engineGeneration &+= 1
+        }
     }
 }

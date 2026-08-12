@@ -3,8 +3,7 @@ import NMP
 @MainActor
 extension AppModel {
     func selectHost(_ host: String) {
-        let allowedHosts = activePubkey == nil ? [groupRelay] : remembered.hosts
-        guard allowedHosts.contains(host) else { return }
+        guard relayHosts.contains(host) else { return }
         selectedHost = host
         if selectedGroup?.hostRelay != host { selectedGroup = nil }
     }
@@ -64,10 +63,7 @@ extension AppModel {
                 // decided. The parser is kind-agnostic and tolerant by
                 // contract.
                 let snapshot = batch.rows.first.map {
-                    RememberedGroupSnapshot(
-                        parseSimpleGroupsListTolerant($0),
-                        sourceEvent: FavoriteRelayListEvent($0)
-                    )
+                    RememberedGroupSnapshot(parseSimpleGroupsListTolerant($0))
                 } ?? .empty
                 applyRememberedGroups(snapshot)
             }
@@ -103,9 +99,7 @@ extension AppModel {
             selectedGroup: selectedGroup
         )
         selectedHost = HostGroupSelectionPolicy.reconciledHost(
-            activePubkey: activePubkey,
-            bootstrapHost: groupRelay,
-            snapshot: snapshot,
+            availableHosts: relayHosts,
             selectedHost: selectedHost
         )
     }

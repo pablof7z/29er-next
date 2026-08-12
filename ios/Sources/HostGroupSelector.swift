@@ -2,7 +2,7 @@ import SwiftUI
 
 struct HostGroupSelector: View {
     let activePubkey: String?
-    let bootstrapHost: String
+    let hosts: [String]
     let remembered: RememberedGroupSnapshot
     let hasReceivedRemembered: Bool
     let rememberedError: String?
@@ -116,10 +116,6 @@ struct HostGroupSelector: View {
                 systemImage: "lock.fill"
             )
         }
-    }
-
-    private var hosts: [String] {
-        activePubkey == nil ? [bootstrapHost].filter { !$0.isEmpty } : remembered.hosts
     }
 
     private var groupsForSelectedHost: [RememberedGroupChoice] {

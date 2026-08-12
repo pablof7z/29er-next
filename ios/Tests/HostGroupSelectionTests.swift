@@ -1,3 +1,4 @@
+import Foundation
 import NMP
 import XCTest
 @testable import TwentyNinerNext
@@ -23,7 +24,7 @@ final class HostGroupSelectionTests: XCTestCase {
         XCTAssertTrue(snapshot.hasPrivateContent)
     }
 
-    func testGroupHostsDoNotBecomeRelayFavoritesWithoutAnRTag() {
+    func testRememberedGroupsRemainAnObservationRatherThanAConfigurationSource() {
         let snapshot = RememberedGroupSnapshot(
             groups: [choice(host: firstHost, group: "a", name: "Alpha")],
             hosts: [secondHost],
@@ -34,40 +35,43 @@ final class HostGroupSelectionTests: XCTestCase {
         XCTAssertEqual(snapshot.groups.map(\.host), [firstHost])
     }
 
-    func testLoggedOutSelectionUsesOnlyOperatorBootstrap() {
-        let snapshot = rememberedSnapshot()
-
+    func testHostSelectionPreservesSavedRelayWhileSignedOut() {
         XCTAssertEqual(
             HostGroupSelectionPolicy.reconciledHost(
-                activePubkey: nil,
-                bootstrapHost: bootstrap,
-                snapshot: snapshot,
+                availableHosts: [bootstrap, firstHost],
                 selectedHost: firstHost
             ),
-            bootstrap
+            firstHost
         )
         XCTAssertNil(
             HostGroupSelectionPolicy.reconciledGroup(
                 activePubkey: nil,
-                snapshot: snapshot,
-                selectedGroup: snapshot.groups[0].coordinate
+                snapshot: rememberedSnapshot(),
+                selectedGroup: GroupCoordinate(hostRelay: firstHost, localID: "a")
             )
         )
     }
 
-    func testSignedInSelectionRetainsOnlyTypedRememberedValues() {
+    func testHostSelectionChoosesFirstConfiguredRelayWhenSelectionIsStale() {
+        XCTAssertEqual(
+            HostGroupSelectionPolicy.reconciledHost(
+                availableHosts: [bootstrap, firstHost],
+                selectedHost: secondHost
+            ),
+            bootstrap
+        )
+        XCTAssertNil(
+            HostGroupSelectionPolicy.reconciledHost(
+                availableHosts: [],
+                selectedHost: bootstrap
+            )
+        )
+    }
+
+    func testSignedInSelectionRetainsOnlyTypedRememberedGroup() {
         let snapshot = rememberedSnapshot()
         let rememberedGroup = snapshot.groups[1].coordinate
 
-        XCTAssertEqual(
-            HostGroupSelectionPolicy.reconciledHost(
-                activePubkey: "pubkey",
-                bootstrapHost: bootstrap,
-                snapshot: snapshot,
-                selectedHost: secondHost
-            ),
-            secondHost
-        )
         XCTAssertEqual(
             HostGroupSelectionPolicy.reconciledGroup(
                 activePubkey: "pubkey",
@@ -75,20 +79,6 @@ final class HostGroupSelectionTests: XCTestCase {
                 selectedGroup: rememberedGroup
             ),
             rememberedGroup
-        )
-    }
-
-    func testSignedInSelectionDropsStaleGroupAndChoosesFirstTypedHost() {
-        let snapshot = rememberedSnapshot()
-
-        XCTAssertEqual(
-            HostGroupSelectionPolicy.reconciledHost(
-                activePubkey: "pubkey",
-                bootstrapHost: bootstrap,
-                snapshot: snapshot,
-                selectedHost: bootstrap
-            ),
-            firstHost
         )
         XCTAssertNil(
             HostGroupSelectionPolicy.reconciledGroup(
@@ -99,18 +89,7 @@ final class HostGroupSelectionTests: XCTestCase {
         )
     }
 
-    func testSignedInAccountWithNoPublicRememberedHostsHasNoSelection() {
-        XCTAssertNil(
-            HostGroupSelectionPolicy.reconciledHost(
-                activePubkey: "pubkey",
-                bootstrapHost: bootstrap,
-                snapshot: .empty,
-                selectedHost: bootstrap
-            )
-        )
-    }
-
-    func testFavoriteRelayChoicesPreserveHostOrderAndCountRememberedRooms() {
+    func testFavoriteRelayChoicesCombineLocalConfigurationWithRememberedObservations() {
         let snapshot = RememberedGroupSnapshot(
             groups: [
                 choice(host: firstHost, group: "a", name: "Alpha"),
@@ -122,186 +101,53 @@ final class HostGroupSelectionTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            FavoriteRelayChoice.favorites(from: snapshot),
+            FavoriteRelayChoice.favorites(
+                defaultRelay: bootstrap,
+                savedRelays: [firstHost],
+                remembered: snapshot
+            ),
             [
-                FavoriteRelayChoice(url: secondHost, roomCount: 1),
-                FavoriteRelayChoice(url: firstHost, roomCount: 2)
+                FavoriteRelayChoice(url: bootstrap, source: .default, roomCount: 0),
+                FavoriteRelayChoice(url: firstHost, source: .saved, roomCount: 2),
+                FavoriteRelayChoice(url: secondHost, source: .remembered, roomCount: 1)
             ]
         )
     }
 
-    func testBootstrapRelayIsPresentedWithoutPretendingItIsAnAccountFavorite() {
+    func testSavedRelayStorePersistsOnlyLocalConfiguration() {
+        let suite = "FavoriteRelayStoreTests.\(UUID().uuidString)"
+        let defaults = try! XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = FavoriteRelayStore(defaults: defaults, key: "relays")
+
+        store.save([firstHost, secondHost, firstHost, ""])
+
+        XCTAssertEqual(store.load(), [firstHost, secondHost])
+    }
+
+    func testRelayValidationUsesNMPScopeBoundary() throws {
         XCTAssertEqual(
-            FavoriteRelayChoice.bootstrap(host: bootstrap),
-            [FavoriteRelayChoice(url: bootstrap, roomCount: nil)]
+            try FavoriteRelayConfiguration.validatedRelay("  \(firstHost)  "),
+            firstHost
         )
-        XCTAssertTrue(FavoriteRelayChoice.bootstrap(host: "").isEmpty)
+        XCTAssertThrowsError(try FavoriteRelayConfiguration.validatedRelay("https://relay.example")) {
+            XCTAssertEqual($0 as? FavoriteRelayConfigurationError, .invalidRelay)
+        }
     }
 
-    func testFavoriteRelayEditorAddsGenericEventWithoutRebuildingExistingList() throws {
-        let source = FavoriteRelayListEvent(
-            id: "base",
-            createdAt: 100,
-            tags: [
-                ["group", "room", firstHost, "Alpha"],
-                ["unknown", "preserve", "verbatim"],
-                ["r", firstHost]
-            ],
-            content: "opaque-private-content"
-        )
-
-        let intent = try XCTUnwrap(
-            FavoriteRelayListEditor.intent(
-                operation: .add(" WSS://TWO.EXAMPLE.COM "),
-                activePubkey: "author",
-                sourceEvent: source,
-                now: 100
-            )
-        )
-
-        // `WritePayload.unsigned(pubkey:...)` is gone: a payload carries no
-        // author at all, and who a write publishes as is `WriteIntent
-        // .identity`. `WriteRouting.authorOutbox` is gone too -- which
-        // strategy claims kind:10009 is NMP's call, not the app's.
-        guard case let .event(kind, tags, content, createdAt) = intent.payload else {
-            return XCTFail("Expected a stamped generic write")
-        }
-        XCTAssertEqual(intent.identity, .explicit(pubkey: "author"))
-        XCTAssertEqual(createdAt, 101)
-        XCTAssertEqual(kind, 10_009)
-        XCTAssertEqual(tags, source.tags + [["r", secondHost]])
-        XCTAssertEqual(content, source.content)
-        XCTAssertEqual(intent.routing, .auto)
-    }
-
-    func testFavoriteRelayEditorRemovesOnlyMatchingRelayTags() throws {
-        let source = FavoriteRelayListEvent(
-            id: "base",
-            createdAt: 100,
-            tags: [
-                ["r", "WSS://ONE.EXAMPLE.COM"],
-                ["group", "room", firstHost],
-                ["r", secondHost],
-                ["r", "not-a-relay"],
-                ["other"]
-            ],
-            content: "preserved"
-        )
-
-        let intent = try XCTUnwrap(
-            FavoriteRelayListEditor.intent(
-                operation: .remove(firstHost),
-                activePubkey: "author",
-                sourceEvent: source,
-                now: 200
-            )
-        )
-
-        guard case let .event(kind, tags, content, createdAt) = intent.payload else {
-            return XCTFail("Expected a stamped generic write")
-        }
-        XCTAssertEqual(createdAt, 200)
-        XCTAssertEqual(kind, 10_009)
+    func testAppendingAndRemovingRelaysAreLocalOnly() {
         XCTAssertEqual(
-            tags,
-            [
-                ["group", "room", firstHost],
-                ["r", secondHost],
-                ["r", "not-a-relay"],
-                ["other"]
-            ]
-        )
-        XCTAssertEqual(content, "preserved")
-    }
-
-    func testFavoriteRelayEditorTreatsDuplicateAddAndMissingRemoveAsNoOps() throws {
-        let source = FavoriteRelayListEvent(
-            id: "base",
-            createdAt: 100,
-            tags: [["r", firstHost]],
-            content: ""
-        )
-
-        XCTAssertNil(
-            try FavoriteRelayListEditor.intent(
-                operation: .add("WSS://ONE.EXAMPLE.COM"),
-                activePubkey: "author",
-                sourceEvent: source,
-                now: 200
-            )
-        )
-        XCTAssertNil(
-            try FavoriteRelayListEditor.intent(
-                operation: .remove(secondHost),
-                activePubkey: "author",
-                sourceEvent: source,
-                now: 200
-            )
-        )
-    }
-
-    func testFavoriteRelayEditorRejectsNonWebSocketRelayAndExhaustedTimestamp() {
-        XCTAssertThrowsError(
-            try FavoriteRelayListEditor.intent(
-                operation: .add("https://relay.example.com"),
-                activePubkey: "author",
-                sourceEvent: nil,
-                now: 200
-            )
-        ) { error in
-            XCTAssertEqual(error as? FavoriteRelayListEditError, .invalidRelay)
-        }
-
-        XCTAssertThrowsError(
-            try FavoriteRelayListEditor.intent(
-                operation: .add(firstHost),
-                activePubkey: "author",
-                sourceEvent: FavoriteRelayListEvent(
-                    id: "base",
-                    createdAt: .max,
-                    tags: [],
-                    content: ""
-                ),
-                now: 200
-            )
-        ) { error in
-            XCTAssertEqual(error as? FavoriteRelayListEditError, .timestampExhausted)
-        }
-    }
-
-    /// The app's only tested write-handling path. A stale compare-and-swap is
-    /// no longer a throw from `publish`: the write is ACCEPTED, taken into
-    /// custody, and refused in the queue -- keeping both event ids, which is
-    /// what makes it recoverable without asking the person anything.
-    @MainActor
-    func testFavoriteRelayEditorExplainsRefusedAndCancelledWrites() async {
-        let conflict = await AppModel.favoriteRelayFailure(
-            draining: WriteFactSequence([
-                .signing(.signed(eventId: "new")),
-                .outcome(.refused(.replaceableBaseChanged(expected: "old", actual: "new")))
-            ])
+            FavoriteRelayConfiguration.appending(firstHost, to: [firstHost]),
+            [firstHost]
         )
         XCTAssertEqual(
-            conflict,
-            "The relay list changed while this update was in flight. Review it and try again."
+            FavoriteRelayConfiguration.appending(secondHost, to: [firstHost]),
+            [firstHost, secondHost]
         )
-
-        let cancelled = await AppModel.favoriteRelayFailure(
-            draining: WriteFactSequence([.outcome(.notSent(.cancelled))])
+        XCTAssertEqual(
+            FavoriteRelayConfiguration.removing(firstHost, from: [firstHost, secondHost]),
+            [secondHost]
         )
-        XCTAssertEqual(cancelled, "The relay list was not sent -- the write was cancelled.")
-    }
-
-    /// `expected`/`actual` survive the boundary intact, which is the whole
-    /// reason the refusal is worth more than a string.
-    func testStaleReplaceableBaseKeepsBothEventIds() {
-        guard case let .outcome(.refused(.replaceableBaseChanged(expected, actual))) =
-            WriteFact.outcome(.refused(.replaceableBaseChanged(expected: "old", actual: "new")))
-        else {
-            return XCTFail("Expected a refused stale-base outcome")
-        }
-        XCTAssertEqual(expected, "old")
-        XCTAssertEqual(actual, "new")
     }
 
     private func rememberedSnapshot() -> RememberedGroupSnapshot {

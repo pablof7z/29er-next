@@ -10,6 +10,7 @@ struct MacRootView: View {
     @State private var showingDiagnostics = false
     @State private var showingIdentity = false
     @State private var showingInbox = false
+    @State private var showingRelayBrowser = false
 
     var body: some View {
         Group {
@@ -73,13 +74,24 @@ struct MacRootView: View {
             }
             .frame(minWidth: 700, minHeight: 520)
         }
+        .sheet(isPresented: $showingRelayBrowser) {
+            FavoriteRelayBrowser(
+                relays: model.favoriteRelays,
+                selectedHost: model.selectedHost,
+                editState: model.favoriteRelayEditState,
+                selectHost: selectHost,
+                addRelay: model.addFavoriteRelay,
+                removeRelay: model.removeFavoriteRelay,
+                clearEditError: model.clearFavoriteRelayError
+            )
+        }
     }
 
     private var desktopContent: some View {
         VStack(spacing: 0) {
             HostGroupSelector(
                 activePubkey: model.activePubkey,
-                bootstrapHost: model.groupRelay,
+                hosts: model.relayHosts,
                 remembered: model.remembered,
                 hasReceivedRemembered: model.hasReceivedRememberedGroups,
                 rememberedError: model.rememberedGroupsError,
@@ -102,6 +114,11 @@ struct MacRootView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: PlatformSupport.trailingToolbarPlacement) {
+                Button {
+                    showingRelayBrowser = true
+                } label: {
+                    Label("Favorite Relays", systemImage: "antenna.radiowaves.left.and.right")
+                }
                 if model.activePubkey != nil {
                     Button {
                         showingInbox = true

@@ -138,11 +138,7 @@ struct RootView: View {
             }
             .sheet(isPresented: $showingRelayBrowser) {
                 FavoriteRelayBrowser(
-                    activePubkey: model.activePubkey,
-                    bootstrapHost: model.groupRelay,
-                    remembered: model.remembered,
-                    hasReceivedRemembered: model.hasReceivedRememberedGroups,
-                    rememberedError: model.rememberedGroupsError,
+                    relays: model.favoriteRelays,
                     selectedHost: model.selectedHost,
                     editState: model.favoriteRelayEditState,
                     selectHost: selectHost,
@@ -209,7 +205,7 @@ struct RootView: View {
                 ContentUnavailableView(
                     "No favorite chat relays",
                     systemImage: "antenna.radiowaves.left.and.right",
-                    description: Text("Open Favorite Relays to choose a relay from your NIP-51 chat list.")
+                    description: Text("Open Favorite Relays to add or choose a relay on this device.")
                 )
             } else if model.groups.isEmpty {
                 ContentUnavailableView {

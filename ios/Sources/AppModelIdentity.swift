@@ -64,7 +64,7 @@ extension AppModel {
         hasReceivedRememberedGroups = false
         rememberedGroupsError = nil
         favoriteRelayEditState = .idle
-        selectedHost = nil
+        selectedHost = relayHosts.first
         selectedGroup = nil
     }
 

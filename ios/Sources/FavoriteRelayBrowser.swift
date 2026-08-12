@@ -5,11 +5,7 @@ struct FavoriteRelayBrowser: View {
     @State private var showingAddRelay = false
     @State private var relayInput = ""
 
-    let activePubkey: String?
-    let bootstrapHost: String
-    let remembered: RememberedGroupSnapshot
-    let hasReceivedRemembered: Bool
-    let rememberedError: String?
+    let relays: [FavoriteRelayChoice]
     let selectedHost: String?
     let editState: FavoriteRelayEditState
     let selectHost: (String) -> Void
@@ -20,37 +16,22 @@ struct FavoriteRelayBrowser: View {
     var body: some View {
         NavigationStack {
             Group {
-                if let rememberedError {
-                    unavailable(
-                        title: "Favorite relays unavailable",
-                        symbol: "antenna.radiowaves.left.and.right.slash",
-                        description: rememberedError
-                    )
-                } else if activePubkey == nil {
-                    relayList(FavoriteRelayChoice.bootstrap(host: bootstrapHost))
-                } else if !hasReceivedRemembered {
-                    ProgressView("Loading favorite relays…")
-                } else if remembered.hosts.isEmpty {
+                if relays.isEmpty {
                     emptyFavorites
                 } else {
-                    relayList(FavoriteRelayChoice.favorites(from: remembered))
+                    relayList(relays)
                 }
             }
             .navigationTitle("Favorite Relays")
             .platformInlineNavigationTitle()
             .toolbar {
-                if activePubkey != nil {
-                    ToolbarItemGroup(placement: .primaryAction) {
-#if os(iOS)
-                        EditButton()
-#endif
-                        Button {
-                            showingAddRelay = true
-                        } label: {
-                            Label("Add Relay", systemImage: "plus")
-                        }
-                        .accessibilityIdentifier("add-favorite-relay")
+                ToolbarItemGroup(placement: .primaryAction) {
+                    Button {
+                        showingAddRelay = true
+                    } label: {
+                        Label("Add Relay", systemImage: "plus")
                     }
+                    .accessibilityIdentifier("add-favorite-relay")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
@@ -66,12 +47,12 @@ struct FavoriteRelayBrowser: View {
             Button("Add") { submitRelay() }
                 .disabled(relayInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         } message: {
-            Text("Enter the WebSocket URL of a NIP-29 chat relay.")
+            Text("Enter the WebSocket URL of a chat relay.")
         }
-        .alert("Couldn’t Update Favorite Relays", isPresented: errorPresented) {
+        .alert("Couldn’t Add Relay", isPresented: errorPresented) {
             Button("OK", action: clearEditError)
         } message: {
-            Text(editState.failureMessage ?? "The relay list could not be updated.")
+            Text(editState.failureMessage ?? "The relay could not be added.")
         }
     }
 
@@ -107,10 +88,22 @@ struct FavoriteRelayBrowser: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("favorite-relay-\(relay.accessibilityKey)")
-                }
-                .onDelete { offsets in
-                    guard let index = offsets.first else { return }
-                    removeRelay(relays[index].url)
+                    .contextMenu {
+                        if relay.isRemovable {
+                            Button("Remove Relay", role: .destructive) {
+                                removeRelay(relay.url)
+                            }
+                        }
+                    }
+#if os(iOS)
+                    .swipeActions {
+                        if relay.isRemovable {
+                            Button("Remove", role: .destructive) {
+                                removeRelay(relay.url)
+                            }
+                        }
+                    }
+#endif
                 }
             } footer: {
                 footer
@@ -123,7 +116,7 @@ struct FavoriteRelayBrowser: View {
             unavailable(
                 title: "No favorite chat relays",
                 symbol: "antenna.radiowaves.left.and.right",
-                description: "Add a relay to your NIP-51 chat relay list."
+                description: "Add a relay to connect to it from this device."
             )
             Button {
                 showingAddRelay = true
@@ -151,14 +144,7 @@ struct FavoriteRelayBrowser: View {
 
     @ViewBuilder
     private var footer: some View {
-        if activePubkey == nil {
-            Text("Sign in to browse the chat relays saved to your account.")
-        } else if remembered.hasPrivateContent {
-            Label(
-                "Some private list entries are not shown.",
-                systemImage: "lock.fill"
-            )
-        }
+        Text("Relays added here are saved on this device. Their connection state comes from NMP.")
     }
 
     private func unavailable(title: String, symbol: String, description: String) -> some View {
@@ -171,7 +157,14 @@ struct FavoriteRelayBrowser: View {
 }
 
 struct FavoriteRelayChoice: Identifiable, Equatable, Sendable {
+    enum Source: Equatable, Sendable {
+        case `default`
+        case saved
+        case remembered
+    }
+
     let url: String
+    let source: Source
     let roomCount: Int?
 
     var id: String { url }
@@ -179,21 +172,39 @@ struct FavoriteRelayChoice: Identifiable, Equatable, Sendable {
     var accessibilityKey: String { displayName.replacingOccurrences(of: ".", with: "-") }
 
     var detail: String {
-        guard let roomCount else { return "Default chat relay" }
-        return roomCount == 1 ? "1 remembered room" : "\(roomCount) remembered rooms"
+        let sourceDescription = switch source {
+        case .default: "Default chat relay"
+        case .saved: "Saved on this device"
+        case .remembered: "Listed in remembered rooms"
+        }
+        guard let roomCount, roomCount > 0 else { return sourceDescription }
+        let rooms = roomCount == 1 ? "1 remembered room" : "\(roomCount) remembered rooms"
+        return "\(sourceDescription) · \(rooms)"
     }
 
-    static func favorites(from snapshot: RememberedGroupSnapshot) -> [FavoriteRelayChoice] {
-        snapshot.hosts.map { host in
+    var isRemovable: Bool { source == .saved }
+
+    static func favorites(
+        defaultRelay: String,
+        savedRelays: [String],
+        remembered: RememberedGroupSnapshot
+    ) -> [FavoriteRelayChoice] {
+        var seen = Set<String>()
+        var entries: [(String, Source)] = []
+        func append(_ relay: String, source: Source) {
+            guard !relay.isEmpty, seen.insert(relay).inserted else { return }
+            entries.append((relay, source))
+        }
+
+        append(defaultRelay, source: .default)
+        savedRelays.forEach { append($0, source: .saved) }
+        remembered.hosts.forEach { append($0, source: .remembered) }
+        return entries.map { relay, source in
             FavoriteRelayChoice(
-                url: host,
-                roomCount: snapshot.groups.lazy.filter { $0.host == host }.count
+                url: relay,
+                source: source,
+                roomCount: remembered.groups.lazy.filter { $0.host == relay }.count
             )
         }
-    }
-
-    static func bootstrap(host: String) -> [FavoriteRelayChoice] {
-        guard !host.isEmpty else { return [] }
-        return [FavoriteRelayChoice(url: host, roomCount: nil)]
     }
 }
