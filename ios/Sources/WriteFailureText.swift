@@ -62,10 +62,12 @@ struct WriteReport {
                 """
         // A later write for the same replaceable coordinate took over, which
         // is what editing twice quickly is supposed to do.
-        case .notSent(.superseded):
+        case .notSent(.superseded), .superseded:
             return nil
         case .notSent(.cancelled):
             return "The \(subject) was not sent -- the write was cancelled."
+        case .notSent(.signerRefused):
+            return undelivered()
         case .refused(let reason):
             return message(for: reason)
         }
