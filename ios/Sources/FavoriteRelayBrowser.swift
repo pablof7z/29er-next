@@ -1,3 +1,4 @@
+import NMP
 import SwiftUI
 
 struct FavoriteRelayBrowser: View {
@@ -11,6 +12,8 @@ struct FavoriteRelayBrowser: View {
     let hasReceivedRemembered: Bool
     let rememberedError: String?
     let selectedHost: String?
+    let engine: NMPEngine?
+    let engineGeneration: Int
     let editState: FavoriteRelayEditState
     let selectHost: (String) -> Void
     let addRelay: (String) -> Void
@@ -79,34 +82,15 @@ struct FavoriteRelayBrowser: View {
         List {
             Section {
                 ForEach(relays) { relay in
-                    Button {
+                    FavoriteRelayBrandingRow(
+                        relay: relay,
+                        selectedHost: selectedHost,
+                        engine: engine,
+                        engineGeneration: engineGeneration
+                    ) {
                         selectHost(relay.url)
                         dismiss()
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "antenna.radiowaves.left.and.right")
-                                .font(.title3)
-                                .foregroundStyle(.tint)
-                                .frame(width: 28)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(relay.displayName)
-                                    .font(.body.weight(.medium))
-                                    .foregroundStyle(.primary)
-                                Text(relay.detail)
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if relay.url == selectedHost {
-                                Image(systemName: "checkmark")
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(.tint)
-                            }
-                        }
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("favorite-relay-\(relay.accessibilityKey)")
                 }
                 .onDelete { offsets in
                     guard let index = offsets.first else { return }
