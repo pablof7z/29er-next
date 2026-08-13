@@ -82,7 +82,7 @@ private struct ProofLaunchRootView: View {
         case .voiceComposer:
             VoiceComposerProofView()
         case .voiceSettings:
-            SystemSettingsView()
+            SystemSettingsView(model: AppModel())
         case .voiceProvider:
             NavigationStack {
                 VoiceProviderListView()

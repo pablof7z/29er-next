@@ -57,4 +57,39 @@ final class RelayBrandingTests: XCTestCase {
             "1 remembered room"
         )
     }
+
+    func testHeaderUsesNIP11NameForTheSelectedRelay() {
+        let information = NMPRelayInformationState.available(
+            NMPRelayPresentation(
+                relay: "wss://pyramid.fiatjaf.com",
+                advertisedName: "Pyramid",
+                freshness: .fresh
+            )
+        )
+
+        XCTAssertEqual(
+            RelayHeaderPresentation.title(
+                relay: "wss://pyramid.fiatjaf.com",
+                information: information
+            ),
+            "Pyramid"
+        )
+    }
+
+    func testHeaderFallsBackToTheCurrentRelayHost() {
+        XCTAssertEqual(
+            RelayHeaderPresentation.title(
+                relay: "wss://pyramid.fiatjaf.com",
+                information: .loading(relay: "wss://previous.example")
+            ),
+            "pyramid.fiatjaf.com"
+        )
+    }
+
+    func testHeaderWithoutSelectedRelayOpensFavoritesContext() {
+        XCTAssertEqual(
+            RelayHeaderPresentation.title(relay: nil, information: .loading(relay: "")),
+            "Favorite Relays"
+        )
+    }
 }

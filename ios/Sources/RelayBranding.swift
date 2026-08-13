@@ -79,6 +79,63 @@ struct FavoriteRelayBrandingRow: View {
     }
 }
 
+/// The currently visible relay's picker affordance in the channel header.
+///
+/// Like picker rows, this view owns only the lifetime of one visible NIP-11
+/// request. The engine supplies cached or newly acquired relay information.
+struct CurrentRelayTitleButton: View {
+    let relay: String?
+    let engine: NMPEngine?
+    let engineGeneration: Int
+    let openRelayBrowser: () -> Void
+
+    @State private var information: NMPRelayInformationState
+
+    init(
+        relay: String?,
+        engine: NMPEngine?,
+        engineGeneration: Int,
+        openRelayBrowser: @escaping () -> Void
+    ) {
+        self.relay = relay
+        self.engine = engine
+        self.engineGeneration = engineGeneration
+        self.openRelayBrowser = openRelayBrowser
+        _information = State(initialValue: .loading(relay: relay ?? ""))
+    }
+
+    var body: some View {
+        Button(action: openRelayBrowser) {
+            HStack(spacing: 4) {
+                Text(RelayHeaderPresentation.title(relay: relay, information: information))
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
+            }
+        }
+        .accessibilityLabel("Favorite Relays")
+        .accessibilityValue(RelayHeaderPresentation.title(relay: relay, information: information))
+        .accessibilityIdentifier("current-relay-button")
+        .task(id: RelayInformationRequest(relay: relay ?? "", generation: engineGeneration)) {
+            await loadInformation()
+        }
+    }
+
+    private func loadInformation() async {
+        guard let relay, let engine else { return }
+
+        information = .loading(relay: relay)
+        do {
+            let value = try await engine.relayInformation(for: relay)
+            guard !Task.isCancelled else { return }
+            information = NMPRelayInformationState(value)
+        } catch {
+            guard !Task.isCancelled else { return }
+            information = .unavailable(relay: relay, reason: nil)
+        }
+    }
+}
+
 private struct RelayInformationRequest: Hashable {
     let relay: String
     let generation: Int
@@ -115,6 +172,18 @@ enum FavoriteRelayBranding {
     ) -> String {
         guard information.displayName != relay.displayName else { return relay.detail }
         return "\(relay.displayName) · \(relay.detail)"
+    }
+}
+
+enum RelayHeaderPresentation {
+    static func title(relay: String?, information: NMPRelayInformationState) -> String {
+        guard let relay else { return "Favorite Relays" }
+        guard information.relay == relay else { return fallbackName(for: relay) }
+        return information.displayName
+    }
+
+    private static func fallbackName(for relay: String) -> String {
+        URL(string: relay)?.host ?? relay
     }
 }
 

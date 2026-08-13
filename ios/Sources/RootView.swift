@@ -10,7 +10,6 @@ struct RootView: View {
     @State private var directory: RoomDirectoryModel?
     @State private var inbox: InboxModel?
     @State private var reads = MentionReads()
-    @State private var showingDiagnostics = false
     @State private var showingIdentity = false
     @State private var showingRelayBrowser = false
     #if os(iOS)
@@ -34,7 +33,8 @@ struct RootView: View {
                     roomContent
                 }
             }
-            .navigationTitle("Channels")
+            .navigationTitle("")
+            .platformInlineNavigationTitle()
             .navigationDestination(for: GroupSummary.self) { group in
                 if let engine = model.engine {
                     RoomView(
@@ -80,13 +80,14 @@ struct RootView: View {
                 }
             }
             .toolbar {
-                ToolbarItem(placement: PlatformSupport.leadingToolbarPlacement) {
-                    Button {
+                ToolbarItem(placement: .principal) {
+                    CurrentRelayTitleButton(
+                        relay: model.selectedHost,
+                        engine: model.engine,
+                        engineGeneration: model.engineGeneration
+                    ) {
                         showingRelayBrowser = true
-                    } label: {
-                        Label("Favorite Relays", systemImage: "antenna.radiowaves.left.and.right")
                     }
-                    .accessibilityIdentifier("favorite-relays-button")
                 }
                 // One group with a @ViewBuilder body: a conditional first item
                 // inserts reliably when the account signs in, which a
@@ -118,20 +119,7 @@ struct RootView: View {
                                 : "person.crop.circle.badge.checkmark"
                         )
                     }
-                    Button {
-                        showingDiagnostics = true
-                    } label: {
-                        Label("Diagnostics", systemImage: "waveform.path.ecg")
-                    }
                 }
-            }
-            .sheet(isPresented: $showingDiagnostics) {
-                DiagnosticsView(
-                    snapshot: model.diagnostics,
-                    error: model.diagnosticsError,
-                    canResetCache: model.canResetLocalDatabase,
-                    resetCache: { _ = model.resetLocalDatabase() }
-                )
             }
             .sheet(isPresented: $showingIdentity) {
                 IdentitySheet(model: model)
@@ -155,7 +143,7 @@ struct RootView: View {
             }
             #if os(iOS)
             .sheet(isPresented: $showingSystem) {
-                SystemSettingsView()
+                SystemSettingsView(model: model)
             }
             #endif
         }
