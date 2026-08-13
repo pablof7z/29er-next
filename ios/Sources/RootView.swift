@@ -144,6 +144,8 @@ struct RootView: View {
                     hasReceivedRemembered: model.hasReceivedRememberedGroups,
                     rememberedError: model.rememberedGroupsError,
                     selectedHost: model.selectedHost,
+                    engine: model.engine,
+                    engineGeneration: model.engineGeneration,
                     editState: model.favoriteRelayEditState,
                     selectHost: selectHost,
                     addRelay: model.addFavoriteRelay,
