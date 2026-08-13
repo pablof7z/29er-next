@@ -2,6 +2,7 @@ import SwiftUI
 
 #if os(iOS)
 struct SystemSettingsView: View {
+    @Bindable var model: AppModel
     @Environment(VoiceProviderStore.self) private var providers
     @Environment(\.dismiss) private var dismiss
 
@@ -19,6 +20,20 @@ struct SystemSettingsView: View {
                         )
                     }
                     .accessibilityIdentifier("system-voice-settings")
+                }
+
+                Section("App") {
+                    NavigationLink {
+                        DiagnosticsView(
+                            snapshot: model.diagnostics,
+                            error: model.diagnosticsError,
+                            canResetCache: model.canResetLocalDatabase,
+                            resetCache: { _ = model.resetLocalDatabase() }
+                        )
+                    } label: {
+                        Label("Diagnostics", systemImage: "waveform.path.ecg")
+                    }
+                    .accessibilityIdentifier("system-diagnostics-settings")
                 }
             }
             .navigationTitle("System")
