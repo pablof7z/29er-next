@@ -122,9 +122,22 @@ final class WriteReportTests: XCTestCase {
         XCTAssertNil(result)
     }
 
+    func testWholeWriteSupersededIsNotAFailure() async {
+        let result = await failure([.outcome(.superseded)])
+        XCTAssertNil(result)
+    }
+
     func testCancelledSaysTheWriteWasCancelled() async {
         let result = await failure([.outcome(.notSent(.cancelled))])
         XCTAssertEqual(result, "The message was not sent -- the write was cancelled.")
+    }
+
+    func testSignerRefusalOutcomeAttributesTheSigner() async {
+        let result = await failure([
+            .signing(.refused(reason: "user declined")),
+            .outcome(.notSent(.signerRefused))
+        ])
+        XCTAssertEqual(result, "Your signer refused the message: user declined")
     }
 
     /// `AuthDenialSource` exists precisely so this app's own decision not to

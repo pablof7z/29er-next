@@ -21,6 +21,7 @@ final class ChatDraftTests: XCTestCase {
             tags: [],
             content: "the message being replied to",
             sig: String(repeating: "0", count: 128),
+            signatureState: .pending,
             sources: ["wss://nip29.example"]
         )
     }

@@ -145,7 +145,7 @@ extension RoomTimelineModel {
         engine: NMPEngine,
         eventIDs: Set<String>
     ) async -> String? {
-        guard let entries = try? engine.publishQueue() else { return nil }
+        guard let entries = try? engine.publishQueue(limit: 200) else { return nil }
         for entry in entries where eventIDs.contains(entry.eventID) {
             guard let outcome = entry.outcome else { continue }
             var report = WriteReport(subject: "message")

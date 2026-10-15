@@ -15,7 +15,7 @@ final class TTS29ParsingTests: XCTestCase {
     ) -> Row {
         Row(
             id: id, pubkey: pubkey, createdAt: createdAt, kind: kind, tags: tags,
-            content: content, sig: "", sources: []
+            content: content, sig: "", signatureState: .pending, sources: []
         )
     }
 
